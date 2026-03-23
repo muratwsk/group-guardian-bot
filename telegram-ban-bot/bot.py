@@ -321,19 +321,20 @@ async def resolve_target(update: Update, context: ContextTypes.DEFAULT_TYPE):
             target_id = int(arg)
             return target_id, str(target_id)
         except ValueError:
-            # It's a username - try to get chat info
-            try:
-                chat = await context.bot.get_chat(f"@{arg}")
-                return chat.id, chat.first_name or arg
-            except Exception:
-                await update.message.reply_text(
-                    f"⚠️ Konnte `@{arg}` nicht finden. Versuche eine User-ID.",
-                    parse_mode="Markdown",
-                )
-                return None, None
+            await update.message.reply_text(
+                f"⚠️ `@{arg}` kann nicht aufgelöst werden.\n"
+                "Telegram erlaubt keine @username-Auflösung für normale User.\n\n"
+                "💡 *So geht's:*\n"
+                "• Antworte auf eine Nachricht des Users\n"
+                "• Oder nutze die User-ID: `/banall 123456789`",
+                parse_mode="Markdown",
+            )
+            return None, None
 
     await update.message.reply_text(
-        "⚠️ Nutzung: Antworte auf eine Nachricht ODER schreibe `/banall @username` bzw. `/banall 123456`",
+        "⚠️ *Nutzung:*\n"
+        "• Antworte auf eine Nachricht des Users\n"
+        "• Oder: `/banall 123456789` (User-ID)",
         parse_mode="Markdown",
     )
     return None, None
