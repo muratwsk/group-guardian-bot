@@ -505,12 +505,16 @@ async def banall(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     results = []
+    tracked = lookup_user(str(target_id))
+    target_username = tracked.get("username") if tracked else None
     for g in groups:
         try:
             await context.bot.ban_chat_member(chat_id=g["id"], user_id=target_id, revoke_messages=True)
             results.append(f"✅ {g['title']}")
         except Exception as e:
             results.append(f"❌ {g['title']}: {e}")
+
+    remember_group_ban([g["id"] for g in groups], target_id, target_name, target_username)
 
     result_text = "\n".join(results)
     await update.message.reply_text(
@@ -546,6 +550,8 @@ async def unbanall(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except Exception as e:
             results.append(f"❌ {g['title']}: {e}")
 
+    forget_group_ban([g["id"] for g in groups], target_id)
+
     result_text = "\n".join(results)
     await update.message.reply_text(
         f"✅ *{target_name}* (`{target_id}`) entbannt:\n\n{result_text}",
@@ -556,12 +562,40 @@ async def unbanall(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"UNBANALL: {target_name} ({target_id}) von {update.effective_user.full_name}\n{result_text}",
     )
 
-# --- User tracker: silently track all messages in groups ---
+# --- User tracker + auto re-ban ---
 
 async def track_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Track every user who sends a message in a group."""
-    if update.message and update.message.from_user:
+    """Track every user who sends a message in a group and immediately re-ban if needed."""
+    if not update.message:
+        return
+
+    if update.message.from_user:
         track_user(update.message.from_user)
+
+    for member in update.message.new_chat_members or []:
+        track_user(member)
+        if is_banned_in_group(update.effective_chat.id, member.id):
+            try:
+                await context.bot.ban_chat_member(chat_id=update.effective_chat.id, user_id=member.id, revoke_messages=True)
+                await log_action(context, f"AUTO-REBANNED: {member.full_name} ({member.id}) in {update.effective_chat.title}")
+            except Exception as e:
+                logger.error(f"Auto-reban via new_chat_members failed for {member.id} in {update.effective_chat.id}: {e}")
+
+async def enforce_ban_on_chat_member(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not update.chat_member:
+        return
+
+    member = update.chat_member.new_chat_member.user
+    if not member or member.is_bot:
+        return
+
+    track_user(member)
+    if is_banned_in_group(update.effective_chat.id, member.id):
+        try:
+            await context.bot.ban_chat_member(chat_id=update.effective_chat.id, user_id=member.id, revoke_messages=True)
+            await log_action(context, f"AUTO-REBANNED: {member.full_name} ({member.id}) in {update.effective_chat.title}")
+        except Exception as e:
+            logger.error(f"Auto-reban via chat_member failed for {member.id} in {update.effective_chat.id}: {e}")
 
 # --- Main ---
 
@@ -581,11 +615,11 @@ def main():
     app.add_handler(CommandHandler("unbanall", unbanall))
     app.add_handler(CallbackQueryHandler(button_handler))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & filters.ChatType.PRIVATE, text_handler))
-    # Track all group messages to build username → ID database
     app.add_handler(MessageHandler(filters.ALL & (filters.ChatType.GROUP | filters.ChatType.SUPERGROUP), track_message), group=1)
+    app.add_handler(ChatMemberHandler(enforce_ban_on_chat_member, ChatMemberHandler.CHAT_MEMBER), group=2)
 
     print("🤖 Bot gestartet!")
-    app.run_polling(drop_pending_updates=True)
+    app.run_polling(drop_pending_updates=True, allowed_updates=Update.ALL_TYPES)
 
 if __name__ == "__main__":
     main()
