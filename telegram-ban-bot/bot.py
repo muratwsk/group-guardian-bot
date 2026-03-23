@@ -112,20 +112,29 @@ async def get_bot_groups(context: ContextTypes.DEFAULT_TYPE) -> list:
 # --- /start ---
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not is_admin(update.effective_user.id):
+    user_id = update.effective_user.id
+    if not is_authorized(user_id):
         await update.message.reply_text("⛔ Kein Zugriff.")
         return
     
+    # Ban/Unban buttons for everyone (admin + owner)
     keyboard = [
         [InlineKeyboardButton("🚫 Ban", callback_data="action_ban"),
          InlineKeyboardButton("✅ Unban", callback_data="action_unban")],
-        [InlineKeyboardButton("👥 Gruppen anzeigen", callback_data="show_groups")],
-        [InlineKeyboardButton("➕ Admin hinzufügen", callback_data="add_admin"),
-         InlineKeyboardButton("➖ Admin entfernen", callback_data="remove_admin")],
-        [InlineKeyboardButton("📢 Log-Kanal setzen", callback_data="set_log")],
     ]
+    
+    # Owner-only buttons
+    if is_owner(user_id):
+        keyboard.append([InlineKeyboardButton("👥 Gruppen anzeigen", callback_data="show_groups")])
+        keyboard.append([
+            InlineKeyboardButton("➕ Admin hinzufügen", callback_data="add_admin"),
+            InlineKeyboardButton("➖ Admin entfernen", callback_data="remove_admin"),
+        ])
+        keyboard.append([InlineKeyboardButton("📢 Log-Kanal setzen", callback_data="set_log")])
+
+    role = "👑 Owner" if is_owner(user_id) else "🛡️ Admin"
     await update.message.reply_text(
-        "🤖 *Ban-Bot Menü*\nWähle eine Aktion:",
+        f"🤖 *Ban-Bot Menü* ({role})\nWähle eine Aktion:",
         reply_markup=InlineKeyboardMarkup(keyboard),
         parse_mode="Markdown",
     )
