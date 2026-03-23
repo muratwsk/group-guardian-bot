@@ -14,6 +14,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 CONFIG_FILE = os.path.join(os.path.dirname(__file__), "config.json")
+DATA_FILE = os.path.join(os.path.dirname(__file__), "data.json")
 
 # --- Config helpers ---
 
@@ -24,6 +25,16 @@ def load_config():
 def save_config(cfg):
     with open(CONFIG_FILE, "w") as f:
         json.dump(cfg, f, indent=2)
+
+def load_data():
+    if not os.path.exists(DATA_FILE):
+        return {"groups": []}
+    with open(DATA_FILE, "r") as f:
+        return json.load(f)
+
+def save_data(data):
+    with open(DATA_FILE, "w") as f:
+        json.dump(data, f, indent=2)
 
 def is_admin(user_id: int) -> bool:
     cfg = load_config()
