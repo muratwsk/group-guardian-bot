@@ -662,6 +662,7 @@ def main():
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & filters.ChatType.PRIVATE, text_handler))
     app.add_handler(MessageHandler(filters.ALL & (filters.ChatType.GROUP | filters.ChatType.SUPERGROUP), track_message), group=1)
     app.add_handler(ChatMemberHandler(enforce_ban_on_chat_member, ChatMemberHandler.CHAT_MEMBER), group=2)
+    app.add_handler(ChatJoinRequestHandler(block_banned_join_request), group=3)
 
     print("🤖 Bot gestartet!")
     app.run_polling(drop_pending_updates=True, allowed_updates=Update.ALL_TYPES)
