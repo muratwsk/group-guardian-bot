@@ -220,10 +220,16 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data["state"] = WAITING_UNBAN_INPUT
 
     elif data == "add_admin":
+        if not is_owner(user_id):
+            await query.edit_message_text("⛔ Nur für Owner.")
+            return
         await query.edit_message_text("Sende mir die User-ID des neuen Admins:")
         context.user_data["state"] = WAITING_ADMIN_ADD
 
     elif data == "remove_admin":
+        if not is_owner(user_id):
+            await query.edit_message_text("⛔ Nur für Owner.")
+            return
         cfg = load_config()
         admins = cfg.get("admin_ids", [])
         text = "Aktuelle Admins:\n" + "\n".join(f"• `{a}`" for a in admins)
@@ -232,8 +238,24 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data["state"] = WAITING_ADMIN_REMOVE
 
     elif data == "set_log":
+        if not is_owner(user_id):
+            await query.edit_message_text("⛔ Nur für Owner.")
+            return
         await query.edit_message_text("Sende mir die Chat-ID des Log-Kanals\n(Bot muss dort Admin sein):")
         context.user_data["state"] = WAITING_LOG_CHANNEL
+
+    elif data == "show_groups":
+        if not is_owner(user_id):
+            await query.edit_message_text("⛔ Nur für Owner.")
+            return
+        groups = await get_bot_groups(context)
+        if not groups:
+            await query.edit_message_text("Keine Gruppen registriert.\nNutze /registergroup in einer Gruppe.")
+            return
+        text = "👥 *Registrierte Gruppen:*\n\n"
+        for g in groups:
+            text += f"• {g['title']} (`{g['id']}`)\n"
+        await query.edit_message_text(text, parse_mode="Markdown")
 
 # --- Message handler for text input ---
 
