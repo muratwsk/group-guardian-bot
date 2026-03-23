@@ -26,6 +26,8 @@ def save_config(cfg):
     with open(CONFIG_FILE, "w") as f:
         json.dump(cfg, f, indent=2)
 
+USERS_FILE = os.path.join(os.path.dirname(__file__), "users.json")
+
 def load_data():
     if not os.path.exists(DATA_FILE):
         return {"groups": []}
@@ -35,6 +37,41 @@ def load_data():
 def save_data(data):
     with open(DATA_FILE, "w") as f:
         json.dump(data, f, indent=2)
+
+def load_users():
+    if not os.path.exists(USERS_FILE):
+        return {}
+    with open(USERS_FILE, "r") as f:
+        return json.load(f)
+
+def save_users(users):
+    with open(USERS_FILE, "w") as f:
+        json.dump(users, f, indent=2)
+
+def track_user(user):
+    """Track a user's username → ID mapping."""
+    if not user or user.is_bot:
+        return
+    users = load_users()
+    if user.username:
+        users[user.username.lower()] = {
+            "id": user.id,
+            "name": user.full_name,
+            "username": user.username,
+        }
+    # Also store by ID for reverse lookup
+    users[str(user.id)] = {
+        "id": user.id,
+        "name": user.full_name,
+        "username": user.username,
+    }
+    save_users(users)
+
+def lookup_user(identifier: str):
+    """Lookup user by username or ID from tracked users."""
+    users = load_users()
+    key = identifier.lower().lstrip("@")
+    return users.get(key)
 
 def is_admin(user_id: int) -> bool:
     cfg = load_config()
@@ -319,38 +356,56 @@ async def unregister_group(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # --- Helper: resolve target user from reply or argument ---
 
 async def resolve_target(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Resolve target user from reply, mention entity, or command argument."""
+    """Resolve target user from reply, mention entity, tracked username, or numeric ID."""
     # Option 1: Reply to a message
     if update.message.reply_to_message and update.message.reply_to_message.from_user:
         user = update.message.reply_to_message.from_user
+        track_user(user)
         return user.id, user.full_name
 
-    # Option 2: Check for mention entities in the message (when user @tags someone)
+    # Option 2: Check for mention entities (text_mention has user object)
     if update.message.entities:
         for entity in update.message.entities:
-            # text_mention = user without username (contains user object directly)
             if entity.type == "text_mention" and entity.user:
+                track_user(entity.user)
                 return entity.user.id, entity.user.full_name or str(entity.user.id)
-            # mention = @username tag
             if entity.type == "mention":
                 username = update.message.text[entity.offset + 1:entity.offset + entity.length]
-                # Skip the bot's own command
                 if username == (await context.bot.get_me()).username:
                     continue
-                try:
-                    chat = await context.bot.get_chat(f"@{username}")
-                    return chat.id, chat.first_name or username
-                except Exception:
-                    pass
+                # Look up in our tracked users database
+                tracked = lookup_user(username)
+                if tracked:
+                    return tracked["id"], tracked.get("name", username)
+                else:
+                    await update.message.reply_text(
+                        f"⚠️ `@{username}` ist dem Bot noch nicht bekannt.\n"
+                        "Der User muss erst eine Nachricht in einer Gruppe schreiben, "
+                        "damit der Bot ihn tracken kann.\n\n"
+                        "💡 Alternative: Antworte direkt auf eine Nachricht des Users.",
+                        parse_mode="Markdown",
+                    )
+                    return None, None
 
-    # Option 3: Argument after command (numeric ID)
+    # Option 3: Argument after command (numeric ID or @username)
     if context.args and len(context.args) > 0:
         arg = context.args[0].lstrip("@")
         try:
             target_id = int(arg)
-            return target_id, str(target_id)
+            tracked = lookup_user(arg)
+            name = tracked["name"] if tracked else str(target_id)
+            return target_id, name
         except ValueError:
-            pass
+            # Try lookup by username
+            tracked = lookup_user(arg)
+            if tracked:
+                return tracked["id"], tracked.get("name", arg)
+            await update.message.reply_text(
+                f"⚠️ `@{arg}` ist dem Bot noch nicht bekannt.\n"
+                "Der User muss erst eine Nachricht in einer Gruppe schreiben.",
+                parse_mode="Markdown",
+            )
+            return None, None
 
     await update.message.reply_text(
         "⚠️ *Nutzung:*\n"
@@ -429,6 +484,13 @@ async def unbanall(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"UNBANALL: {target_name} ({target_id}) von {update.effective_user.full_name}\n{result_text}",
     )
 
+# --- User tracker: silently track all messages in groups ---
+
+async def track_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Track every user who sends a message in a group."""
+    if update.message and update.message.from_user:
+        track_user(update.message.from_user)
+
 # --- Main ---
 
 def main():
@@ -447,6 +509,8 @@ def main():
     app.add_handler(CommandHandler("unbanall", unbanall))
     app.add_handler(CallbackQueryHandler(button_handler))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & filters.ChatType.PRIVATE, text_handler))
+    # Track all group messages to build username → ID database
+    app.add_handler(MessageHandler(filters.ALL & (filters.ChatType.GROUP | filters.ChatType.SUPERGROUP), track_message), group=1)
 
     print("🤖 Bot gestartet!")
     app.run_polling(drop_pending_updates=True)
