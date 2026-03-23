@@ -161,17 +161,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     data = query.data
 
-    if data == "show_groups":
-        groups = await get_bot_groups(context)
-        if not groups:
-            await query.edit_message_text("Keine Gruppen registriert.\nNutze /registergroup in einer Gruppe.")
-            return
-        text = "👥 *Registrierte Gruppen:*\n\n"
-        for g in groups:
-            text += f"• {g['title']} (`{g['id']}`)\n"
-        await query.edit_message_text(text, parse_mode="Markdown")
-
-    elif data == "action_ban":
+    if data == "action_ban":
         groups = await get_bot_groups(context)
         if not groups:
             await query.edit_message_text("Keine Gruppen registriert.")
