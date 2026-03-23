@@ -342,7 +342,7 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # --- /registergroup - run in a group to add it ---
 
 async def register_group(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not is_admin(update.effective_user.id):
+    if not is_owner(update.effective_user.id):
         await update.message.reply_text("⛔ Kein Zugriff.")
         return
 
