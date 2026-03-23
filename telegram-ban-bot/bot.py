@@ -4,7 +4,7 @@ import os
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     Application, CommandHandler, CallbackQueryHandler,
-    MessageHandler, filters, ContextTypes, ConversationHandler
+    MessageHandler, ChatMemberHandler, filters, ContextTypes
 )
 
 logging.basicConfig(
@@ -28,15 +28,50 @@ def save_config(cfg):
 
 USERS_FILE = os.path.join(os.path.dirname(__file__), "users.json")
 
+def normalize_data(data):
+    data.setdefault("groups", [])
+    data.setdefault("banned_users", {})
+    return data
+
 def load_data():
     if not os.path.exists(DATA_FILE):
-        return {"groups": []}
+        return normalize_data({"groups": [], "banned_users": {}})
     with open(DATA_FILE, "r") as f:
-        return json.load(f)
+        return normalize_data(json.load(f))
 
 def save_data(data):
     with open(DATA_FILE, "w") as f:
         json.dump(data, f, indent=2)
+
+def remember_group_ban(group_ids, user_id, name=None, username=None):
+    data = load_data()
+    banned_users = data.setdefault("banned_users", {})
+
+    for group_id in group_ids:
+        group_key = str(group_id)
+        group_bans = banned_users.setdefault(group_key, {})
+        group_bans[str(user_id)] = {
+            "id": user_id,
+            "name": name or str(user_id),
+            "username": username,
+        }
+
+    save_data(data)
+
+def forget_group_ban(group_ids, user_id):
+    data = load_data()
+    banned_users = data.setdefault("banned_users", {})
+
+    for group_id in group_ids:
+        group_bans = banned_users.get(str(group_id), {})
+        group_bans.pop(str(user_id), None)
+
+    save_data(data)
+
+def is_banned_in_group(group_id, user_id):
+    data = load_data()
+    group_bans = data.get("banned_users", {}).get(str(group_id), {})
+    return str(user_id) in group_bans
 
 def load_users():
     if not os.path.exists(USERS_FILE):
