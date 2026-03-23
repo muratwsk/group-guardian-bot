@@ -482,7 +482,7 @@ async def banall(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # --- /unbanall ---
 
 async def unbanall(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not is_admin(update.effective_user.id):
+    if not is_authorized(update.effective_user.id):
         await update.message.reply_text("⛔ Kein Zugriff.")
         return
 
