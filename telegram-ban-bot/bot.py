@@ -484,6 +484,13 @@ async def unbanall(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"UNBANALL: {target_name} ({target_id}) von {update.effective_user.full_name}\n{result_text}",
     )
 
+# --- User tracker: silently track all messages in groups ---
+
+async def track_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Track every user who sends a message in a group."""
+    if update.message and update.message.from_user:
+        track_user(update.message.from_user)
+
 # --- Main ---
 
 def main():
@@ -502,6 +509,8 @@ def main():
     app.add_handler(CommandHandler("unbanall", unbanall))
     app.add_handler(CallbackQueryHandler(button_handler))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & filters.ChatType.PRIVATE, text_handler))
+    # Track all group messages to build username → ID database
+    app.add_handler(MessageHandler(filters.ALL & (filters.ChatType.GROUP | filters.ChatType.SUPERGROUP), track_message), group=1)
 
     print("🤖 Bot gestartet!")
     app.run_polling(drop_pending_updates=True)
