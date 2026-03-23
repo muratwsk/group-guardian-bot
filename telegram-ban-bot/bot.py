@@ -285,16 +285,16 @@ async def register_group(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Dieser Befehl funktioniert nur in Gruppen.")
         return
 
-    cfg = load_config()
-    groups = cfg.get("groups", [])
+    data = load_data()
+    groups = data.get("groups", [])
     
     if any(g["id"] == chat.id for g in groups):
         await update.message.reply_text(f"✅ Gruppe bereits registriert: {chat.title}")
         return
 
     groups.append({"id": chat.id, "title": chat.title})
-    cfg["groups"] = groups
-    save_config(cfg)
+    data["groups"] = groups
+    save_data(data)
     await update.message.reply_text(f"✅ Gruppe registriert: *{chat.title}*", parse_mode="Markdown")
     await log_action(context, f"Gruppe registriert: {chat.title} ({chat.id})")
 
