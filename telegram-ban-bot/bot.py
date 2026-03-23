@@ -308,32 +308,43 @@ async def unregister_group(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # --- Helper: resolve target user from reply or argument ---
 
 async def resolve_target(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Resolve target user from reply_to_message or command argument (ID or @username)."""
+    """Resolve target user from reply, mention entity, or command argument."""
     # Option 1: Reply to a message
     if update.message.reply_to_message and update.message.reply_to_message.from_user:
         user = update.message.reply_to_message.from_user
         return user.id, user.full_name
 
-    # Option 2: Argument after command (ID or @username)
+    # Option 2: Check for mention entities in the message (when user @tags someone)
+    if update.message.entities:
+        for entity in update.message.entities:
+            # text_mention = user without username (contains user object directly)
+            if entity.type == "text_mention" and entity.user:
+                return entity.user.id, entity.user.full_name or str(entity.user.id)
+            # mention = @username tag
+            if entity.type == "mention":
+                username = update.message.text[entity.offset + 1:entity.offset + entity.length]
+                # Skip the bot's own command
+                if username == (await context.bot.get_me()).username:
+                    continue
+                try:
+                    chat = await context.bot.get_chat(f"@{username}")
+                    return chat.id, chat.first_name or username
+                except Exception:
+                    pass
+
+    # Option 3: Argument after command (numeric ID)
     if context.args and len(context.args) > 0:
         arg = context.args[0].lstrip("@")
         try:
             target_id = int(arg)
             return target_id, str(target_id)
         except ValueError:
-            await update.message.reply_text(
-                f"⚠️ `@{arg}` kann nicht aufgelöst werden.\n"
-                "Telegram erlaubt keine @username-Auflösung für normale User.\n\n"
-                "💡 *So geht's:*\n"
-                "• Antworte auf eine Nachricht des Users\n"
-                "• Oder nutze die User-ID: `/banall 123456789`",
-                parse_mode="Markdown",
-            )
-            return None, None
+            pass
 
     await update.message.reply_text(
         "⚠️ *Nutzung:*\n"
         "• Antworte auf eine Nachricht des Users\n"
+        "• Markiere einen User: `/banall @User`\n"
         "• Oder: `/banall 123456789` (User-ID)",
         parse_mode="Markdown",
     )
