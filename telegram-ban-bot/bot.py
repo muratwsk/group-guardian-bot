@@ -310,10 +310,10 @@ async def unregister_group(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Dieser Befehl funktioniert nur in Gruppen.")
         return
 
-    cfg = load_config()
-    groups = cfg.get("groups", [])
-    cfg["groups"] = [g for g in groups if g["id"] != chat.id]
-    save_config(cfg)
+    data = load_data()
+    groups = data.get("groups", [])
+    data["groups"] = [g for g in groups if g["id"] != chat.id]
+    save_data(data)
     await update.message.reply_text(f"✅ Gruppe entfernt: *{chat.title}*", parse_mode="Markdown")
 
 # --- Helper: resolve target user from reply or argument ---
