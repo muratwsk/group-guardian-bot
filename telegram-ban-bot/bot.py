@@ -14,6 +14,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 CONFIG_FILE = os.path.join(os.path.dirname(__file__), "config.json")
+DATA_FILE = os.path.join(os.path.dirname(__file__), "data.json")
 
 # --- Config helpers ---
 
@@ -24,6 +25,16 @@ def load_config():
 def save_config(cfg):
     with open(CONFIG_FILE, "w") as f:
         json.dump(cfg, f, indent=2)
+
+def load_data():
+    if not os.path.exists(DATA_FILE):
+        return {"groups": []}
+    with open(DATA_FILE, "r") as f:
+        return json.load(f)
+
+def save_data(data):
+    with open(DATA_FILE, "w") as f:
+        json.dump(data, f, indent=2)
 
 def is_admin(user_id: int) -> bool:
     cfg = load_config()
@@ -41,9 +52,9 @@ async def log_action(context: ContextTypes.DEFAULT_TYPE, text: str):
 # --- Get bot's groups ---
 
 async def get_bot_groups(context: ContextTypes.DEFAULT_TYPE) -> list:
-    """Returns list of groups stored in config. Groups are added via /registergroup."""
-    cfg = load_config()
-    groups = cfg.get("groups", [])
+    """Returns list of groups stored in data.json. Groups are added via /registergroup."""
+    data = load_data()
+    groups = data.get("groups", [])
     result = []
     for g in groups:
         try:
@@ -274,16 +285,16 @@ async def register_group(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Dieser Befehl funktioniert nur in Gruppen.")
         return
 
-    cfg = load_config()
-    groups = cfg.get("groups", [])
+    data = load_data()
+    groups = data.get("groups", [])
     
     if any(g["id"] == chat.id for g in groups):
         await update.message.reply_text(f"✅ Gruppe bereits registriert: {chat.title}")
         return
 
     groups.append({"id": chat.id, "title": chat.title})
-    cfg["groups"] = groups
-    save_config(cfg)
+    data["groups"] = groups
+    save_data(data)
     await update.message.reply_text(f"✅ Gruppe registriert: *{chat.title}*", parse_mode="Markdown")
     await log_action(context, f"Gruppe registriert: {chat.title} ({chat.id})")
 
@@ -299,10 +310,10 @@ async def unregister_group(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Dieser Befehl funktioniert nur in Gruppen.")
         return
 
-    cfg = load_config()
-    groups = cfg.get("groups", [])
-    cfg["groups"] = [g for g in groups if g["id"] != chat.id]
-    save_config(cfg)
+    data = load_data()
+    groups = data.get("groups", [])
+    data["groups"] = [g for g in groups if g["id"] != chat.id]
+    save_data(data)
     await update.message.reply_text(f"✅ Gruppe entfernt: *{chat.title}*", parse_mode="Markdown")
 
 # --- Helper: resolve target user from reply or argument ---

@@ -1,0 +1,5 @@
+{
+  "bot_token": "DEIN_BOT_TOKEN_HIER",
+  "admin_ids": [123456789],
+  "log_channel_id": null
+}
