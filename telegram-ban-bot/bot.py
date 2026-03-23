@@ -356,38 +356,56 @@ async def unregister_group(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # --- Helper: resolve target user from reply or argument ---
 
 async def resolve_target(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Resolve target user from reply, mention entity, or command argument."""
+    """Resolve target user from reply, mention entity, tracked username, or numeric ID."""
     # Option 1: Reply to a message
     if update.message.reply_to_message and update.message.reply_to_message.from_user:
         user = update.message.reply_to_message.from_user
+        track_user(user)
         return user.id, user.full_name
 
-    # Option 2: Check for mention entities in the message (when user @tags someone)
+    # Option 2: Check for mention entities (text_mention has user object)
     if update.message.entities:
         for entity in update.message.entities:
-            # text_mention = user without username (contains user object directly)
             if entity.type == "text_mention" and entity.user:
+                track_user(entity.user)
                 return entity.user.id, entity.user.full_name or str(entity.user.id)
-            # mention = @username tag
             if entity.type == "mention":
                 username = update.message.text[entity.offset + 1:entity.offset + entity.length]
-                # Skip the bot's own command
                 if username == (await context.bot.get_me()).username:
                     continue
-                try:
-                    chat = await context.bot.get_chat(f"@{username}")
-                    return chat.id, chat.first_name or username
-                except Exception:
-                    pass
+                # Look up in our tracked users database
+                tracked = lookup_user(username)
+                if tracked:
+                    return tracked["id"], tracked.get("name", username)
+                else:
+                    await update.message.reply_text(
+                        f"⚠️ `@{username}` ist dem Bot noch nicht bekannt.\n"
+                        "Der User muss erst eine Nachricht in einer Gruppe schreiben, "
+                        "damit der Bot ihn tracken kann.\n\n"
+                        "💡 Alternative: Antworte direkt auf eine Nachricht des Users.",
+                        parse_mode="Markdown",
+                    )
+                    return None, None
 
-    # Option 3: Argument after command (numeric ID)
+    # Option 3: Argument after command (numeric ID or @username)
     if context.args and len(context.args) > 0:
         arg = context.args[0].lstrip("@")
         try:
             target_id = int(arg)
-            return target_id, str(target_id)
+            tracked = lookup_user(arg)
+            name = tracked["name"] if tracked else str(target_id)
+            return target_id, name
         except ValueError:
-            pass
+            # Try lookup by username
+            tracked = lookup_user(arg)
+            if tracked:
+                return tracked["id"], tracked.get("name", arg)
+            await update.message.reply_text(
+                f"⚠️ `@{arg}` ist dem Bot noch nicht bekannt.\n"
+                "Der User muss erst eine Nachricht in einer Gruppe schreiben.",
+                parse_mode="Markdown",
+            )
+            return None, None
 
     await update.message.reply_text(
         "⚠️ *Nutzung:*\n"
