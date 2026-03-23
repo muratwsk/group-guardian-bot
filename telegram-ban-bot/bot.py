@@ -5,7 +5,7 @@ import os
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     Application, CommandHandler, CallbackQueryHandler,
-    MessageHandler, ChatMemberHandler, filters, ContextTypes
+    MessageHandler, ChatMemberHandler, ChatJoinRequestHandler, filters, ContextTypes
 )
 
 logging.basicConfig(
@@ -599,6 +599,23 @@ async def enforce_ban_on_chat_member(update: Update, context: ContextTypes.DEFAU
         except Exception as e:
             logger.error(f"Auto-reban via chat_member failed for {member.id} in {update.effective_chat.id}: {e}")
 
+async def block_banned_join_request(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not update.chat_join_request:
+        return
+
+    request = update.chat_join_request
+    member = request.from_user
+    if not member or member.is_bot:
+        return
+
+    track_user(member)
+    if is_banned_in_group(request.chat.id, member.id):
+        try:
+            await context.bot.decline_chat_join_request(chat_id=request.chat.id, user_id=member.id)
+            await log_action(context, f"JOIN-REQUEST ABGELEHNT: {member.full_name} ({member.id}) in {request.chat.title}")
+        except Exception as e:
+            logger.error(f"Decline join request failed for {member.id} in {request.chat.id}: {e}")
+
 # --- Main ---
 
 def ensure_single_instance():
@@ -645,6 +662,7 @@ def main():
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & filters.ChatType.PRIVATE, text_handler))
     app.add_handler(MessageHandler(filters.ALL & (filters.ChatType.GROUP | filters.ChatType.SUPERGROUP), track_message), group=1)
     app.add_handler(ChatMemberHandler(enforce_ban_on_chat_member, ChatMemberHandler.CHAT_MEMBER), group=2)
+    app.add_handler(ChatJoinRequestHandler(block_banned_join_request), group=3)
 
     print("🤖 Bot gestartet!")
     app.run_polling(drop_pending_updates=True, allowed_updates=Update.ALL_TYPES)
