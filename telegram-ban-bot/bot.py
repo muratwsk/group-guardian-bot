@@ -312,6 +312,9 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         action = pending["action"]
         groups = pending["groups"]
+        tracked = lookup_user(str(target_id)) or lookup_user(target)
+        target_name = tracked.get("name", str(target_id)) if tracked else str(target_id)
+        target_username = tracked.get("username") if tracked else None
         results = []
 
         for gid in groups:
@@ -324,6 +327,11 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     results.append(f"✅ Entbannt in `{gid}`")
             except Exception as e:
                 results.append(f"❌ Fehler in `{gid}`: {e}")
+
+        if action == "ban":
+            remember_group_ban(groups, target_id, target_name, target_username)
+        else:
+            forget_group_ban(groups, target_id)
 
         result_text = "\n".join(results)
         verb = "gebannt" if action == "ban" else "entbannt"
