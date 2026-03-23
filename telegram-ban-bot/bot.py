@@ -464,7 +464,7 @@ async def banall(update: Update, context: ContextTypes.DEFAULT_TYPE):
     results = []
     for g in groups:
         try:
-            await context.bot.ban_chat_member(chat_id=g["id"], user_id=target_id)
+            await context.bot.ban_chat_member(chat_id=g["id"], user_id=target_id, revoke_messages=True)
             results.append(f"✅ {g['title']}")
         except Exception as e:
             results.append(f"❌ {g['title']}: {e}")
