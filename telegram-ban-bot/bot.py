@@ -372,20 +372,15 @@ async def banall(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"BANALL: {target_name} ({target_id}) von {update.effective_user.full_name}\n{result_text}",
     )
 
-# --- /unbanall - reply to a message to unban that user everywhere ---
+# --- /unbanall ---
 
 async def unbanall(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_admin(update.effective_user.id):
         await update.message.reply_text("⛔ Kein Zugriff.")
         return
 
-    if not update.message.reply_to_message:
-        await update.message.reply_text("⚠️ Antworte auf eine Nachricht des Users den du entbannen willst.")
-        return
-
-    target = update.message.reply_to_message.from_user
-    if not target:
-        await update.message.reply_text("⚠️ Konnte den User nicht erkennen.")
+    target_id, target_name = await resolve_target(update, context)
+    if target_id is None:
         return
 
     groups = await get_bot_groups(context)
@@ -396,19 +391,19 @@ async def unbanall(update: Update, context: ContextTypes.DEFAULT_TYPE):
     results = []
     for g in groups:
         try:
-            await context.bot.unban_chat_member(chat_id=g["id"], user_id=target.id, only_if_banned=True)
+            await context.bot.unban_chat_member(chat_id=g["id"], user_id=target_id, only_if_banned=True)
             results.append(f"✅ {g['title']}")
         except Exception as e:
             results.append(f"❌ {g['title']}: {e}")
 
     result_text = "\n".join(results)
     await update.message.reply_text(
-        f"✅ *{target.full_name}* (`{target.id}`) entbannt:\n\n{result_text}",
+        f"✅ *{target_name}* (`{target_id}`) entbannt:\n\n{result_text}",
         parse_mode="Markdown",
     )
     await log_action(
         context,
-        f"UNBANALL: {target.full_name} ({target.id}) von {update.effective_user.full_name}\n{result_text}",
+        f"UNBANALL: {target_name} ({target_id}) von {update.effective_user.full_name}\n{result_text}",
     )
 
 # --- Main ---
