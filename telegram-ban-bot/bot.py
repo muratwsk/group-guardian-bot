@@ -155,7 +155,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.answer()
     user_id = query.from_user.id
 
-    if not is_admin(user_id):
+    if not is_authorized(user_id):
         await query.edit_message_text("⛔ Kein Zugriff.")
         return
 
