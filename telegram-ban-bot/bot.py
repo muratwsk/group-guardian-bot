@@ -73,9 +73,17 @@ def lookup_user(identifier: str):
     key = identifier.lower().lstrip("@")
     return users.get(key)
 
+def is_owner(user_id: int) -> bool:
+    cfg = load_config()
+    return user_id in cfg.get("owner_ids", [])
+
 def is_admin(user_id: int) -> bool:
     cfg = load_config()
-    return user_id in cfg.get("admin_ids", [])
+    return user_id in cfg.get("admin_ids", []) or is_owner(user_id)
+
+def is_authorized(user_id: int) -> bool:
+    """Check if user is owner or admin (can use ban/unban)."""
+    return is_admin(user_id)
 
 async def log_action(context: ContextTypes.DEFAULT_TYPE, text: str):
     cfg = load_config()
@@ -104,20 +112,29 @@ async def get_bot_groups(context: ContextTypes.DEFAULT_TYPE) -> list:
 # --- /start ---
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not is_admin(update.effective_user.id):
+    user_id = update.effective_user.id
+    if not is_authorized(user_id):
         await update.message.reply_text("⛔ Kein Zugriff.")
         return
     
+    # Ban/Unban buttons for everyone (admin + owner)
     keyboard = [
         [InlineKeyboardButton("🚫 Ban", callback_data="action_ban"),
          InlineKeyboardButton("✅ Unban", callback_data="action_unban")],
-        [InlineKeyboardButton("👥 Gruppen anzeigen", callback_data="show_groups")],
-        [InlineKeyboardButton("➕ Admin hinzufügen", callback_data="add_admin"),
-         InlineKeyboardButton("➖ Admin entfernen", callback_data="remove_admin")],
-        [InlineKeyboardButton("📢 Log-Kanal setzen", callback_data="set_log")],
     ]
+    
+    # Owner-only buttons
+    if is_owner(user_id):
+        keyboard.append([InlineKeyboardButton("👥 Gruppen anzeigen", callback_data="show_groups")])
+        keyboard.append([
+            InlineKeyboardButton("➕ Admin hinzufügen", callback_data="add_admin"),
+            InlineKeyboardButton("➖ Admin entfernen", callback_data="remove_admin"),
+        ])
+        keyboard.append([InlineKeyboardButton("📢 Log-Kanal setzen", callback_data="set_log")])
+
+    role = "👑 Owner" if is_owner(user_id) else "🛡️ Admin"
     await update.message.reply_text(
-        "🤖 *Ban-Bot Menü*\nWähle eine Aktion:",
+        f"🤖 *Ban-Bot Menü* ({role})\nWähle eine Aktion:",
         reply_markup=InlineKeyboardMarkup(keyboard),
         parse_mode="Markdown",
     )
@@ -138,23 +155,13 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.answer()
     user_id = query.from_user.id
 
-    if not is_admin(user_id):
+    if not is_authorized(user_id):
         await query.edit_message_text("⛔ Kein Zugriff.")
         return
 
     data = query.data
 
-    if data == "show_groups":
-        groups = await get_bot_groups(context)
-        if not groups:
-            await query.edit_message_text("Keine Gruppen registriert.\nNutze /registergroup in einer Gruppe.")
-            return
-        text = "👥 *Registrierte Gruppen:*\n\n"
-        for g in groups:
-            text += f"• {g['title']} (`{g['id']}`)\n"
-        await query.edit_message_text(text, parse_mode="Markdown")
-
-    elif data == "action_ban":
+    if data == "action_ban":
         groups = await get_bot_groups(context)
         if not groups:
             await query.edit_message_text("Keine Gruppen registriert.")
@@ -203,10 +210,16 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data["state"] = WAITING_UNBAN_INPUT
 
     elif data == "add_admin":
+        if not is_owner(user_id):
+            await query.edit_message_text("⛔ Nur für Owner.")
+            return
         await query.edit_message_text("Sende mir die User-ID des neuen Admins:")
         context.user_data["state"] = WAITING_ADMIN_ADD
 
     elif data == "remove_admin":
+        if not is_owner(user_id):
+            await query.edit_message_text("⛔ Nur für Owner.")
+            return
         cfg = load_config()
         admins = cfg.get("admin_ids", [])
         text = "Aktuelle Admins:\n" + "\n".join(f"• `{a}`" for a in admins)
@@ -215,14 +228,30 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data["state"] = WAITING_ADMIN_REMOVE
 
     elif data == "set_log":
+        if not is_owner(user_id):
+            await query.edit_message_text("⛔ Nur für Owner.")
+            return
         await query.edit_message_text("Sende mir die Chat-ID des Log-Kanals\n(Bot muss dort Admin sein):")
         context.user_data["state"] = WAITING_LOG_CHANNEL
+
+    elif data == "show_groups":
+        if not is_owner(user_id):
+            await query.edit_message_text("⛔ Nur für Owner.")
+            return
+        groups = await get_bot_groups(context)
+        if not groups:
+            await query.edit_message_text("Keine Gruppen registriert.\nNutze /registergroup in einer Gruppe.")
+            return
+        text = "👥 *Registrierte Gruppen:*\n\n"
+        for g in groups:
+            text += f"• {g['title']} (`{g['id']}`)\n"
+        await query.edit_message_text(text, parse_mode="Markdown")
 
 # --- Message handler for text input ---
 
 async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
-    if not is_admin(user_id):
+    if not is_authorized(user_id):
         return
 
     state = context.user_data.get("state")
@@ -313,7 +342,7 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # --- /registergroup - run in a group to add it ---
 
 async def register_group(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not is_admin(update.effective_user.id):
+    if not is_owner(update.effective_user.id):
         await update.message.reply_text("⛔ Kein Zugriff.")
         return
 
@@ -338,7 +367,7 @@ async def register_group(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # --- /unregistergroup ---
 
 async def unregister_group(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not is_admin(update.effective_user.id):
+    if not is_owner(update.effective_user.id):
         await update.message.reply_text("⛔ Kein Zugriff.")
         return
 
@@ -419,7 +448,7 @@ async def resolve_target(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # --- /banall ---
 
 async def banall(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not is_admin(update.effective_user.id):
+    if not is_authorized(update.effective_user.id):
         await update.message.reply_text("⛔ Kein Zugriff.")
         return
 
@@ -453,7 +482,7 @@ async def banall(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # --- /unbanall ---
 
 async def unbanall(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not is_admin(update.effective_user.id):
+    if not is_authorized(update.effective_user.id):
         await update.message.reply_text("⛔ Kein Zugriff.")
         return
 
