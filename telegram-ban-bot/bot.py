@@ -26,6 +26,8 @@ def save_config(cfg):
     with open(CONFIG_FILE, "w") as f:
         json.dump(cfg, f, indent=2)
 
+USERS_FILE = os.path.join(os.path.dirname(__file__), "users.json")
+
 def load_data():
     if not os.path.exists(DATA_FILE):
         return {"groups": []}
@@ -35,6 +37,41 @@ def load_data():
 def save_data(data):
     with open(DATA_FILE, "w") as f:
         json.dump(data, f, indent=2)
+
+def load_users():
+    if not os.path.exists(USERS_FILE):
+        return {}
+    with open(USERS_FILE, "r") as f:
+        return json.load(f)
+
+def save_users(users):
+    with open(USERS_FILE, "w") as f:
+        json.dump(users, f, indent=2)
+
+def track_user(user):
+    """Track a user's username → ID mapping."""
+    if not user or user.is_bot:
+        return
+    users = load_users()
+    if user.username:
+        users[user.username.lower()] = {
+            "id": user.id,
+            "name": user.full_name,
+            "username": user.username,
+        }
+    # Also store by ID for reverse lookup
+    users[str(user.id)] = {
+        "id": user.id,
+        "name": user.full_name,
+        "username": user.username,
+    }
+    save_users(users)
+
+def lookup_user(identifier: str):
+    """Lookup user by username or ID from tracked users."""
+    users = load_users()
+    key = identifier.lower().lstrip("@")
+    return users.get(key)
 
 def is_admin(user_id: int) -> bool:
     cfg = load_config()
