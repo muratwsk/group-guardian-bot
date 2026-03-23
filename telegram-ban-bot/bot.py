@@ -16,6 +16,7 @@ logger = logging.getLogger(__name__)
 
 CONFIG_FILE = os.path.join(os.path.dirname(__file__), "config.json")
 DATA_FILE = os.path.join(os.path.dirname(__file__), "data.json")
+LOCK_FILE = os.path.join(os.path.dirname(__file__), "bot.lock")
 
 # --- Config helpers ---
 
