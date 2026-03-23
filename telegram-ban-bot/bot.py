@@ -52,9 +52,9 @@ async def log_action(context: ContextTypes.DEFAULT_TYPE, text: str):
 # --- Get bot's groups ---
 
 async def get_bot_groups(context: ContextTypes.DEFAULT_TYPE) -> list:
-    """Returns list of groups stored in config. Groups are added via /registergroup."""
-    cfg = load_config()
-    groups = cfg.get("groups", [])
+    """Returns list of groups stored in data.json. Groups are added via /registergroup."""
+    data = load_data()
+    groups = data.get("groups", [])
     result = []
     for g in groups:
         try:
