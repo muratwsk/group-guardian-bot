@@ -305,20 +305,48 @@ async def unregister_group(update: Update, context: ContextTypes.DEFAULT_TYPE):
     save_config(cfg)
     await update.message.reply_text(f"✅ Gruppe entfernt: *{chat.title}*", parse_mode="Markdown")
 
-# --- /banall - reply to a message to ban that user everywhere ---
+# --- Helper: resolve target user from reply or argument ---
+
+async def resolve_target(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Resolve target user from reply_to_message or command argument (ID or @username)."""
+    # Option 1: Reply to a message
+    if update.message.reply_to_message and update.message.reply_to_message.from_user:
+        user = update.message.reply_to_message.from_user
+        return user.id, user.full_name
+
+    # Option 2: Argument after command (ID or @username)
+    if context.args and len(context.args) > 0:
+        arg = context.args[0].lstrip("@")
+        try:
+            target_id = int(arg)
+            return target_id, str(target_id)
+        except ValueError:
+            # It's a username - try to get chat info
+            try:
+                chat = await context.bot.get_chat(f"@{arg}")
+                return chat.id, chat.first_name or arg
+            except Exception:
+                await update.message.reply_text(
+                    f"⚠️ Konnte `@{arg}` nicht finden. Versuche eine User-ID.",
+                    parse_mode="Markdown",
+                )
+                return None, None
+
+    await update.message.reply_text(
+        "⚠️ Nutzung: Antworte auf eine Nachricht ODER schreibe `/banall @username` bzw. `/banall 123456`",
+        parse_mode="Markdown",
+    )
+    return None, None
+
+# --- /banall ---
 
 async def banall(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_admin(update.effective_user.id):
         await update.message.reply_text("⛔ Kein Zugriff.")
         return
 
-    if not update.message.reply_to_message:
-        await update.message.reply_text("⚠️ Antworte auf eine Nachricht des Users den du bannen willst.")
-        return
-
-    target = update.message.reply_to_message.from_user
-    if not target:
-        await update.message.reply_text("⚠️ Konnte den User nicht erkennen.")
+    target_id, target_name = await resolve_target(update, context)
+    if target_id is None:
         return
 
     groups = await get_bot_groups(context)
@@ -329,19 +357,19 @@ async def banall(update: Update, context: ContextTypes.DEFAULT_TYPE):
     results = []
     for g in groups:
         try:
-            await context.bot.ban_chat_member(chat_id=g["id"], user_id=target.id)
+            await context.bot.ban_chat_member(chat_id=g["id"], user_id=target_id)
             results.append(f"✅ {g['title']}")
         except Exception as e:
             results.append(f"❌ {g['title']}: {e}")
 
     result_text = "\n".join(results)
     await update.message.reply_text(
-        f"🚫 *{target.full_name}* (`{target.id}`) gebannt:\n\n{result_text}",
+        f"🚫 *{target_name}* (`{target_id}`) gebannt:\n\n{result_text}",
         parse_mode="Markdown",
     )
     await log_action(
         context,
-        f"BANALL: {target.full_name} ({target.id}) von {update.effective_user.full_name}\n{result_text}",
+        f"BANALL: {target_name} ({target_id}) von {update.effective_user.full_name}\n{result_text}",
     )
 
 # --- /unbanall - reply to a message to unban that user everywhere ---
