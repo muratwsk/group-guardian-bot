@@ -601,6 +601,31 @@ async def enforce_ban_on_chat_member(update: Update, context: ContextTypes.DEFAU
 
 # --- Main ---
 
+def ensure_single_instance():
+    if os.path.exists(LOCK_FILE):
+        try:
+            with open(LOCK_FILE, "r") as f:
+                existing_pid = int(f.read().strip())
+            os.kill(existing_pid, 0)
+            raise RuntimeError(f"Bot läuft bereits mit PID {existing_pid}")
+        except ProcessLookupError:
+            pass
+        except ValueError:
+            pass
+
+    with open(LOCK_FILE, "w") as f:
+        f.write(str(os.getpid()))
+
+    def cleanup_lock():
+        try:
+            if os.path.exists(LOCK_FILE):
+                os.remove(LOCK_FILE)
+        except OSError:
+            pass
+
+    atexit.register(cleanup_lock)
+
+
 def main():
     cfg = load_config()
     token = cfg.get("bot_token", "")
@@ -608,6 +633,7 @@ def main():
         print("❌ Bitte trage deinen Bot-Token in config.json ein!")
         return
 
+    ensure_single_instance()
     app = Application.builder().token(token).build()
 
     app.add_handler(CommandHandler("start", start))
