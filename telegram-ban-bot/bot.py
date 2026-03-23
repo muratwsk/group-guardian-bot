@@ -73,9 +73,17 @@ def lookup_user(identifier: str):
     key = identifier.lower().lstrip("@")
     return users.get(key)
 
+def is_owner(user_id: int) -> bool:
+    cfg = load_config()
+    return user_id in cfg.get("owner_ids", [])
+
 def is_admin(user_id: int) -> bool:
     cfg = load_config()
-    return user_id in cfg.get("admin_ids", [])
+    return user_id in cfg.get("admin_ids", []) or is_owner(user_id)
+
+def is_authorized(user_id: int) -> bool:
+    """Check if user is owner or admin (can use ban/unban)."""
+    return is_admin(user_id)
 
 async def log_action(context: ContextTypes.DEFAULT_TYPE, text: str):
     cfg = load_config()
