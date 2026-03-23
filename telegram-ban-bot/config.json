@@ -1,8 +1,6 @@
 {
   "bot_token": "8658722148:AAGiB0Xwm6dN2yvxKTLLqgu8sKfnV61I888",
-  "admin_ids": [
-    8570469753,
-    8599393460
-  ],
+  "owner_ids": [8570469753, 8599393460],
+  "admin_ids": [],
   "log_channel_id": -1003872166691
 }
