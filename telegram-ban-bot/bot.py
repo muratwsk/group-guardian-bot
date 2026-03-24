@@ -1509,9 +1509,23 @@ async def execute_scheduled_message(context: ContextTypes.DEFAULT_TYPE):
     logger.info(f"Scheduled message {sched_id} sent to {len(sent_msgs)} groups")
 
 
+def _get_job_queue(context):
+    """Get job_queue from either Application or CallbackContext."""
+    if hasattr(context, 'job_queue'):
+        return context.job_queue
+    if hasattr(context, 'application'):
+        return context.application.job_queue
+    return None
+
+
 def schedule_job(context, sched):
     """Schedule a repeating job for a scheduled message."""
     import datetime
+    
+    jq = _get_job_queue(context)
+    if not jq:
+        logger.error("No job_queue available for scheduling")
+        return
     
     sched_id = sched["id"]
     interval = sched.get("interval_minutes", 60) * 60  # convert to seconds
@@ -1535,7 +1549,7 @@ def schedule_job(context, sched):
     if delay < 0:
         delay = 0
     
-    context.job_queue.run_repeating(
+    jq.run_repeating(
         execute_scheduled_message,
         interval=interval,
         first=delay,
@@ -1547,7 +1561,10 @@ def schedule_job(context, sched):
 
 def remove_scheduled_job(context, sched_id):
     """Remove a scheduled job."""
-    jobs = context.job_queue.get_jobs_by_name(f"sched_{sched_id}")
+    jq = _get_job_queue(context)
+    if not jq:
+        return
+    jobs = jq.get_jobs_by_name(f"sched_{sched_id}")
     for job in jobs:
         job.schedule_removal()
 
