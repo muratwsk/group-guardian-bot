@@ -1787,6 +1787,140 @@ async def unbanall(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"UNBANALL: {target_name} ({target_id}) von {update.effective_user.full_name}\n{result_text}",
     )
 
+# --- /personal and /unpersonal commands (in groups) ---
+
+async def personal_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Save a replied-to message as a personal command. Usage: /personal <name> (reply to a message)."""
+    user_id = update.effective_user.id
+    if not is_authorized(user_id):
+        await update.message.reply_text("⛔ Kein Zugriff.")
+        return
+
+    if not context.args:
+        await update.message.reply_text(
+            "⚠️ Nutzung: /personal <Name>\n"
+            "Antwort auf eine Nachricht, die als Befehl gespeichert werden soll.\n\n"
+            "Beispiel: Antworte auf eine Nachricht und schreibe /personal hele",
+        )
+        return
+
+    cmd_name = context.args[0].lower().lstrip("/")
+    if not cmd_name.isalnum():
+        await update.message.reply_text("⚠️ Der Name darf nur Buchstaben und Zahlen enthalten.")
+        return
+
+    reply = update.message.reply_to_message
+    if not reply:
+        await update.message.reply_text("⚠️ Antworte auf eine Nachricht, um sie als Befehl zu speichern.")
+        return
+
+    # Extract content from replied message
+    cmd_data = {
+        "created_by": user_id,
+        "created_at": now_de().strftime("%d.%m.%Y %H:%M"),
+    }
+
+    if reply.text:
+        cmd_data["text"] = reply.text
+        cmd_data["text_html"] = reply.text_html or reply.text
+    elif reply.caption:
+        cmd_data["text"] = reply.caption
+        cmd_data["text_html"] = reply.caption_html or reply.caption
+
+    # Save media if present
+    if reply.photo:
+        cmd_data["media_file_id"] = reply.photo[-1].file_id
+        cmd_data["media_type"] = "photo"
+    elif reply.video:
+        cmd_data["media_file_id"] = reply.video.file_id
+        cmd_data["media_type"] = "video"
+    elif reply.animation:
+        cmd_data["media_file_id"] = reply.animation.file_id
+        cmd_data["media_type"] = "animation"
+    elif reply.sticker:
+        cmd_data["media_file_id"] = reply.sticker.file_id
+        cmd_data["media_type"] = "sticker"
+    elif reply.document:
+        cmd_data["media_file_id"] = reply.document.file_id
+        cmd_data["media_type"] = "document"
+
+    if not cmd_data.get("text") and not cmd_data.get("media_file_id"):
+        await update.message.reply_text("⚠️ Die Nachricht hat keinen speicherbaren Inhalt.")
+        return
+
+    bot_data = load_data()
+    bot_data.setdefault("personal_commands", {})[cmd_name] = cmd_data
+    save_data(bot_data)
+
+    await update.message.reply_text(f"✅ Befehl /{cmd_name} gespeichert!")
+    await log_action(context, f"PERSONAL CMD: /{cmd_name} erstellt von {update.effective_user.full_name}")
+
+
+async def unpersonal_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Delete a personal command. Usage: /unpersonal <name>"""
+    user_id = update.effective_user.id
+    if not is_authorized(user_id):
+        await update.message.reply_text("⛔ Kein Zugriff.")
+        return
+
+    if not context.args:
+        await update.message.reply_text("⚠️ Nutzung: /unpersonal <Name>\nBeispiel: /unpersonal hele")
+        return
+
+    cmd_name = context.args[0].lower().lstrip("/")
+    bot_data = load_data()
+    cmds = bot_data.get("personal_commands", {})
+    if cmd_name not in cmds:
+        await update.message.reply_text(f"⚠️ Befehl /{cmd_name} nicht gefunden.")
+        return
+
+    cmds.pop(cmd_name)
+    save_data(bot_data)
+    await update.message.reply_text(f"✅ Befehl /{cmd_name} gelöscht!")
+    await log_action(context, f"UNPERSONAL CMD: /{cmd_name} gelöscht von {update.effective_user.full_name}")
+
+
+async def handle_custom_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle custom personal commands in groups."""
+    if not update.message or not update.message.text:
+        return
+    text = update.message.text.strip()
+    if not text.startswith("/"):
+        return
+
+    # Extract command name (without / and without @botname)
+    cmd = text.split()[0][1:].split("@")[0].lower()
+    if not cmd:
+        return
+
+    bot_data = load_data()
+    cmds = bot_data.get("personal_commands", {})
+    if cmd not in cmds:
+        return
+
+    cmd_data = cmds[cmd]
+    text_html = cmd_data.get("text_html", cmd_data.get("text", ""))
+    media_fid = cmd_data.get("media_file_id")
+    media_type = cmd_data.get("media_type", "photo")
+    chat_id = update.effective_chat.id
+
+    try:
+        if media_fid:
+            if media_type == "photo":
+                await context.bot.send_photo(chat_id=chat_id, photo=media_fid, caption=text_html or None, parse_mode="HTML" if text_html else None)
+            elif media_type == "video":
+                await context.bot.send_video(chat_id=chat_id, video=media_fid, caption=text_html or None, parse_mode="HTML" if text_html else None)
+            elif media_type == "animation":
+                await context.bot.send_animation(chat_id=chat_id, animation=media_fid, caption=text_html or None, parse_mode="HTML" if text_html else None)
+            elif media_type == "sticker":
+                await context.bot.send_sticker(chat_id=chat_id, sticker=media_fid)
+            else:
+                await context.bot.send_document(chat_id=chat_id, document=media_fid, caption=text_html or None, parse_mode="HTML" if text_html else None)
+        elif text_html:
+            await context.bot.send_message(chat_id=chat_id, text=text_html, parse_mode="HTML", disable_web_page_preview=True)
+    except Exception as e:
+        logger.error(f"Custom command /{cmd} failed in {chat_id}: {e}")
+
 # --- Delete service messages (pinned, joined, left, etc.) ---
 
 async def delete_service_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
