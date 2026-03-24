@@ -266,14 +266,20 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             gid = int(data.replace("msg_group_", ""))
             user_data_store[user_id] = {"action": "messenger", "groups": [gid]}
+        keyboard = [
+            [
+                InlineKeyboardButton("𝗕 Fett", callback_data="fmt_bold"),
+                InlineKeyboardButton("𝘐 Kursiv", callback_data="fmt_italic"),
+            ],
+            [
+                InlineKeyboardButton("🔗 Link", callback_data="fmt_link"),
+                InlineKeyboardButton("💬 Zitat", callback_data="fmt_quote"),
+            ],
+        ]
         await query.edit_message_text(
             "📨 Sende mir jetzt die Nachricht:\n\n"
-            "Formatierung:\n"
-            "• <b>fett</b> → schreibe: &lt;b&gt;text&lt;/b&gt;\n"
-            "• <i>kursiv</i> → schreibe: &lt;i&gt;text&lt;/i&gt;\n"
-            "• <a href='https://example.com'>Klick mich</a> → schreibe: &lt;a href='URL'&gt;Text&lt;/a&gt;\n"
-            "• Zitat → schreibe: &lt;blockquote&gt;text&lt;/blockquote&gt;",
-            parse_mode="HTML",
+            "Tipp: Klicke auf einen Button um die Formatierung zu sehen.",
+            reply_markup=InlineKeyboardMarkup(keyboard),
         )
         context.user_data["state"] = WAITING_MESSENGER_INPUT
 
