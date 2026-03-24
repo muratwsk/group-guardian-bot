@@ -162,6 +162,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [
         [InlineKeyboardButton("🚫 BannALL", callback_data="menu_banall")],
         [InlineKeyboardButton("📨 Messenger", callback_data="menu_messenger")],
+        [InlineKeyboardButton("🔁 Wiederholte Nachrichten", callback_data="menu_scheduled")],
     ]
 
     # Owner-only settings
