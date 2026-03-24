@@ -1782,14 +1782,32 @@ async def execute_scheduled_message(context: ContextTypes.DEFAULT_TYPE):
     
     # Send new messages
     sent_msgs = []
+    text_html = sched.get("text_html", sched.get("text", ""))
+    media_fid = sched.get("media_file_id")
+    media_type = sched.get("media_type", "photo")
+    
     for gid in sched.get("groups", []):
         try:
-            msg = await context.bot.send_message(
-                chat_id=gid,
-                text=sched.get("text_html", sched.get("text", "")),
-                parse_mode="HTML",
-            )
+            if media_fid:
+                if media_type == "photo":
+                    msg = await context.bot.send_photo(chat_id=gid, photo=media_fid, caption=text_html or None, parse_mode="HTML" if text_html else None)
+                elif media_type == "video":
+                    msg = await context.bot.send_video(chat_id=gid, video=media_fid, caption=text_html or None, parse_mode="HTML" if text_html else None)
+                elif media_type == "animation":
+                    msg = await context.bot.send_animation(chat_id=gid, animation=media_fid, caption=text_html or None, parse_mode="HTML" if text_html else None)
+                elif media_type == "sticker":
+                    msg = await context.bot.send_sticker(chat_id=gid, sticker=media_fid)
+                else:
+                    msg = await context.bot.send_document(chat_id=gid, document=media_fid, caption=text_html or None, parse_mode="HTML" if text_html else None)
+            else:
+                msg = await context.bot.send_message(chat_id=gid, text=text_html, parse_mode="HTML")
             sent_msgs.append([gid, msg.message_id])
+            # Pin if enabled
+            if sched.get("pin_message"):
+                try:
+                    await context.bot.pin_chat_message(chat_id=gid, message_id=msg.message_id, disable_notification=True)
+                except Exception:
+                    pass
         except Exception as e:
             logger.error(f"Scheduled send failed in {gid}: {e}")
     
