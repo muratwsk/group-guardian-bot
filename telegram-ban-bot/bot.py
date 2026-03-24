@@ -48,20 +48,6 @@ def normalize_data(data):
     data.setdefault("banned_users", {})
     data.setdefault("broadcasts", {})
     data.setdefault("scheduled", [])
-    # Migrate scheduled messages to messages[] rotation format
-    for s in data["scheduled"]:
-        if "messages" not in s:
-            slot = {}
-            if s.get("text"):
-                slot["text"] = s["text"]
-            if s.get("text_html"):
-                slot["text_html"] = s["text_html"]
-            if s.get("media_file_id"):
-                slot["media_file_id"] = s["media_file_id"]
-            if s.get("media_type"):
-                slot["media_type"] = s["media_type"]
-            s["messages"] = [slot] if slot else []
-            s.setdefault("rotation_index", 0)
     data.setdefault("open_close", {
         "open_sticker": None,
         "close_sticker": None,
@@ -492,8 +478,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         new_sched = {
             "id": sched_id,
             "groups": list(selected),
-            "messages": [],
-            "rotation_index": 0,
+            "text": "",
+            "text_html": "",
             "time": now_de().strftime("%H:%M"),
             "interval_minutes": 1440,
             "interval_label": "Alle 24 Stunden",
@@ -550,8 +536,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         new_sched = {
             "id": sched_id,
             "groups": pending["groups"],
-            "messages": [{"text": pending["text"], "text_html": pending.get("text_html", pending["text"])}],
-            "rotation_index": 0,
+            "text": pending["text"],
+            "text_html": pending.get("text_html", pending["text"]),
             "time": pending.get("time", now_de().strftime("%H:%M")),
             "interval_minutes": minutes,
             "interval_label": f"Alle {get_interval_label(minutes)}",
@@ -589,17 +575,13 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         bot_data = load_data()
         for s in bot_data.get("scheduled", []):
             if str(s.get("id")) == str(sched_id):
-                msgs = s.get("messages", [])
-                if not msgs:
-                    await query.answer("Keine Nachrichten vorhanden.", show_alert=True)
-                    return
-                text = "📄 <b>Alle Nachrichten (Rotation):</b>\n\n"
-                for idx, m in enumerate(msgs, 1):
-                    preview = html.escape((m.get("text") or "(kein Text)")[:60])
-                    has_media = " 🖼" if m.get("media_file_id") else ""
-                    text += f"<b>{idx}.</b> {preview}{has_media}\n"
+                preview_html = s.get("text_html") or s.get("text") or "(leer)"
                 keyboard = [[InlineKeyboardButton("🔙 Zurück", callback_data=f"sched_edit_text_{sched_id}")]]
-                await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
+                await query.edit_message_text(
+                    f"📄 <b>Nachrichtentext:</b>\n\n{preview_html}",
+                    reply_markup=InlineKeyboardMarkup(keyboard),
+                    parse_mode="HTML",
+                )
                 return
         await query.edit_message_text("⚠️ Nicht gefunden.")
 
@@ -607,30 +589,23 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         sched_id = data.replace("sched_view_media_", "")
         bot_data = load_data()
         sched = next((s for s in bot_data.get("scheduled", []) if s["id"] == sched_id), None)
-        # Show media from first slot that has media
-        slot = None
-        if sched:
-            for m in sched.get("messages", []):
-                if m.get("media_file_id"):
-                    slot = m
-                    break
-        if not slot:
+        if not sched or not sched.get("media_file_id"):
             await query.answer("Kein Medium gesetzt.", show_alert=True)
             return
         keyboard = [[InlineKeyboardButton("🔙 Zurück", callback_data=f"sched_edit_text_{sched_id}")]]
-        media_type = slot.get("media_type", "photo")
+        media_type = sched.get("media_type", "photo")
         try:
             if media_type == "photo":
-                await context.bot.send_photo(chat_id=query.message.chat_id, photo=slot["media_file_id"], reply_markup=InlineKeyboardMarkup(keyboard))
+                await context.bot.send_photo(chat_id=query.message.chat_id, photo=sched["media_file_id"], reply_markup=InlineKeyboardMarkup(keyboard))
             elif media_type == "video":
-                await context.bot.send_video(chat_id=query.message.chat_id, video=slot["media_file_id"], reply_markup=InlineKeyboardMarkup(keyboard))
+                await context.bot.send_video(chat_id=query.message.chat_id, video=sched["media_file_id"], reply_markup=InlineKeyboardMarkup(keyboard))
             elif media_type == "animation":
-                await context.bot.send_animation(chat_id=query.message.chat_id, animation=slot["media_file_id"], reply_markup=InlineKeyboardMarkup(keyboard))
+                await context.bot.send_animation(chat_id=query.message.chat_id, animation=sched["media_file_id"], reply_markup=InlineKeyboardMarkup(keyboard))
             elif media_type == "sticker":
-                await context.bot.send_sticker(chat_id=query.message.chat_id, sticker=slot["media_file_id"])
+                await context.bot.send_sticker(chat_id=query.message.chat_id, sticker=sched["media_file_id"])
                 await context.bot.send_message(chat_id=query.message.chat_id, text="⬆️ Aktueller Sticker", reply_markup=InlineKeyboardMarkup(keyboard))
             else:
-                await context.bot.send_document(chat_id=query.message.chat_id, document=slot["media_file_id"], reply_markup=InlineKeyboardMarkup(keyboard))
+                await context.bot.send_document(chat_id=query.message.chat_id, document=sched["media_file_id"], reply_markup=InlineKeyboardMarkup(keyboard))
         except Exception as e:
             await query.edit_message_text(f"⚠️ Fehler beim Anzeigen: {e}")
 
@@ -807,15 +782,9 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     elif data.startswith("sched_set_text_"):
         sched_id = data.replace("sched_set_text_", "")
-        # Default: edit slot 0 (or add new if empty)
-        bot_data = load_data()
-        sched = next((s for s in bot_data.get("scheduled", []) if s["id"] == sched_id), None)
-        slot_idx = 0
-        if sched and not sched.get("messages"):
-            slot_idx = -1  # signal to append new
-        user_data_store[user_id] = {"action": "sched_edit_text", "sched_id": sched_id, "slot_idx": slot_idx}
+        user_data_store[user_id] = {"action": "sched_edit_text", "sched_id": sched_id}
         await query.edit_message_text(
-            "✏️ Sende mir die Nachricht.\n\n"
+            "✏️ Sende mir die neue Nachricht.\n\n"
             "Tipp: Nutze die Telegram-Formatierung (Fett, Kursiv, Link, Zitat).",
         )
         context.user_data["state"] = WAITING_SCHEDULED_TEXT
@@ -864,14 +833,12 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     elif data.startswith("sched_set_media_"):
         sched_id = data.replace("sched_set_media_", "")
-        # Default: set media on slot 0
-        user_data_store[user_id] = {"action": "sched_set_media", "sched_id": sched_id, "slot_idx": 0}
+        user_data_store[user_id] = {"action": "sched_set_media", "sched_id": sched_id}
         bot_data = load_data()
         sched = next((s for s in bot_data.get("scheduled", []) if s["id"] == sched_id), None)
         keyboard = []
-        slot0 = (sched.get("messages") or [{}])[0] if sched else {}
-        if slot0.get("media_file_id"):
-            keyboard.append([InlineKeyboardButton("🚫 Mitteilung entfernen", callback_data=f"sched_remove_media_{sched_id}_0")])
+        if sched and sched.get("media_file_id"):
+            keyboard.append([InlineKeyboardButton("🚫 Mitteilung entfernen", callback_data=f"sched_remove_media_{sched_id}")])
         keyboard.append([InlineKeyboardButton("❌ Abbrechen", callback_data=f"sched_edit_text_{sched_id}")])
         await query.edit_message_text(
             "👉 <b>Sende jetzt ein Medium</b> (Foto, Video, Sticker ... ), das Du einstellen möchtest.\n"
@@ -882,142 +849,15 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data["state"] = WAITING_SCHEDULED_MEDIA
 
     elif data.startswith("sched_remove_media_"):
-        parts = data.replace("sched_remove_media_", "").rsplit("_", 1)
-        sched_id = parts[0]
-        slot_idx = int(parts[1]) if len(parts) > 1 else 0
+        sched_id = data.replace("sched_remove_media_", "")
         bot_data = load_data()
         for s in bot_data.get("scheduled", []):
             if s["id"] == sched_id:
-                msgs = s.get("messages", [])
-                if slot_idx < len(msgs):
-                    msgs[slot_idx].pop("media_file_id", None)
-                    msgs[slot_idx].pop("media_type", None)
+                s.pop("media_file_id", None)
+                s.pop("media_type", None)
                 save_data(bot_data)
                 break
         await show_sched_content_menu(query, context, user_id, sched_id)
-
-    # === SLOT EDITING ===
-    elif data.startswith("sched_slot_edit_"):
-        parts = data.replace("sched_slot_edit_", "").rsplit("_", 1)
-        sched_id, slot_idx = parts[0], int(parts[1])
-        bot_data = load_data()
-        sched = next((s for s in bot_data.get("scheduled", []) if s["id"] == sched_id), None)
-        if not sched or slot_idx >= len(sched.get("messages", [])):
-            await query.answer("⚠️ Nicht gefunden.", show_alert=True)
-            return
-        slot = sched["messages"][slot_idx]
-        has_text = "✅" if slot.get("text") else "❌"
-        has_media = "✅" if slot.get("media_file_id") else "❌"
-        text = (
-            f"✏️ <b>Nachricht {slot_idx+1} bearbeiten</b>\n\n"
-            f"📄 Text {has_text}\n"
-            f"🖼 Medien {has_media}"
-        )
-        keyboard = [
-            [InlineKeyboardButton("📄 Text ändern", callback_data=f"sched_slot_text_{sched_id}_{slot_idx}"),
-             InlineKeyboardButton("👀 Text", callback_data=f"sched_slot_viewtxt_{sched_id}_{slot_idx}")],
-            [InlineKeyboardButton("🖼 Medien setzen", callback_data=f"sched_slot_media_{sched_id}_{slot_idx}"),
-             InlineKeyboardButton("👀 Medien", callback_data=f"sched_slot_viewmed_{sched_id}_{slot_idx}")],
-            [InlineKeyboardButton("🗑 Nachricht löschen", callback_data=f"sched_slot_del_{sched_id}_{slot_idx}")],
-            [InlineKeyboardButton("↩️ Zurück", callback_data=f"sched_edit_text_{sched_id}")],
-        ]
-        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
-
-    elif data.startswith("sched_slot_text_"):
-        parts = data.replace("sched_slot_text_", "").rsplit("_", 1)
-        sched_id, slot_idx = parts[0], int(parts[1])
-        user_data_store[user_id] = {"action": "sched_edit_text", "sched_id": sched_id, "slot_idx": slot_idx}
-        await query.edit_message_text(
-            f"✏️ Sende mir den Text für <b>Nachricht {slot_idx+1}</b>.\n\n"
-            "Tipp: Nutze die Telegram-Formatierung (Fett, Kursiv, Link, Zitat).",
-            parse_mode="HTML",
-        )
-        context.user_data["state"] = WAITING_SCHEDULED_TEXT
-
-    elif data.startswith("sched_slot_media_"):
-        parts = data.replace("sched_slot_media_", "").rsplit("_", 1)
-        sched_id, slot_idx = parts[0], int(parts[1])
-        user_data_store[user_id] = {"action": "sched_set_media", "sched_id": sched_id, "slot_idx": slot_idx}
-        keyboard = []
-        bot_data = load_data()
-        sched = next((s for s in bot_data.get("scheduled", []) if s["id"] == sched_id), None)
-        if sched and slot_idx < len(sched.get("messages", [])) and sched["messages"][slot_idx].get("media_file_id"):
-            keyboard.append([InlineKeyboardButton("🚫 Medium entfernen", callback_data=f"sched_remove_media_{sched_id}_{slot_idx}")])
-        keyboard.append([InlineKeyboardButton("❌ Abbrechen", callback_data=f"sched_slot_edit_{sched_id}_{slot_idx}")])
-        await query.edit_message_text(
-            f"👉 <b>Sende jetzt ein Medium</b> für Nachricht {slot_idx+1}.",
-            reply_markup=InlineKeyboardMarkup(keyboard),
-            parse_mode="HTML",
-        )
-        context.user_data["state"] = WAITING_SCHEDULED_MEDIA
-
-    elif data.startswith("sched_slot_viewtxt_"):
-        parts = data.replace("sched_slot_viewtxt_", "").rsplit("_", 1)
-        sched_id, slot_idx = parts[0], int(parts[1])
-        bot_data = load_data()
-        sched = next((s for s in bot_data.get("scheduled", []) if s["id"] == sched_id), None)
-        if sched and slot_idx < len(sched.get("messages", [])):
-            slot = sched["messages"][slot_idx]
-            preview_html = slot.get("text_html") or slot.get("text") or "(leer)"
-            keyboard = [[InlineKeyboardButton("🔙 Zurück", callback_data=f"sched_slot_edit_{sched_id}_{slot_idx}")]]
-            await query.edit_message_text(
-                f"📄 <b>Nachricht {slot_idx+1} Text:</b>\n\n{preview_html}",
-                reply_markup=InlineKeyboardMarkup(keyboard),
-                parse_mode="HTML",
-            )
-        else:
-            await query.answer("⚠️ Nicht gefunden.", show_alert=True)
-
-    elif data.startswith("sched_slot_viewmed_"):
-        parts = data.replace("sched_slot_viewmed_", "").rsplit("_", 1)
-        sched_id, slot_idx = parts[0], int(parts[1])
-        bot_data = load_data()
-        sched = next((s for s in bot_data.get("scheduled", []) if s["id"] == sched_id), None)
-        if not sched or slot_idx >= len(sched.get("messages", [])) or not sched["messages"][slot_idx].get("media_file_id"):
-            await query.answer("Kein Medium gesetzt.", show_alert=True)
-            return
-        slot = sched["messages"][slot_idx]
-        keyboard = [[InlineKeyboardButton("🔙 Zurück", callback_data=f"sched_slot_edit_{sched_id}_{slot_idx}")]]
-        media_type = slot.get("media_type", "photo")
-        try:
-            if media_type == "photo":
-                await context.bot.send_photo(chat_id=query.message.chat_id, photo=slot["media_file_id"], reply_markup=InlineKeyboardMarkup(keyboard))
-            elif media_type == "video":
-                await context.bot.send_video(chat_id=query.message.chat_id, video=slot["media_file_id"], reply_markup=InlineKeyboardMarkup(keyboard))
-            else:
-                await context.bot.send_document(chat_id=query.message.chat_id, document=slot["media_file_id"], reply_markup=InlineKeyboardMarkup(keyboard))
-        except Exception as e:
-            await query.edit_message_text(f"⚠️ Fehler: {e}")
-
-    elif data.startswith("sched_slot_del_"):
-        parts = data.replace("sched_slot_del_", "").rsplit("_", 1)
-        sched_id, slot_idx = parts[0], int(parts[1])
-        bot_data = load_data()
-        for s in bot_data.get("scheduled", []):
-            if s["id"] == sched_id:
-                msgs = s.get("messages", [])
-                if len(msgs) <= 1:
-                    await query.answer("⚠️ Mindestens 1 Nachricht muss bleiben!", show_alert=True)
-                    return
-                if slot_idx < len(msgs):
-                    msgs.pop(slot_idx)
-                    # Fix rotation index
-                    if s.get("rotation_index", 0) >= len(msgs):
-                        s["rotation_index"] = 0
-                    save_data(bot_data)
-                break
-        await show_sched_content_menu(query, context, user_id, sched_id)
-
-    elif data.startswith("sched_slot_add_"):
-        sched_id = data.replace("sched_slot_add_", "")
-        user_data_store[user_id] = {"action": "sched_edit_text", "sched_id": sched_id, "slot_idx": -1}
-        await query.edit_message_text(
-            "➕ <b>Neue Nachricht zur Rotation hinzufügen</b>\n\n"
-            "Sende mir jetzt den Text.\n"
-            "Tipp: Nutze die Telegram-Formatierung (Fett, Kursiv, Link, Zitat).",
-            parse_mode="HTML",
-        )
-        context.user_data["state"] = WAITING_SCHEDULED_TEXT
 
     elif data.startswith("sched_preview_"):
         sched_id = data.replace("sched_preview_", "")
@@ -1027,36 +867,30 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await query.edit_message_text("⚠️ Nicht gefunden.")
             return
         keyboard = [[InlineKeyboardButton("🔙 Zurück", callback_data=f"sched_edit_text_{sched_id}")]]
-        msgs = sched.get("messages", [])
-        if not msgs:
-            await query.answer("Kein Inhalt gesetzt.", show_alert=True)
-            return
-        # Preview all messages in rotation
-        chat_id = query.message.chat_id
+        text_html = sched.get("text_html", sched.get("text", ""))
+        media_fid = sched.get("media_file_id")
+        media_type = sched.get("media_type", "photo")
         try:
-            for idx, slot in enumerate(msgs):
-                text_html = slot.get("text_html", slot.get("text", ""))
-                media_fid = slot.get("media_file_id")
-                media_type = slot.get("media_type", "photo")
-                prefix = f"<b>Nachricht {idx+1}/{len(msgs)}:</b>\n\n"
-                kb = keyboard if idx == len(msgs) - 1 else []
-                if media_fid and text_html:
-                    caption = prefix + text_html
-                    if media_type == "photo":
-                        await context.bot.send_photo(chat_id=chat_id, photo=media_fid, caption=caption, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(kb) if kb else None)
-                    elif media_type == "video":
-                        await context.bot.send_video(chat_id=chat_id, video=media_fid, caption=caption, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(kb) if kb else None)
-                    else:
-                        await context.bot.send_document(chat_id=chat_id, document=media_fid, caption=caption, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(kb) if kb else None)
-                elif media_fid:
-                    if media_type == "photo":
-                        await context.bot.send_photo(chat_id=chat_id, photo=media_fid, reply_markup=InlineKeyboardMarkup(kb) if kb else None)
-                    elif media_type == "video":
-                        await context.bot.send_video(chat_id=chat_id, video=media_fid, reply_markup=InlineKeyboardMarkup(kb) if kb else None)
-                    else:
-                        await context.bot.send_document(chat_id=chat_id, document=media_fid, reply_markup=InlineKeyboardMarkup(kb) if kb else None)
-                elif text_html:
-                    await context.bot.send_message(chat_id=chat_id, text=prefix + text_html, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(kb) if kb else None)
+            if media_fid and text_html:
+                if media_type == "photo":
+                    await context.bot.send_photo(chat_id=query.message.chat_id, photo=media_fid, caption=text_html, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(keyboard))
+                elif media_type == "video":
+                    await context.bot.send_video(chat_id=query.message.chat_id, video=media_fid, caption=text_html, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(keyboard))
+                elif media_type == "animation":
+                    await context.bot.send_animation(chat_id=query.message.chat_id, animation=media_fid, caption=text_html, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(keyboard))
+                else:
+                    await context.bot.send_document(chat_id=query.message.chat_id, document=media_fid, caption=text_html, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(keyboard))
+            elif media_fid:
+                if media_type == "photo":
+                    await context.bot.send_photo(chat_id=query.message.chat_id, photo=media_fid, reply_markup=InlineKeyboardMarkup(keyboard))
+                elif media_type == "video":
+                    await context.bot.send_video(chat_id=query.message.chat_id, video=media_fid, reply_markup=InlineKeyboardMarkup(keyboard))
+                else:
+                    await context.bot.send_document(chat_id=query.message.chat_id, document=media_fid, reply_markup=InlineKeyboardMarkup(keyboard))
+            elif text_html:
+                await query.edit_message_text(f"👀 <b>Vorschau:</b>\n\n{text_html}", reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
+            else:
+                await query.answer("Kein Inhalt gesetzt.", show_alert=True)
         except Exception as e:
             await query.edit_message_text(f"⚠️ Vorschau-Fehler: {e}")
 
@@ -1498,25 +1332,17 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Check if editing existing scheduled message
         if pending.get("action") == "sched_edit_text":
             sched_id = pending["sched_id"]
-            slot_idx = pending.get("slot_idx", 0)
             raw_text = update.message.text or ""
             html_text = getattr(update.message, "text_html", None) or raw_text
             bot_data = load_data()
             updated = False
             for s in bot_data.get("scheduled", []):
                 if str(s.get("id")) == str(sched_id):
-                    msgs = s.setdefault("messages", [])
-                    new_slot = {"text": raw_text, "text_html": html_text}
-                    if slot_idx == -1 or slot_idx >= len(msgs):
-                        # Append new slot
-                        msgs.append(new_slot)
-                    else:
-                        # Update existing slot, keep media
-                        msgs[slot_idx]["text"] = raw_text
-                        msgs[slot_idx]["text_html"] = html_text
+                    s["text"] = raw_text
+                    s["text_html"] = html_text
                     save_data(bot_data)
                     updated = True
-                    logger.info(f"Scheduled text saved for {sched_id} slot {slot_idx}: {raw_text[:80]}")
+                    logger.info(f"Scheduled text saved for {sched_id}: {raw_text[:80]}")
                     break
             keyboard = [[InlineKeyboardButton("🔙 Zurück zur Nachricht", callback_data=f"sched_view_{sched_id}")]]
             await update.message.reply_text(
@@ -1933,15 +1759,10 @@ async def media_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         # Save to scheduled message
         bot_data = load_data()
-        slot_idx = pending.get("slot_idx", 0)
         for s in bot_data.get("scheduled", []):
             if s["id"] == sched_id:
-                msgs = s.setdefault("messages", [])
-                if slot_idx < len(msgs):
-                    msgs[slot_idx]["media_file_id"] = media_file_id
-                    msgs[slot_idx]["media_type"] = media_type
-                else:
-                    msgs.append({"media_file_id": media_file_id, "media_type": media_type})
+                s["media_file_id"] = media_file_id
+                s["media_type"] = media_type
                 save_data(bot_data)
                 break
         
@@ -2300,10 +2121,7 @@ async def show_scheduled_list(query, context, user_id, page=0):
     
     for i, s in enumerate(scheduled, 1):
         status = "Aktiv ✅" if s.get("active") else "Pausiert ⏸"
-        msgs = s.get("messages", [])
-        msg_count = len(msgs)
-        first_text = msgs[0].get("text", "")[:20] if msgs else ""
-        preview = html.escape(first_text)
+        preview = html.escape(s.get("text", "")[:20])
         time_str = s.get("time", "?")
         interval = s.get("interval_label", "?")
         emoji = "🟢" if s.get("active") else "🔴"
@@ -2320,7 +2138,7 @@ async def show_scheduled_list(query, context, user_id, page=0):
             f"  ├ <i>Zeit: {time_str}</i>\n"
             f"  ├ <i>{interval}</i>\n"
             f"  ├ <i>Gruppen: {groups_preview}</i>\n"
-            f"  └ 🔄 {msg_count} Nachricht(en) · {preview}..\n"
+            f"  └ {preview}..\n"
         )
     
     if not scheduled:
@@ -2434,33 +2252,24 @@ async def show_sched_content_menu(query, context, user_id, sched_id):
         await query.edit_message_text("⚠️ Nachricht nicht gefunden.")
         return
     
-    msgs = sched.get("messages", [])
-    rot_idx = sched.get("rotation_index", 0)
+    has_text = "✅" if sched.get("text") else "❌"
+    has_media = "✅" if sched.get("media_file_id") else "❌"
     
-    text = f"🕐 <b>Wiederholte Mitteilungen</b>\n"
-    text += f"🔄 <b>Rotation:</b> {len(msgs)} Nachricht(en), nächste: #{(rot_idx % max(1, len(msgs))) + 1}\n\n"
+    text = (
+        f"🕐 <b>Wiederholte Mitteilungen</b>\n\n"
+        f"📄 Text {has_text}\n"
+        f"🖼 Medien {has_media}\n\n"
+        f"👉 Mit den Schaltflächen hier kannst Du auswählen, was Du einstellen willst."
+    )
     
-    if msgs:
-        for idx, m in enumerate(msgs):
-            preview = html.escape((m.get("text") or "(kein Text)")[:30])
-            has_media = " 🖼" if m.get("media_file_id") else ""
-            marker = " 👈" if idx == rot_idx % max(1, len(msgs)) else ""
-            text += f"  <b>{idx+1}.</b> {preview}{has_media}{marker}\n"
-    else:
-        text += "<i>Noch keine Nachrichten hinzugefügt.</i>\n"
-    
-    text += "\n👉 Wähle eine Nachricht zum Bearbeiten oder füge eine neue hinzu."
-    
-    keyboard = []
-    # Per-slot buttons: [✏️ 1] [✏️ 2] [✏️ 3] ...
-    for idx in range(len(msgs)):
-        keyboard.append([
-            InlineKeyboardButton(f"✏️ Nachricht {idx+1}", callback_data=f"sched_slot_edit_{sched_id}_{idx}"),
-            InlineKeyboardButton("🗑", callback_data=f"sched_slot_del_{sched_id}_{idx}"),
-        ])
-    keyboard.append([InlineKeyboardButton("➕ Nachricht hinzufügen", callback_data=f"sched_slot_add_{sched_id}")])
-    keyboard.append([InlineKeyboardButton("👀 Alle Vorschauen", callback_data=f"sched_preview_{sched_id}")])
-    keyboard.append([InlineKeyboardButton("↩️ Zurück", callback_data=f"sched_view_{sched_id}")])
+    keyboard = [
+        [InlineKeyboardButton("📄 Text", callback_data=f"sched_set_text_{sched_id}"),
+         InlineKeyboardButton("👀 Sehen", callback_data=f"sched_view_text_{sched_id}")],
+        [InlineKeyboardButton("🖼 Medien", callback_data=f"sched_set_media_{sched_id}"),
+         InlineKeyboardButton("👀 Sehen", callback_data=f"sched_view_media_{sched_id}")],
+        [InlineKeyboardButton("👀 Vollständige Vorschau", callback_data=f"sched_preview_{sched_id}")],
+        [InlineKeyboardButton("↩️ Zurück", callback_data=f"sched_view_{sched_id}")],
+    ]
     
     await query.edit_message_text(
         text,
@@ -2486,7 +2295,6 @@ async def show_scheduled_detail(query, context, user_id, sched_id):
     interval = sched.get("interval_label", "—")
     pin = "✅" if sched.get("pin_message") else "✖"
     del_prev = "✅" if sched.get("delete_previous") else "✖"
-    msg_count = len(sched.get("messages", []))
     
     # Resolve group names
     all_groups = await get_bot_groups(context)
@@ -2500,7 +2308,6 @@ async def show_scheduled_detail(query, context, user_id, sched_id):
         f"🕐 <b>Zeit</b>: {time_str}\n"
         f"🔁 <b>Wiederholung</b>: {interval}\n"
         f"👥 <b>Gruppen</b>: {groups_str}\n"
-        f"🔄 <b>Nachrichten</b>: {msg_count} (Rotation)\n"
         f"📌 <b>Mitteilung anheften:</b>  {pin}\n"
         f"♻️ <b>Letzte Nachricht löschen:</b>  {del_prev}"
     )
@@ -2793,22 +2600,13 @@ async def execute_scheduled_message(context: ContextTypes.DEFAULT_TYPE):
                 logger.info(f"Scheduled {sched_id} skipped: day {now.day} not in {monthdays}")
                 return
         
-        # Pick the current rotation slot
-        msgs = sched.get("messages", [])
-        rot_idx = sched.get("rotation_index", 0)
-        if not msgs:
-            logger.warning(f"Scheduled message {sched_id} has no messages in rotation, skipping")
-            return
-        slot = msgs[rot_idx % len(msgs)]
-        text_html = slot.get("text_html", slot.get("text", ""))
-        media_fid = slot.get("media_file_id")
+        text_html = sched.get("text_html", sched.get("text", ""))
+        media_fid = sched.get("media_file_id")
         
         if not text_html and not media_fid:
-            logger.warning(f"Scheduled message {sched_id} slot {rot_idx % len(msgs)} empty, skipping")
-            # Still advance rotation
-            sched["rotation_index"] = (rot_idx + 1) % len(msgs)
-            save_data(bot_data)
+            logger.warning(f"Scheduled message {sched_id} has no text and no media, skipping")
             return
+    
         
         # Delete previous messages if enabled
         if sched.get("delete_previous") and sched.get("last_sent_messages"):
@@ -2820,7 +2618,9 @@ async def execute_scheduled_message(context: ContextTypes.DEFAULT_TYPE):
         
         # Send new messages
         sent_msgs = []
-        media_type = slot.get("media_type", "photo")
+        text_html = sched.get("text_html", sched.get("text", ""))
+        media_fid = sched.get("media_file_id")
+        media_type = sched.get("media_type", "photo")
         
         for gid in sched.get("groups", []):
             try:
@@ -2849,8 +2649,6 @@ async def execute_scheduled_message(context: ContextTypes.DEFAULT_TYPE):
         # Update last sent info
         sched["last_sent"] = now_de().strftime("%d.%m.%Y %H:%M")
         sched["last_sent_messages"] = sent_msgs
-        # Advance rotation index
-        sched["rotation_index"] = (rot_idx + 1) % len(msgs)
         save_data(bot_data)
         
         logger.info(f"Scheduled message {sched_id} sent to {len(sent_msgs)} groups")
