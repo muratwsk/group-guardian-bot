@@ -183,6 +183,8 @@ WAITING_GROUP_SELECT_BAN, WAITING_GROUP_SELECT_UNBAN = range(5, 7)
 WAITING_MESSENGER_INPUT = 7
 
 # Store pending data
+# Also store sent broadcast messages for deletion
+sent_broadcasts = {}  # broadcast_id -> [(chat_id, message_id), ...]
 user_data_store = {}
 
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -266,12 +268,27 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             user_data_store[user_id] = {"action": "messenger", "groups": [gid]}
         await query.edit_message_text(
             "📨 Sende mir jetzt die Nachricht:\n\n"
-            "Du kannst normal schreiben.\n"
-            "Für *fett* schreibe: *text*\n"
-            "Für kursiv schreibe: _text_",
-            parse_mode="Markdown",
+            "Formatierung:\n"
+            "• <b>fett</b> → schreibe: &lt;b&gt;text&lt;/b&gt;\n"
+            "• <i>kursiv</i> → schreibe: &lt;i&gt;text&lt;/i&gt;\n"
+            "• <a href='https://example.com'>Klick mich</a> → schreibe: &lt;a href='URL'&gt;Text&lt;/a&gt;\n"
+            "• Zitat → schreibe: &lt;blockquote&gt;text&lt;/blockquote&gt;",
+            parse_mode="HTML",
         )
         context.user_data["state"] = WAITING_MESSENGER_INPUT
+
+    # === DELETE BROADCAST ===
+    elif data.startswith("del_broadcast_"):
+        broadcast_id = data.replace("del_broadcast_", "")
+        msgs = sent_broadcasts.pop(broadcast_id, [])
+        deleted = 0
+        for chat_id, msg_id in msgs:
+            try:
+                await context.bot.delete_message(chat_id=chat_id, message_id=msg_id)
+                deleted += 1
+            except Exception as e:
+                logger.error(f"Delete broadcast msg failed in {chat_id}: {e}")
+        await query.edit_message_text(f"🗑 {deleted} Nachrichten gelöscht.")
 
     # === BAN/UNBAN ===
     elif data == "action_ban":
@@ -472,21 +489,29 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         groups = pending["groups"]
         success = 0
         fail = 0
+        import time
+        broadcast_id = str(int(time.time() * 1000))
+        sent_msgs = []
         for gid in groups:
             try:
-                await context.bot.send_message(
+                msg = await context.bot.send_message(
                     chat_id=gid,
                     text=text,
-                    parse_mode="Markdown",
+                    parse_mode="HTML",
                 )
+                sent_msgs.append((gid, msg.message_id))
                 success += 1
             except Exception as e:
                 fail += 1
                 logger.error(f"Messenger send failed in {gid}: {e}")
 
+        sent_broadcasts[broadcast_id] = sent_msgs
+
+        keyboard = [[InlineKeyboardButton("🗑 Nachricht in allen Gruppen löschen", callback_data=f"del_broadcast_{broadcast_id}")]]
         await update.message.reply_text(
             f"📨 Nachricht gesendet!\n✅ {success} Gruppen erfolgreich"
             + (f"\n❌ {fail} Fehler" if fail else ""),
+            reply_markup=InlineKeyboardMarkup(keyboard),
         )
         await log_action(context, f"MESSENGER: {update.effective_user.full_name} ({user_id}) → {success} Gruppen\nText: {text[:100]}")
         context.user_data["state"] = None
