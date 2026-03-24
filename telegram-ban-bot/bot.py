@@ -1813,11 +1813,18 @@ async def show_scheduled_detail(query, context, user_id, sched_id):
     pin = "✅" if sched.get("pin_message") else "✖"
     del_prev = "✅" if sched.get("delete_previous") else "✖"
     
+    # Resolve group names
+    all_groups = await get_bot_groups(context)
+    sched_group_ids = set(sched.get("groups", []))
+    group_names = [g["title"] for g in all_groups if g["id"] in sched_group_ids]
+    groups_str = ", ".join(group_names) if group_names else "Keine"
+    
     text = (
         f"🕐 <b>Wiederholte Mitteilungen</b>\n\n"
         f"💡 <b>Status</b>: {status}\n"
         f"🕐 <b>Zeit</b>: {time_str}\n"
         f"🔁 <b>Wiederholung</b>: {interval}\n"
+        f"👥 <b>Gruppen</b>: {groups_str}\n"
         f"📌 <b>Mitteilung anheften:</b>  {pin}\n"
         f"♻️ <b>Letzte Nachricht löschen:</b>  {del_prev}"
     )
