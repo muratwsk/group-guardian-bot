@@ -1708,6 +1708,73 @@ async def resolve_target(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     return None, None
 
+# --- /info ---
+
+async def info_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Show user info card with ban/unban buttons. Usage: /info @user or /info ID or reply."""
+    user_id = update.effective_user.id
+    if not is_authorized(user_id):
+        await update.message.reply_text("⛔ Kein Zugriff.")
+        return
+
+    target_id, target_name = await resolve_target(update, context)
+    if target_id is None:
+        return
+
+    # Get additional info
+    tracked = lookup_user(str(target_id))
+    username = tracked.get("username") if tracked else None
+
+    # Check ban status across groups
+    bot_data = load_data()
+    groups = bot_data.get("groups", [])
+    banned_in = 0
+    for g in groups:
+        if is_banned_in_group(g["id"], target_id):
+            banned_in += 1
+
+    # Try to get chat member info from the first group
+    situation = "Unbekannt"
+    join_date = None
+    try:
+        if groups:
+            member = await context.bot.get_chat_member(chat_id=groups[0]["id"], user_id=target_id)
+            status_map = {
+                "creator": "👑 Ersteller",
+                "administrator": "🛡️ Admin",
+                "member": "👤 Mitglied",
+                "restricted": "⚠️ Eingeschränkt",
+                "left": "📤 Verlassen",
+                "kicked": "🚫 Gebannt",
+            }
+            situation = status_map.get(member.status, member.status)
+    except Exception:
+        pass
+
+    # Build info text
+    name_display = f"<a href='tg://user?id={target_id}'>{html.escape(target_name)}</a>"
+    username_display = f"@{username}" if username else "—"
+
+    info_text = (
+        f"🆔 <b>ID:</b> <code>{target_id}</code>\n"
+        f"👤 <b>Name:</b> {name_display}\n"
+        f"🔗 <b>Username:</b> {username_display}\n"
+        f"👀 <b>Situation:</b> {situation}\n"
+        f"🚫 <b>Gebannt in:</b> {banned_in}/{len(groups)} Gruppen"
+    )
+
+    # Inline buttons
+    keyboard = [
+        [InlineKeyboardButton("🚫 BanALL", callback_data=f"info_ban_{target_id}"),
+         InlineKeyboardButton("✅ UnbanALL", callback_data=f"info_unban_{target_id}")],
+    ]
+
+    await update.message.reply_text(
+        info_text,
+        reply_markup=InlineKeyboardMarkup(keyboard),
+        parse_mode="HTML",
+    )
+
 # --- /banall ---
 
 async def banall(update: Update, context: ContextTypes.DEFAULT_TYPE):
