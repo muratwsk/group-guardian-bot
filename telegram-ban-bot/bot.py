@@ -792,15 +792,31 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not pending:
             await update.message.reply_text("Bitte starte mit /start.")
             return
-        pending["text"] = update.message.text
-        pending["text_html"] = update.message.text_html
-        pending["action"] = "sched_set_time"
-        user_data_store[user_id] = pending
-        await update.message.reply_text(
-            "⏰ Sende mir jetzt die Startzeit im Format *HH:MM* (z.B. 14:30):",
-            parse_mode="Markdown",
-        )
-        context.user_data["state"] = WAITING_SCHEDULED_TIME
+        
+        # Check if editing existing scheduled message
+        if pending.get("action") == "sched_edit_text":
+            sched_id = pending["sched_id"]
+            bot_data = load_data()
+            for s in bot_data.get("scheduled", []):
+                if s["id"] == sched_id:
+                    s["text"] = update.message.text
+                    s["text_html"] = update.message.text_html
+                    save_data(bot_data)
+                    break
+            await update.message.reply_text("✅ Nachricht aktualisiert.")
+            context.user_data["state"] = None
+            user_data_store.pop(user_id, None)
+        else:
+            # New scheduled message flow
+            pending["text"] = update.message.text
+            pending["text_html"] = update.message.text_html
+            pending["action"] = "sched_set_time"
+            user_data_store[user_id] = pending
+            await update.message.reply_text(
+                "⏰ Sende mir jetzt die Startzeit im Format *HH:MM* (z.B. 14:30):",
+                parse_mode="Markdown",
+            )
+            context.user_data["state"] = WAITING_SCHEDULED_TIME
 
     elif state == WAITING_SCHEDULED_TIME:
         pending = user_data_store.get(user_id)
@@ -816,26 +832,44 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if h > 23 or m > 59:
             await update.message.reply_text("⚠️ Ungültige Zeit. Bitte erneut senden:")
             return
-        pending["time"] = f"{h:02d}:{m:02d}"
-        pending["action"] = "sched_set_time"
-        user_data_store[user_id] = pending
+        time_str = f"{h:02d}:{m:02d}"
         
-        keyboard = [
-            [InlineKeyboardButton("⏱ Alle 30 Min", callback_data="sched_interval_30"),
-             InlineKeyboardButton("🕐 Jede Stunde", callback_data="sched_interval_60")],
-            [InlineKeyboardButton("🕑 Alle 2 Std", callback_data="sched_interval_120"),
-             InlineKeyboardButton("🕓 Alle 4 Std", callback_data="sched_interval_240")],
-            [InlineKeyboardButton("🕕 Alle 6 Std", callback_data="sched_interval_360"),
-             InlineKeyboardButton("🕛 Alle 12 Std", callback_data="sched_interval_720")],
-            [InlineKeyboardButton("📅 Alle 24 Std", callback_data="sched_interval_1440")],
-            [InlineKeyboardButton("🔙 Zurück", callback_data="menu_scheduled")],
-        ]
-        await update.message.reply_text(
-            f"⏰ Startzeit: *{pending['time']}*\n\n🔁 Wähle jetzt die Wiederholung:",
-            reply_markup=InlineKeyboardMarkup(keyboard),
-            parse_mode="Markdown",
-        )
-        context.user_data["state"] = None
+        # Check if editing existing scheduled message
+        if pending.get("action") == "sched_edit_time":
+            sched_id = pending["sched_id"]
+            bot_data = load_data()
+            for s in bot_data.get("scheduled", []):
+                if s["id"] == sched_id:
+                    s["time"] = time_str
+                    save_data(bot_data)
+                    if s.get("active"):
+                        schedule_job(context, s)
+                    break
+            await update.message.reply_text(f"✅ Zeit auf *{time_str}* aktualisiert.", parse_mode="Markdown")
+            context.user_data["state"] = None
+            user_data_store.pop(user_id, None)
+        else:
+            # New scheduled message flow
+            pending["time"] = time_str
+            pending["action"] = "sched_set_time"
+            user_data_store[user_id] = pending
+            
+            keyboard = [
+                [InlineKeyboardButton("⏱ Alle 30 Min", callback_data="sched_interval_30"),
+                 InlineKeyboardButton("🕐 Jede Stunde", callback_data="sched_interval_60")],
+                [InlineKeyboardButton("🕑 Alle 2 Std", callback_data="sched_interval_120"),
+                 InlineKeyboardButton("🕓 Alle 4 Std", callback_data="sched_interval_240")],
+                [InlineKeyboardButton("🕕 Alle 6 Std", callback_data="sched_interval_360"),
+                 InlineKeyboardButton("🕛 Alle 12 Std", callback_data="sched_interval_720")],
+                [InlineKeyboardButton("📅 Alle 24 Std", callback_data="sched_interval_1440")],
+                [InlineKeyboardButton("🔙 Zurück", callback_data="menu_scheduled")],
+            ]
+            await update.message.reply_text(
+                f"⏰ Startzeit: *{time_str}*\n\n🔁 Wähle jetzt die Wiederholung:",
+                reply_markup=InlineKeyboardMarkup(keyboard),
+                parse_mode="Markdown",
+            )
+            context.user_data["state"] = None
 
 # --- /registergroup - run in a group to add it ---
 
