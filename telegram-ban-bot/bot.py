@@ -283,6 +283,21 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         context.user_data["state"] = WAITING_MESSENGER_INPUT
 
+    # === FORMAT HELP BUTTONS ===
+    elif data.startswith("fmt_"):
+        fmt_examples = {
+            "fmt_bold": "Für <b>fett</b> schreibe:\n<code>&lt;b&gt;dein Text&lt;/b&gt;</code>",
+            "fmt_italic": "Für <i>kursiv</i> schreibe:\n<code>&lt;i&gt;dein Text&lt;/i&gt;</code>",
+            "fmt_link": "Für einen <a href='https://example.com'>klickbaren Link</a> schreibe:\n<code>&lt;a href='https://dein-link.de'&gt;Text&lt;/a&gt;</code>",
+            "fmt_quote": "Für ein Zitat schreibe:\n<code>&lt;blockquote&gt;dein Text&lt;/blockquote&gt;</code>",
+        }
+        await query.answer()
+        await context.bot.send_message(
+            chat_id=query.message.chat_id,
+            text=fmt_examples.get(data, ""),
+            parse_mode="HTML",
+        )
+
     # === DELETE BROADCAST ===
     elif data.startswith("del_broadcast_"):
         broadcast_id = data.replace("del_broadcast_", "")
