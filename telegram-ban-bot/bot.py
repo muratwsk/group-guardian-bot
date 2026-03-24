@@ -422,12 +422,31 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not selected:
             await query.answer("⚠️ Wähle mindestens eine Gruppe!", show_alert=True)
             return
-        user_data_store[user_id] = {"action": "sched_text", "groups": list(selected)}
-        await query.edit_message_text(
-            "📝 Sende mir jetzt die Nachricht für die wiederholte Sendung.\n\n"
-            "Tipp: Nutze die Telegram-Formatierung (Fett, Kursiv, Link, Zitat).",
-        )
-        context.user_data["state"] = WAITING_SCHEDULED_TEXT
+        # Create the scheduled message immediately with defaults
+        import time as _time, datetime
+        sched_id = str(int(_time.time() * 1000))
+        bot_data = load_data()
+        new_sched = {
+            "id": sched_id,
+            "groups": list(selected),
+            "text": "",
+            "text_html": "",
+            "time": datetime.datetime.now().strftime("%H:%M"),
+            "interval_minutes": 1440,
+            "interval_label": "Alle 24 Stunden",
+            "active": False,
+            "created_by": user_id,
+            "created_at": datetime.datetime.now().strftime("%d.%m.%Y %H:%M"),
+            "last_sent": None,
+            "last_sent_messages": [],
+            "delete_previous": False,
+            "pin_message": False,
+        }
+        bot_data.setdefault("scheduled", []).append(new_sched)
+        save_data(bot_data)
+        user_data_store.pop(user_id, None)
+        context.user_data["state"] = None
+        await show_scheduled_detail(query, context, user_id, sched_id)
 
     elif data == "sched_time_confirm":
         # After text is set, show hour picker
