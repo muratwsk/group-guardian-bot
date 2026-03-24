@@ -48,6 +48,7 @@ def normalize_data(data):
     data.setdefault("banned_users", {})
     data.setdefault("broadcasts", {})
     data.setdefault("scheduled", [])
+    data.setdefault("personal_commands", {})
     data.setdefault("open_close", {
         "open_sticker": None,
         "close_sticker": None,
@@ -205,6 +206,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton("📨 Messenger", callback_data="menu_messenger")],
         [InlineKeyboardButton("🔁 Wiederholte Nachrichten", callback_data="menu_scheduled")],
         [InlineKeyboardButton("🔓 Open / Close", callback_data="menu_openclose")],
+        [InlineKeyboardButton("⚙️ Konfiguration", callback_data="menu_config")],
     ]
 
     # Owner-only settings
@@ -233,7 +235,8 @@ WAITING_SCHED_STARTDATE = 11
 WAITING_SCHED_ENDDATE = 12
 WAITING_SCHED_TIMESPAN = 13
 WAITING_OPEN_STICKER = 14
-WAITING_CLOSE_STICKER = 15
+WAITING_PCMD_NAME = 16
+WAITING_PCMD_TEXT = 17
 
 # Store pending data
 user_data_store = {}
@@ -296,6 +299,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             [InlineKeyboardButton("📨 Messenger", callback_data="menu_messenger")],
             [InlineKeyboardButton("🔁 Wiederholte Nachrichten", callback_data="menu_scheduled")],
             [InlineKeyboardButton("🔓 Open / Close", callback_data="menu_openclose")],
+            [InlineKeyboardButton("⚙️ Konfiguration", callback_data="menu_config")],
         ]
         if is_owner(user_id):
             keyboard.append([InlineKeyboardButton("⚙️ Einstellungen", callback_data="menu_settings")])
@@ -1097,6 +1101,125 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         context.user_data["state"] = WAITING_MESSENGER_INPUT
 
+    # === CONFIG MENU ===
+    elif data == "menu_config":
+        bot_data = load_data()
+        cmd_count = len(bot_data.get("personal_commands", {}))
+        keyboard = [
+            [InlineKeyboardButton("» 🏗 Persönliche Befehle «", callback_data="pcmd_menu")],
+            [InlineKeyboardButton("🔙 Zurück", callback_data="back_main")],
+        ]
+        await query.edit_message_text(
+            f"⚙️ <b>Konfiguration</b>\n\n"
+            f"Persönliche Befehle: {cmd_count}",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode="HTML",
+        )
+
+    # === PERSONAL COMMANDS MENU ===
+    elif data == "pcmd_menu":
+        bot_data = load_data()
+        cmds = bot_data.get("personal_commands", {})
+        cmd_count = len(cmds)
+        keyboard = [
+            [InlineKeyboardButton("» 🏗 Persönliche Befehle «", callback_data="noop")],
+            [InlineKeyboardButton("🔤 Liste", callback_data="pcmd_list")],
+            [InlineKeyboardButton("➕ Hinzufügen", callback_data="pcmd_add"),
+             InlineKeyboardButton("➖ Entfernen", callback_data="pcmd_remove")],
+            [InlineKeyboardButton("🗑 Alle löschen", callback_data="pcmd_clear_confirm")],
+            [InlineKeyboardButton("🔙 Zurück", callback_data="menu_config")],
+        ]
+        await query.edit_message_text(
+            f"🏗 <b>Persönliche Befehle</b>\n\n"
+            f"Gespeicherte Befehle: {cmd_count}\n\n"
+            f"<i>Nutze /personal &lt;Name&gt; als Antwort auf eine Nachricht in einer Gruppe, "
+            f"um einen Befehl zu erstellen.\n"
+            f"Lösche mit /unpersonal &lt;Name&gt;</i>",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode="HTML",
+        )
+
+    elif data == "pcmd_list":
+        bot_data = load_data()
+        cmds = bot_data.get("personal_commands", {})
+        if not cmds:
+            keyboard = [[InlineKeyboardButton("🔙 Zurück", callback_data="pcmd_menu")]]
+            await query.edit_message_text(
+                "📋 <b>Persönliche Befehle</b>\n\nKeine Befehle gespeichert.",
+                reply_markup=InlineKeyboardMarkup(keyboard),
+                parse_mode="HTML",
+            )
+            return
+        text = "📋 <b>Persönliche Befehle</b>\n\n"
+        for name, info in cmds.items():
+            preview = html.escape((info.get("text") or "")[:40])
+            has_media = " 🖼" if info.get("media_file_id") else ""
+            text += f"• /<b>{html.escape(name)}</b> — {preview}{has_media}\n"
+        keyboard = [[InlineKeyboardButton("🔙 Zurück", callback_data="pcmd_menu")]]
+        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
+
+    elif data == "pcmd_add":
+        user_data_store[user_id] = {"action": "pcmd_add"}
+        keyboard = [[InlineKeyboardButton("❌ Abbrechen", callback_data="pcmd_menu")]]
+        await query.edit_message_text(
+            "➕ <b>Befehl hinzufügen</b>\n\n"
+            "Sende mir den Namen für den neuen Befehl (ohne /).\n"
+            "Beispiel: <code>hele</code>\n\n"
+            "<i>Danach wird der Befehl /hele verfügbar.</i>",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode="HTML",
+        )
+        context.user_data["state"] = WAITING_PCMD_NAME
+
+    elif data == "pcmd_remove":
+        bot_data = load_data()
+        cmds = bot_data.get("personal_commands", {})
+        if not cmds:
+            await query.answer("Keine Befehle vorhanden.", show_alert=True)
+            return
+        keyboard = []
+        for name in cmds:
+            keyboard.append([InlineKeyboardButton(f"🗑 /{name}", callback_data=f"pcmd_del_{name}")])
+        keyboard.append([InlineKeyboardButton("🔙 Zurück", callback_data="pcmd_menu")])
+        await query.edit_message_text(
+            "➖ <b>Befehl entfernen</b>\n\nWähle den Befehl zum Löschen:",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode="HTML",
+        )
+
+    elif data.startswith("pcmd_del_"):
+        cmd_name = data.replace("pcmd_del_", "")
+        bot_data = load_data()
+        cmds = bot_data.get("personal_commands", {})
+        cmds.pop(cmd_name, None)
+        save_data(bot_data)
+        keyboard = [[InlineKeyboardButton("🔙 Zurück", callback_data="pcmd_menu")]]
+        await query.edit_message_text(
+            f"✅ Befehl /{html.escape(cmd_name)} gelöscht.",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode="HTML",
+        )
+
+    elif data == "pcmd_clear_confirm":
+        keyboard = [
+            [InlineKeyboardButton("✅ Ja, alle löschen", callback_data="pcmd_clear"),
+             InlineKeyboardButton("❌ Abbrechen", callback_data="pcmd_menu")],
+        ]
+        await query.edit_message_text(
+            "⚠️ Wirklich ALLE persönlichen Befehle löschen?",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+        )
+
+    elif data == "pcmd_clear":
+        bot_data = load_data()
+        bot_data["personal_commands"] = {}
+        save_data(bot_data)
+        keyboard = [[InlineKeyboardButton("🔙 Zurück", callback_data="pcmd_menu")]]
+        await query.edit_message_text(
+            "✅ Alle persönlichen Befehle gelöscht.",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+        )
+
     # === SETTINGS ===
     elif data == "menu_settings":
         if not is_owner(user_id):
@@ -1423,6 +1546,52 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data["state"] = None
         user_data_store.pop(user_id, None)
 
+    elif state == WAITING_PCMD_NAME:
+        pending = user_data_store.get(user_id)
+        if not pending:
+            await update.message.reply_text("Bitte starte mit /start.")
+            return
+        cmd_name = text.lower().strip().lstrip("/")
+        if not cmd_name or not cmd_name.isalnum():
+            await update.message.reply_text("⚠️ Der Name darf nur Buchstaben und Zahlen enthalten.")
+            return
+        pending["cmd_name"] = cmd_name
+        pending["action"] = "pcmd_add_text"
+        user_data_store[user_id] = pending
+        keyboard = [[InlineKeyboardButton("❌ Abbrechen", callback_data="pcmd_menu")]]
+        await update.message.reply_text(
+            f"✅ Befehlname: /<b>{html.escape(cmd_name)}</b>\n\n"
+            f"Sende mir jetzt die Antwort-Nachricht für diesen Befehl.\n"
+            f"<i>Formatierung wird übernommen.</i>",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode="HTML",
+        )
+        context.user_data["state"] = WAITING_PCMD_TEXT
+
+    elif state == WAITING_PCMD_TEXT:
+        pending = user_data_store.get(user_id)
+        if not pending or "cmd_name" not in pending:
+            await update.message.reply_text("Bitte starte mit /start.")
+            return
+        cmd_name = pending["cmd_name"]
+        bot_data = load_data()
+        bot_data.setdefault("personal_commands", {})[cmd_name] = {
+            "text": update.message.text or "",
+            "text_html": update.message.text_html or update.message.text or "",
+            "created_by": user_id,
+            "created_at": now_de().strftime("%d.%m.%Y %H:%M"),
+        }
+        save_data(bot_data)
+        context.user_data["state"] = None
+        user_data_store.pop(user_id, None)
+        keyboard = [[InlineKeyboardButton("🔙 Zurück zu Befehle", callback_data="pcmd_menu")]]
+        await update.message.reply_text(
+            f"✅ Befehl /<b>{html.escape(cmd_name)}</b> gespeichert!\n\n"
+            f"Nutze jetzt /{html.escape(cmd_name)} in einer Gruppe.",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode="HTML",
+        )
+
 # --- /registergroup - run in a group to add it ---
 
 async def register_group(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1617,6 +1786,140 @@ async def unbanall(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context,
         f"UNBANALL: {target_name} ({target_id}) von {update.effective_user.full_name}\n{result_text}",
     )
+
+# --- /personal and /unpersonal commands (in groups) ---
+
+async def personal_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Save a replied-to message as a personal command. Usage: /personal <name> (reply to a message)."""
+    user_id = update.effective_user.id
+    if not is_authorized(user_id):
+        await update.message.reply_text("⛔ Kein Zugriff.")
+        return
+
+    if not context.args:
+        await update.message.reply_text(
+            "⚠️ Nutzung: /personal <Name>\n"
+            "Antwort auf eine Nachricht, die als Befehl gespeichert werden soll.\n\n"
+            "Beispiel: Antworte auf eine Nachricht und schreibe /personal hele",
+        )
+        return
+
+    cmd_name = context.args[0].lower().lstrip("/")
+    if not cmd_name.isalnum():
+        await update.message.reply_text("⚠️ Der Name darf nur Buchstaben und Zahlen enthalten.")
+        return
+
+    reply = update.message.reply_to_message
+    if not reply:
+        await update.message.reply_text("⚠️ Antworte auf eine Nachricht, um sie als Befehl zu speichern.")
+        return
+
+    # Extract content from replied message
+    cmd_data = {
+        "created_by": user_id,
+        "created_at": now_de().strftime("%d.%m.%Y %H:%M"),
+    }
+
+    if reply.text:
+        cmd_data["text"] = reply.text
+        cmd_data["text_html"] = reply.text_html or reply.text
+    elif reply.caption:
+        cmd_data["text"] = reply.caption
+        cmd_data["text_html"] = reply.caption_html or reply.caption
+
+    # Save media if present
+    if reply.photo:
+        cmd_data["media_file_id"] = reply.photo[-1].file_id
+        cmd_data["media_type"] = "photo"
+    elif reply.video:
+        cmd_data["media_file_id"] = reply.video.file_id
+        cmd_data["media_type"] = "video"
+    elif reply.animation:
+        cmd_data["media_file_id"] = reply.animation.file_id
+        cmd_data["media_type"] = "animation"
+    elif reply.sticker:
+        cmd_data["media_file_id"] = reply.sticker.file_id
+        cmd_data["media_type"] = "sticker"
+    elif reply.document:
+        cmd_data["media_file_id"] = reply.document.file_id
+        cmd_data["media_type"] = "document"
+
+    if not cmd_data.get("text") and not cmd_data.get("media_file_id"):
+        await update.message.reply_text("⚠️ Die Nachricht hat keinen speicherbaren Inhalt.")
+        return
+
+    bot_data = load_data()
+    bot_data.setdefault("personal_commands", {})[cmd_name] = cmd_data
+    save_data(bot_data)
+
+    await update.message.reply_text(f"✅ Befehl /{cmd_name} gespeichert!")
+    await log_action(context, f"PERSONAL CMD: /{cmd_name} erstellt von {update.effective_user.full_name}")
+
+
+async def unpersonal_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Delete a personal command. Usage: /unpersonal <name>"""
+    user_id = update.effective_user.id
+    if not is_authorized(user_id):
+        await update.message.reply_text("⛔ Kein Zugriff.")
+        return
+
+    if not context.args:
+        await update.message.reply_text("⚠️ Nutzung: /unpersonal <Name>\nBeispiel: /unpersonal hele")
+        return
+
+    cmd_name = context.args[0].lower().lstrip("/")
+    bot_data = load_data()
+    cmds = bot_data.get("personal_commands", {})
+    if cmd_name not in cmds:
+        await update.message.reply_text(f"⚠️ Befehl /{cmd_name} nicht gefunden.")
+        return
+
+    cmds.pop(cmd_name)
+    save_data(bot_data)
+    await update.message.reply_text(f"✅ Befehl /{cmd_name} gelöscht!")
+    await log_action(context, f"UNPERSONAL CMD: /{cmd_name} gelöscht von {update.effective_user.full_name}")
+
+
+async def handle_custom_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle custom personal commands in groups."""
+    if not update.message or not update.message.text:
+        return
+    text = update.message.text.strip()
+    if not text.startswith("/"):
+        return
+
+    # Extract command name (without / and without @botname)
+    cmd = text.split()[0][1:].split("@")[0].lower()
+    if not cmd:
+        return
+
+    bot_data = load_data()
+    cmds = bot_data.get("personal_commands", {})
+    if cmd not in cmds:
+        return
+
+    cmd_data = cmds[cmd]
+    text_html = cmd_data.get("text_html", cmd_data.get("text", ""))
+    media_fid = cmd_data.get("media_file_id")
+    media_type = cmd_data.get("media_type", "photo")
+    chat_id = update.effective_chat.id
+
+    try:
+        if media_fid:
+            if media_type == "photo":
+                await context.bot.send_photo(chat_id=chat_id, photo=media_fid, caption=text_html or None, parse_mode="HTML" if text_html else None)
+            elif media_type == "video":
+                await context.bot.send_video(chat_id=chat_id, video=media_fid, caption=text_html or None, parse_mode="HTML" if text_html else None)
+            elif media_type == "animation":
+                await context.bot.send_animation(chat_id=chat_id, animation=media_fid, caption=text_html or None, parse_mode="HTML" if text_html else None)
+            elif media_type == "sticker":
+                await context.bot.send_sticker(chat_id=chat_id, sticker=media_fid)
+            else:
+                await context.bot.send_document(chat_id=chat_id, document=media_fid, caption=text_html or None, parse_mode="HTML" if text_html else None)
+        elif text_html:
+            await context.bot.send_message(chat_id=chat_id, text=text_html, parse_mode="HTML", disable_web_page_preview=True)
+    except Exception as e:
+        logger.error(f"Custom command /{cmd} failed in {chat_id}: {e}")
 
 # --- Delete service messages (pinned, joined, left, etc.) ---
 
@@ -2758,11 +3061,15 @@ def main():
     app.add_handler(CommandHandler("unregistergroup", unregister_group))
     app.add_handler(CommandHandler("banall", banall))
     app.add_handler(CommandHandler("unbanall", unbanall))
+    app.add_handler(CommandHandler("personal", personal_command))
+    app.add_handler(CommandHandler("unpersonal", unpersonal_command))
     app.add_handler(CommandHandler("open", handle_open_command))
     app.add_handler(CommandHandler("close", handle_close_command))
     app.add_handler(CallbackQueryHandler(button_handler))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & filters.ChatType.PRIVATE, text_handler))
     app.add_handler(MessageHandler((filters.PHOTO | filters.VIDEO | filters.Sticker.ALL | filters.ANIMATION | filters.Document.ALL) & filters.ChatType.PRIVATE, media_handler))
+    # Custom command handler for groups (must be before track_message but after known commands)
+    app.add_handler(MessageHandler(filters.COMMAND & (filters.ChatType.GROUP | filters.ChatType.SUPERGROUP), handle_custom_command), group=0)
     app.add_handler(MessageHandler(filters.ALL & (filters.ChatType.GROUP | filters.ChatType.SUPERGROUP), track_message), group=1)
     app.add_handler(ChatMemberHandler(enforce_ban_on_chat_member, ChatMemberHandler.CHAT_MEMBER), group=2)
     app.add_handler(ChatJoinRequestHandler(block_banned_join_request), group=3)
