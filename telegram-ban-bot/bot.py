@@ -569,12 +569,12 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         bot_data = load_data()
         for s in bot_data.get("scheduled", []):
             if s["id"] == sched_id:
-                preview = s.get("text", "(leer)")
+                preview_html = s.get("text_html", s.get("text", "(leer)"))
                 keyboard = [[InlineKeyboardButton("🔙 Zurück", callback_data=f"sched_view_{sched_id}")]]
                 await query.edit_message_text(
-                    f"📄 *Nachrichtentext:*\n\n{preview}",
+                    f"📄 <b>Nachrichtentext:</b>\n\n{preview_html}",
                     reply_markup=InlineKeyboardMarkup(keyboard),
-                    parse_mode="Markdown",
+                    parse_mode="HTML",
                 )
                 return
         await query.edit_message_text("⚠️ Nicht gefunden.")
