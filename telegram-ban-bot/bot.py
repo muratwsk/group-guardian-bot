@@ -506,7 +506,7 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             try:
                 msg = await context.bot.send_message(
                     chat_id=gid,
-                    text=text,
+                    text=update.message.text_html,
                     parse_mode="HTML",
                 )
                 sent_msgs.append((gid, msg.message_id))
