@@ -512,26 +512,58 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif data.startswith("sched_edit_time_"):
         sched_id = data.replace("sched_edit_time_", "")
         user_data_store[user_id] = {"action": "sched_edit_time", "sched_id": sched_id}
-        await query.edit_message_text("🕐 Sende mir die neue Zeit im Format *HH:MM* (z.B. 14:30):", parse_mode="Markdown")
-        context.user_data["state"] = WAITING_SCHEDULED_TIME
+        await show_hour_picker(query, context, user_id, back_callback=f"sched_view_{sched_id}")
+
+    elif data.startswith("sched_edit_hour_"):
+        # Format: sched_edit_hour_SCHEDID_HOUR
+        parts = data.replace("sched_edit_hour_", "").rsplit("_", 1)
+        sched_id, hour = parts[0], int(parts[1])
+        user_data_store[user_id] = {"action": "sched_edit_time", "sched_id": sched_id, "hour": hour}
+        await show_minute_picker(query, context, user_id, hour, back_callback=f"sched_edit_time_{sched_id}", edit_sched_id=sched_id)
+
+    elif data.startswith("sched_edit_min_"):
+        # Format: sched_edit_min_SCHEDID_MINUTE
+        parts = data.replace("sched_edit_min_", "").rsplit("_", 1)
+        sched_id, minute = parts[0], int(parts[1])
+        pending = user_data_store.get(user_id, {})
+        hour = pending.get("hour", 0)
+        time_str = f"{hour:02d}:{minute:02d}"
+        bot_data = load_data()
+        for s in bot_data.get("scheduled", []):
+            if s["id"] == sched_id:
+                s["time"] = time_str
+                save_data(bot_data)
+                if s.get("active"):
+                    schedule_job(context, s)
+                break
+        user_data_store.pop(user_id, None)
+        await show_scheduled_detail(query, context, user_id, sched_id)
 
     elif data.startswith("sched_edit_interval_"):
         sched_id = data.replace("sched_edit_interval_", "")
-        keyboard = [
-            [InlineKeyboardButton("⏱ Alle 30 Min", callback_data=f"sched_set_int_{sched_id}_30"),
-             InlineKeyboardButton("🕐 Jede Stunde", callback_data=f"sched_set_int_{sched_id}_60")],
-            [InlineKeyboardButton("🕑 Alle 2 Std", callback_data=f"sched_set_int_{sched_id}_120"),
-             InlineKeyboardButton("🕓 Alle 4 Std", callback_data=f"sched_set_int_{sched_id}_240")],
-            [InlineKeyboardButton("🕕 Alle 6 Std", callback_data=f"sched_set_int_{sched_id}_360"),
-             InlineKeyboardButton("🕛 Alle 12 Std", callback_data=f"sched_set_int_{sched_id}_720")],
-            [InlineKeyboardButton("📅 Alle 24 Std", callback_data=f"sched_set_int_{sched_id}_1440")],
-            [InlineKeyboardButton("🔙 Zurück", callback_data=f"sched_view_{sched_id}")],
-        ]
-        await query.edit_message_text(
-            "🔁 *Wiederholung ändern:*",
-            reply_markup=InlineKeyboardMarkup(keyboard),
-            parse_mode="Markdown",
-        )
+        # Get current interval to show checkmark
+        bot_data = load_data()
+        current_minutes = 240
+        for s in bot_data.get("scheduled", []):
+            if s["id"] == sched_id:
+                current_minutes = s.get("interval_minutes", 240)
+                break
+        await show_interval_picker(query, context, user_id, back_callback=f"sched_view_{sched_id}", edit_sched_id=sched_id, current_minutes=current_minutes)
+
+    elif data.startswith("sched_view_text_"):
+        sched_id = data.replace("sched_view_text_", "")
+        bot_data = load_data()
+        for s in bot_data.get("scheduled", []):
+            if s["id"] == sched_id:
+                preview = s.get("text", "(leer)")
+                keyboard = [[InlineKeyboardButton("🔙 Zurück", callback_data=f"sched_view_{sched_id}")]]
+                await query.edit_message_text(
+                    f"📄 *Nachrichtentext:*\n\n{preview}",
+                    reply_markup=InlineKeyboardMarkup(keyboard),
+                    parse_mode="Markdown",
+                )
+                return
+        await query.edit_message_text("⚠️ Nicht gefunden.")
 
     elif data.startswith("sched_set_int_"):
         parts = data.replace("sched_set_int_", "").rsplit("_", 1)
