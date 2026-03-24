@@ -1643,10 +1643,30 @@ async def block_banned_join_request(update: Update, context: ContextTypes.DEFAUL
 # --- Media handler (photos, videos, stickers for scheduled messages + JSON import) ---
 
 async def media_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle media uploads for scheduled messages, or JSON file imports."""
+    """Handle media uploads for scheduled messages, sticker setting, or JSON file imports."""
     user_id = update.effective_user.id
     state = context.user_data.get("state")
     
+    # If waiting for open/close sticker
+    if state in (WAITING_OPEN_STICKER, WAITING_CLOSE_STICKER):
+        msg = update.message
+        if not msg.sticker:
+            await msg.reply_text("⚠️ Bitte sende einen Sticker.")
+            return
+        bot_data = load_data()
+        key = "open_sticker" if state == WAITING_OPEN_STICKER else "close_sticker"
+        label = "Open" if state == WAITING_OPEN_STICKER else "Close"
+        bot_data["open_close"][key] = msg.sticker.file_id
+        save_data(bot_data)
+        context.user_data["state"] = None
+        user_data_store.pop(user_id, None)
+        keyboard = [[InlineKeyboardButton("🔙 Zurück zu Open/Close", callback_data="menu_openclose")]]
+        await msg.reply_text(
+            f"✅ {label}-Sticker gespeichert!",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+        )
+        return
+
     # If waiting for scheduled media
     if state == WAITING_SCHEDULED_MEDIA:
         pending = user_data_store.get(user_id)
