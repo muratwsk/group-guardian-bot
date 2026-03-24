@@ -1,5 +1,6 @@
 import atexit
 import datetime
+import html
 import json
 import logging
 import os
@@ -2105,6 +2106,8 @@ async def show_scheduled_list(query, context, user_id, page=0):
     """Show list of all scheduled messages - layout like the Worldskandi bot screenshot."""
     bot_data = load_data()
     scheduled = bot_data.get("scheduled", [])
+    all_groups = await get_bot_groups(context)
+    group_title_map = {g["id"]: g.get("title", str(g["id"])) for g in all_groups}
     
     now = now_de().strftime("%d.%m.%Y, %H:%M")
     
@@ -2118,15 +2121,23 @@ async def show_scheduled_list(query, context, user_id, page=0):
     
     for i, s in enumerate(scheduled, 1):
         status = "Aktiv ✅" if s.get("active") else "Pausiert ⏸"
-        preview = s.get("text", "")[:20]
+        preview = html.escape(s.get("text", "")[:20])
         time_str = s.get("time", "?")
         interval = s.get("interval_label", "?")
         emoji = "🟢" if s.get("active") else "🔴"
+        sched_group_ids = s.get("groups", [])
+        group_titles = [group_title_map.get(gid, str(gid)) for gid in sched_group_ids]
+        if len(group_titles) > 3:
+            groups_preview = ", ".join(group_titles[:3]) + f" +{len(group_titles) - 3} mehr"
+        else:
+            groups_preview = ", ".join(group_titles) if group_titles else "Keine Gruppen"
+        groups_preview = html.escape(groups_preview)
         
         text += (
             f"\n💬{emoji} <b>{i}</b> · <b>{status}</b>\n"
             f"  ├ <i>Zeit: {time_str}</i>\n"
             f"  ├ <i>{interval}</i>\n"
+            f"  ├ <i>Gruppen: {groups_preview}</i>\n"
             f"  └ {preview}..\n"
         )
     
