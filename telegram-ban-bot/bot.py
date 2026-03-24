@@ -2300,7 +2300,10 @@ async def show_scheduled_list(query, context, user_id, page=0):
     
     for i, s in enumerate(scheduled, 1):
         status = "Aktiv ✅" if s.get("active") else "Pausiert ⏸"
-        preview = html.escape(s.get("text", "")[:20])
+        msgs = s.get("messages", [])
+        msg_count = len(msgs)
+        first_text = msgs[0].get("text", "")[:20] if msgs else ""
+        preview = html.escape(first_text)
         time_str = s.get("time", "?")
         interval = s.get("interval_label", "?")
         emoji = "🟢" if s.get("active") else "🔴"
@@ -2317,7 +2320,7 @@ async def show_scheduled_list(query, context, user_id, page=0):
             f"  ├ <i>Zeit: {time_str}</i>\n"
             f"  ├ <i>{interval}</i>\n"
             f"  ├ <i>Gruppen: {groups_preview}</i>\n"
-            f"  └ {preview}..\n"
+            f"  └ 🔄 {msg_count} Nachricht(en) · {preview}..\n"
         )
     
     if not scheduled:
