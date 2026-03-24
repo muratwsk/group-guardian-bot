@@ -46,6 +46,14 @@ def normalize_data(data):
     data.setdefault("banned_users", {})
     data.setdefault("broadcasts", {})
     data.setdefault("scheduled", [])
+    data.setdefault("open_close", {
+        "open_sticker": None,
+        "close_sticker": None,
+        "notify_groups": [],
+        "open_text": "Hey Freunde, wir haben geöffnet! 🎉\nKommt rein und gönnt euch!",
+        "close_text": "Wir haben geschlossen. Bis zum nächsten Mal! 👋",
+        "active_open_messages": {},
+    })
     return data
 
 def load_data():
@@ -171,6 +179,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton("🚫 BannALL", callback_data="menu_banall")],
         [InlineKeyboardButton("📨 Messenger", callback_data="menu_messenger")],
         [InlineKeyboardButton("🔁 Wiederholte Nachrichten", callback_data="menu_scheduled")],
+        [InlineKeyboardButton("🔓 Open / Close", callback_data="menu_openclose")],
     ]
 
     # Owner-only settings
@@ -198,6 +207,8 @@ WAITING_SCHEDULED_MEDIA = 10
 WAITING_SCHED_STARTDATE = 11
 WAITING_SCHED_ENDDATE = 12
 WAITING_SCHED_TIMESPAN = 13
+WAITING_OPEN_STICKER = 14
+WAITING_CLOSE_STICKER = 15
 
 # Store pending data
 user_data_store = {}
@@ -259,6 +270,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             [InlineKeyboardButton("🚫 BannALL", callback_data="menu_banall")],
             [InlineKeyboardButton("📨 Messenger", callback_data="menu_messenger")],
             [InlineKeyboardButton("🔁 Wiederholte Nachrichten", callback_data="menu_scheduled")],
+            [InlineKeyboardButton("🔓 Open / Close", callback_data="menu_openclose")],
         ]
         if is_owner(user_id):
             keyboard.append([InlineKeyboardButton("⚙️ Einstellungen", callback_data="menu_settings")])
@@ -973,6 +985,92 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text("Sende mir jetzt die User-ID oder den @username zum Entbannen:")
         context.user_data["state"] = WAITING_UNBAN_INPUT
 
+    # === OPEN / CLOSE MENU ===
+    elif data == "menu_openclose":
+        await show_openclose_menu(query, context, user_id)
+
+    elif data == "oc_set_open_sticker":
+        user_data_store[user_id] = {"action": "set_open_sticker"}
+        context.user_data["state"] = WAITING_OPEN_STICKER
+        keyboard = [[InlineKeyboardButton("❌ Abbrechen", callback_data="menu_openclose")]]
+        await query.edit_message_text(
+            "🔓 Sende mir jetzt den **Open-Sticker**.",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode="Markdown",
+        )
+
+    elif data == "oc_set_close_sticker":
+        user_data_store[user_id] = {"action": "set_close_sticker"}
+        context.user_data["state"] = WAITING_CLOSE_STICKER
+        keyboard = [[InlineKeyboardButton("❌ Abbrechen", callback_data="menu_openclose")]]
+        await query.edit_message_text(
+            "🔒 Sende mir jetzt den **Close-Sticker**.",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode="Markdown",
+        )
+
+    elif data == "oc_remove_open_sticker":
+        bot_data = load_data()
+        bot_data["open_close"]["open_sticker"] = None
+        save_data(bot_data)
+        await show_openclose_menu(query, context, user_id)
+
+    elif data == "oc_remove_close_sticker":
+        bot_data = load_data()
+        bot_data["open_close"]["close_sticker"] = None
+        save_data(bot_data)
+        await show_openclose_menu(query, context, user_id)
+
+    elif data == "oc_notify_groups":
+        await show_openclose_group_selection(query, context, user_id)
+
+    elif data.startswith("oc_grp_toggle_"):
+        gid = int(data.replace("oc_grp_toggle_", ""))
+        bot_data = load_data()
+        notify = set(bot_data["open_close"].get("notify_groups", []))
+        if gid in notify:
+            notify.discard(gid)
+        else:
+            notify.add(gid)
+        bot_data["open_close"]["notify_groups"] = list(notify)
+        save_data(bot_data)
+        await show_openclose_group_selection(query, context, user_id)
+
+    elif data == "oc_grp_all":
+        groups = await get_bot_groups(context)
+        bot_data = load_data()
+        bot_data["open_close"]["notify_groups"] = [g["id"] for g in groups]
+        save_data(bot_data)
+        await show_openclose_group_selection(query, context, user_id)
+
+    elif data == "oc_grp_none":
+        bot_data = load_data()
+        bot_data["open_close"]["notify_groups"] = []
+        save_data(bot_data)
+        await show_openclose_group_selection(query, context, user_id)
+
+    elif data == "oc_edit_open_text":
+        user_data_store[user_id] = {"action": "oc_edit_open_text"}
+        keyboard = [[InlineKeyboardButton("❌ Abbrechen", callback_data="menu_openclose")]]
+        await query.edit_message_text(
+            "✏️ Sende mir den neuen **Open-Text**.\n\n"
+            "Nutze `{link}` als Platzhalter für den Gruppen-Link.\n"
+            "Nutze `{name}` für den Gruppennamen.",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode="Markdown",
+        )
+        context.user_data["state"] = WAITING_MESSENGER_INPUT
+
+    elif data == "oc_edit_close_text":
+        user_data_store[user_id] = {"action": "oc_edit_close_text"}
+        keyboard = [[InlineKeyboardButton("❌ Abbrechen", callback_data="menu_openclose")]]
+        await query.edit_message_text(
+            "✏️ Sende mir den neuen **Close-Text**.",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode="Markdown",
+        )
+        context.user_data["state"] = WAITING_MESSENGER_INPUT
+
     # === SETTINGS ===
     elif data == "menu_settings":
         if not is_owner(user_id):
@@ -1137,6 +1235,27 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         pending = user_data_store.get(user_id)
         if not pending:
             await update.message.reply_text("Bitte starte mit /start.")
+            return
+
+        # Handle open/close text editing
+        if pending.get("action") == "oc_edit_open_text":
+            bot_data = load_data()
+            bot_data["open_close"]["open_text"] = update.message.text
+            save_data(bot_data)
+            context.user_data["state"] = None
+            user_data_store.pop(user_id, None)
+            keyboard = [[InlineKeyboardButton("🔙 Zurück zu Open/Close", callback_data="menu_openclose")]]
+            await update.message.reply_text("✅ Open-Text aktualisiert!", reply_markup=InlineKeyboardMarkup(keyboard))
+            return
+        
+        if pending.get("action") == "oc_edit_close_text":
+            bot_data = load_data()
+            bot_data["open_close"]["close_text"] = update.message.text
+            save_data(bot_data)
+            context.user_data["state"] = None
+            user_data_store.pop(user_id, None)
+            keyboard = [[InlineKeyboardButton("🔙 Zurück zu Open/Close", callback_data="menu_openclose")]]
+            await update.message.reply_text("✅ Close-Text aktualisiert!", reply_markup=InlineKeyboardMarkup(keyboard))
             return
 
         groups = pending["groups"]
@@ -1545,10 +1664,30 @@ async def block_banned_join_request(update: Update, context: ContextTypes.DEFAUL
 # --- Media handler (photos, videos, stickers for scheduled messages + JSON import) ---
 
 async def media_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle media uploads for scheduled messages, or JSON file imports."""
+    """Handle media uploads for scheduled messages, sticker setting, or JSON file imports."""
     user_id = update.effective_user.id
     state = context.user_data.get("state")
     
+    # If waiting for open/close sticker
+    if state in (WAITING_OPEN_STICKER, WAITING_CLOSE_STICKER):
+        msg = update.message
+        if not msg.sticker:
+            await msg.reply_text("⚠️ Bitte sende einen Sticker.")
+            return
+        bot_data = load_data()
+        key = "open_sticker" if state == WAITING_OPEN_STICKER else "close_sticker"
+        label = "Open" if state == WAITING_OPEN_STICKER else "Close"
+        bot_data["open_close"][key] = msg.sticker.file_id
+        save_data(bot_data)
+        context.user_data["state"] = None
+        user_data_store.pop(user_id, None)
+        keyboard = [[InlineKeyboardButton("🔙 Zurück zu Open/Close", callback_data="menu_openclose")]]
+        await msg.reply_text(
+            f"✅ {label}-Sticker gespeichert!",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+        )
+        return
+
     # If waiting for scheduled media
     if state == WAITING_SCHEDULED_MEDIA:
         pending = user_data_store.get(user_id)
@@ -1679,6 +1818,214 @@ async def document_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         text += f"\n⚠️ {not_admin} übersprungen (Bot nicht Admin)"
     await update.message.reply_text(text)
     await log_action(context, f"GRUPPEN-IMPORT: {added} Gruppen von {update.effective_user.full_name} ({user_id})")
+
+# --- Open / Close helpers ---
+
+async def show_openclose_menu(query, context, user_id):
+    """Show Open/Close configuration menu."""
+    bot_data = load_data()
+    oc = bot_data.get("open_close", {})
+    
+    has_open_sticker = "✅" if oc.get("open_sticker") else "❌"
+    has_close_sticker = "✅" if oc.get("close_sticker") else "❌"
+    notify_count = len(oc.get("notify_groups", []))
+    
+    # Check which groups are currently open
+    active = oc.get("active_open_messages", {})
+    all_groups = await get_bot_groups(context)
+    open_groups = [g["title"] for g in all_groups if str(g["id"]) in active]
+    open_str = ", ".join(open_groups) if open_groups else "Keine"
+    
+    text = (
+        f"🔓 <b>Open / Close</b>\n\n"
+        f"🎨 Open-Sticker: {has_open_sticker}\n"
+        f"🎨 Close-Sticker: {has_close_sticker}\n"
+        f"📢 Benachrichtigungs-Gruppen: {notify_count}\n"
+        f"🟢 Aktuell geöffnet: {open_str}\n\n"
+        f"<i>Nutze /open in einer Gruppe zum Öffnen.\n"
+        f"Nutze /close zum Schließen – die Open-Nachrichten werden automatisch gelöscht.</i>"
+    )
+    
+    keyboard = [
+        [InlineKeyboardButton(f"🎨 Open-Sticker {has_open_sticker}", callback_data="oc_set_open_sticker")],
+        [InlineKeyboardButton(f"🎨 Close-Sticker {has_close_sticker}", callback_data="oc_set_close_sticker")],
+    ]
+    if oc.get("open_sticker"):
+        keyboard.append([InlineKeyboardButton("🚫 Open-Sticker entfernen", callback_data="oc_remove_open_sticker")])
+    if oc.get("close_sticker"):
+        keyboard.append([InlineKeyboardButton("🚫 Close-Sticker entfernen", callback_data="oc_remove_close_sticker")])
+    keyboard.append([InlineKeyboardButton(f"📢 Benachrichtigungs-Gruppen ({notify_count})", callback_data="oc_notify_groups")])
+    keyboard.append([InlineKeyboardButton("✏️ Open-Text ändern", callback_data="oc_edit_open_text")])
+    keyboard.append([InlineKeyboardButton("✏️ Close-Text ändern", callback_data="oc_edit_close_text")])
+    keyboard.append([InlineKeyboardButton("🔙 Zurück", callback_data="back_main")])
+    
+    await query.edit_message_text(
+        text,
+        reply_markup=InlineKeyboardMarkup(keyboard),
+        parse_mode="HTML",
+    )
+
+
+async def show_openclose_group_selection(query, context, user_id):
+    """Show group selection for open/close notifications."""
+    bot_data = load_data()
+    notify = set(bot_data.get("open_close", {}).get("notify_groups", []))
+    all_groups = await get_bot_groups(context)
+    
+    keyboard = []
+    row = []
+    for g in all_groups:
+        check = "✅" if g["id"] in notify else "⬜"
+        row.append(InlineKeyboardButton(f"{check} {g['title']}", callback_data=f"oc_grp_toggle_{g['id']}"))
+        if len(row) == 2:
+            keyboard.append(row)
+            row = []
+    if row:
+        keyboard.append(row)
+    keyboard.append([
+        InlineKeyboardButton("☑️ Alle", callback_data="oc_grp_all"),
+        InlineKeyboardButton("◻️ Keine", callback_data="oc_grp_none"),
+    ])
+    keyboard.append([InlineKeyboardButton(f"🔙 Zurück ({len(notify)} gewählt)", callback_data="menu_openclose")])
+    
+    await query.edit_message_text(
+        "📢 <b>Benachrichtigungs-Gruppen</b>\n\n"
+        "Wähle die Gruppen, die bei /open benachrichtigt werden sollen:",
+        reply_markup=InlineKeyboardMarkup(keyboard),
+        parse_mode="HTML",
+    )
+
+
+async def handle_open_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle /open command in a group."""
+    user_id = update.effective_user.id
+    if not is_authorized(user_id):
+        await update.message.reply_text("⛔ Kein Zugriff.")
+        return
+    
+    chat = update.effective_chat
+    if chat.type not in ("group", "supergroup"):
+        await update.message.reply_text("Dieser Befehl funktioniert nur in Gruppen.")
+        return
+    
+    bot_data = load_data()
+    oc = bot_data.get("open_close", {})
+    notify_groups = oc.get("notify_groups", [])
+    
+    if not notify_groups:
+        await update.message.reply_text("⚠️ Keine Benachrichtigungs-Gruppen konfiguriert. Richte sie im Bot-Menü ein.")
+        return
+    
+    # Get invite link for this group
+    try:
+        invite_link = await context.bot.export_chat_invite_link(chat.id)
+    except Exception:
+        invite_link = None
+    
+    # Build open text
+    open_text = oc.get("open_text", "Hey Freunde, wir haben geöffnet! 🎉\nKommt rein und gönnt euch!")
+    open_text = open_text.replace("{name}", chat.title or "")
+    if invite_link:
+        open_text = open_text.replace("{link}", invite_link)
+        if "{link}" not in oc.get("open_text", ""):
+            open_text += f"\n\n👉 {invite_link}"
+    
+    open_sticker = oc.get("open_sticker")
+    
+    # Send to source group first (sticker + confirmation)
+    if open_sticker:
+        try:
+            await context.bot.send_sticker(chat_id=chat.id, sticker=open_sticker)
+        except Exception as e:
+            logger.error(f"Open sticker failed in source group: {e}")
+    
+    # Send notifications to all notify groups
+    sent_messages = []
+    for gid in notify_groups:
+        if gid == chat.id:
+            continue  # Don't notify the source group
+        try:
+            msgs = []
+            if open_sticker:
+                sticker_msg = await context.bot.send_sticker(chat_id=gid, sticker=open_sticker)
+                msgs.append(sticker_msg.message_id)
+            text_msg = await context.bot.send_message(chat_id=gid, text=open_text, parse_mode="HTML", disable_web_page_preview=False)
+            msgs.append(text_msg.message_id)
+            sent_messages.append({"group_id": gid, "message_ids": msgs})
+        except Exception as e:
+            logger.error(f"Open notification failed in {gid}: {e}")
+    
+    # Save active open messages so /close can delete them
+    active = oc.get("active_open_messages", {})
+    active[str(chat.id)] = {
+        "source_group": chat.id,
+        "source_title": chat.title,
+        "sent_messages": sent_messages,
+        "opened_at": now_de().strftime("%d.%m.%Y %H:%M"),
+    }
+    oc["active_open_messages"] = active
+    bot_data["open_close"] = oc
+    save_data(bot_data)
+    
+    await update.message.reply_text(
+        f"🔓 *{chat.title}* ist jetzt OPEN!\n📢 {len(sent_messages)} Gruppen benachrichtigt.",
+        parse_mode="Markdown",
+    )
+    await log_action(context, f"OPEN: {chat.title} von {update.effective_user.full_name} → {len(sent_messages)} Gruppen benachrichtigt")
+
+
+async def handle_close_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle /close command in a group - deletes the open notifications."""
+    user_id = update.effective_user.id
+    if not is_authorized(user_id):
+        await update.message.reply_text("⛔ Kein Zugriff.")
+        return
+    
+    chat = update.effective_chat
+    if chat.type not in ("group", "supergroup"):
+        await update.message.reply_text("Dieser Befehl funktioniert nur in Gruppen.")
+        return
+    
+    bot_data = load_data()
+    oc = bot_data.get("open_close", {})
+    active = oc.get("active_open_messages", {})
+    
+    open_info = active.pop(str(chat.id), None)
+    
+    close_sticker = oc.get("close_sticker")
+    close_text = oc.get("close_text", "Wir haben geschlossen. Bis zum nächsten Mal! 👋")
+    close_text = close_text.replace("{name}", chat.title or "")
+    
+    # Send close sticker in source group
+    if close_sticker:
+        try:
+            await context.bot.send_sticker(chat_id=chat.id, sticker=close_sticker)
+        except Exception as e:
+            logger.error(f"Close sticker failed: {e}")
+    
+    # Delete all open notification messages from other groups
+    deleted_count = 0
+    if open_info:
+        for entry in open_info.get("sent_messages", []):
+            gid = entry["group_id"]
+            for mid in entry["message_ids"]:
+                try:
+                    await context.bot.delete_message(chat_id=gid, message_id=mid)
+                    deleted_count += 1
+                except Exception as e:
+                    logger.error(f"Delete open msg failed in {gid}: {e}")
+    
+    # Save updated state
+    oc["active_open_messages"] = active
+    bot_data["open_close"] = oc
+    save_data(bot_data)
+    
+    await update.message.reply_text(
+        f"🔒 *{chat.title}* ist jetzt CLOSED!\n🗑 {deleted_count} Open-Nachrichten gelöscht.",
+        parse_mode="Markdown",
+    )
+    await log_action(context, f"CLOSE: {chat.title} von {update.effective_user.full_name} → {deleted_count} Nachrichten gelöscht")
+
 
 # --- Main ---
 
@@ -2330,6 +2677,8 @@ def main():
     app.add_handler(CommandHandler("unregistergroup", unregister_group))
     app.add_handler(CommandHandler("banall", banall))
     app.add_handler(CommandHandler("unbanall", unbanall))
+    app.add_handler(CommandHandler("open", handle_open_command))
+    app.add_handler(CommandHandler("close", handle_close_command))
     app.add_handler(CallbackQueryHandler(button_handler))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & filters.ChatType.PRIVATE, text_handler))
     app.add_handler(MessageHandler((filters.PHOTO | filters.VIDEO | filters.Sticker.ALL | filters.ANIMATION | filters.Document.ALL) & filters.ChatType.PRIVATE, media_handler))
