@@ -392,25 +392,25 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data["state"] = WAITING_SCHEDULED_TEXT
 
     elif data == "sched_time_confirm":
+        # After text is set, show hour picker
+        await show_hour_picker(query, context, user_id)
+
+    elif data.startswith("sched_hour_"):
+        hour = int(data.replace("sched_hour_", ""))
         pending = user_data_store.get(user_id, {})
-        if not pending or pending.get("action") != "sched_set_time":
-            await query.edit_message_text("⚠️ Bitte starte nochmal.")
-            return
-        keyboard = [
-            [InlineKeyboardButton("⏱ Alle 30 Min", callback_data="sched_interval_30"),
-             InlineKeyboardButton("🕐 Jede Stunde", callback_data="sched_interval_60")],
-            [InlineKeyboardButton("🕑 Alle 2 Std", callback_data="sched_interval_120"),
-             InlineKeyboardButton("🕓 Alle 4 Std", callback_data="sched_interval_240")],
-            [InlineKeyboardButton("🕕 Alle 6 Std", callback_data="sched_interval_360"),
-             InlineKeyboardButton("🕛 Alle 12 Std", callback_data="sched_interval_720")],
-            [InlineKeyboardButton("📅 Alle 24 Std", callback_data="sched_interval_1440")],
-            [InlineKeyboardButton("🔙 Zurück", callback_data="menu_scheduled")],
-        ]
-        await query.edit_message_text(
-            "🔁 *Wiederholung wählen:*\nWie oft soll die Nachricht gesendet werden?",
-            reply_markup=InlineKeyboardMarkup(keyboard),
-            parse_mode="Markdown",
-        )
+        pending["hour"] = hour
+        user_data_store[user_id] = pending
+        await show_minute_picker(query, context, user_id, hour)
+
+    elif data.startswith("sched_minute_"):
+        minute = int(data.replace("sched_minute_", ""))
+        pending = user_data_store.get(user_id, {})
+        hour = pending.get("hour", 0)
+        pending["time"] = f"{hour:02d}:{minute:02d}"
+        pending["action"] = "sched_set_time"
+        user_data_store[user_id] = pending
+        # Show interval picker
+        await show_interval_picker(query, context, user_id)
 
     elif data.startswith("sched_interval_"):
         minutes = int(data.replace("sched_interval_", ""))
