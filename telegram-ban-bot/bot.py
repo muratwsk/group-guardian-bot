@@ -183,6 +183,8 @@ WAITING_GROUP_SELECT_BAN, WAITING_GROUP_SELECT_UNBAN = range(5, 7)
 WAITING_MESSENGER_INPUT = 7
 
 # Store pending data
+# Also store sent broadcast messages for deletion
+sent_broadcasts = {}  # broadcast_id -> [(chat_id, message_id), ...]
 user_data_store = {}
 
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
