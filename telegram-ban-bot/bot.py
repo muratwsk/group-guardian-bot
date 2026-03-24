@@ -2770,8 +2770,11 @@ def main():
         delete_service_message
     ), group=4)
 
-    # Restore scheduled jobs
-    if app.job_queue:
+    if not app.job_queue:
+        logger.error(
+            "JobQueue unavailable. Repeating messages need python-telegram-bot[job-queue] / APScheduler installed."
+        )
+    else:
         bot_data = load_data()
         count = 0
         for sched in bot_data.get("scheduled", []):
