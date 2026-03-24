@@ -156,25 +156,19 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_authorized(user_id):
         await update.message.reply_text("⛔ Kein Zugriff.")
         return
-    
-    # Ban/Unban buttons for everyone (admin + owner)
+
     keyboard = [
-        [InlineKeyboardButton("🚫 Ban", callback_data="action_ban"),
-         InlineKeyboardButton("✅ Unban", callback_data="action_unban")],
+        [InlineKeyboardButton("🚫 BannALL", callback_data="menu_banall")],
+        [InlineKeyboardButton("📨 Messenger", callback_data="menu_messenger")],
     ]
-    
-    # Owner-only buttons
+
+    # Owner-only settings
     if is_owner(user_id):
-        keyboard.append([InlineKeyboardButton("👥 Gruppen anzeigen", callback_data="show_groups")])
-        keyboard.append([
-            InlineKeyboardButton("➕ Admin hinzufügen", callback_data="add_admin"),
-            InlineKeyboardButton("➖ Admin entfernen", callback_data="remove_admin"),
-        ])
-        keyboard.append([InlineKeyboardButton("📢 Log-Kanal setzen", callback_data="set_log")])
+        keyboard.append([InlineKeyboardButton("⚙️ Einstellungen", callback_data="menu_settings")])
 
     role = "👑 Owner" if is_owner(user_id) else "🛡️ Admin"
     await update.message.reply_text(
-        f"🤖 *Ban-Bot Menü* ({role})\nWähle eine Aktion:",
+        f"🤖 *Bot Menü* ({role})\nWähle eine Aktion:",
         reply_markup=InlineKeyboardMarkup(keyboard),
         parse_mode="Markdown",
     )
