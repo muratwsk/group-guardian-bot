@@ -266,10 +266,12 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             user_data_store[user_id] = {"action": "messenger", "groups": [gid]}
         await query.edit_message_text(
             "📨 Sende mir jetzt die Nachricht:\n\n"
-            "Du kannst normal schreiben.\n"
-            "Für *fett* schreibe: *text*\n"
-            "Für kursiv schreibe: _text_",
-            parse_mode="Markdown",
+            "Formatierung:\n"
+            "• <b>fett</b> → schreibe: &lt;b&gt;text&lt;/b&gt;\n"
+            "• <i>kursiv</i> → schreibe: &lt;i&gt;text&lt;/i&gt;\n"
+            "• <a href='https://example.com'>Klick mich</a> → schreibe: &lt;a href='URL'&gt;Text&lt;/a&gt;\n"
+            "• Zitat → schreibe: &lt;blockquote&gt;text&lt;/blockquote&gt;",
+            parse_mode="HTML",
         )
         context.user_data["state"] = WAITING_MESSENGER_INPUT
 
