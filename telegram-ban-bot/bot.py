@@ -506,26 +506,27 @@ async def banall(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Keine Gruppen registriert.")
         return
 
-    results = []
     tracked = lookup_user(str(target_id))
     target_username = tracked.get("username") if tracked else None
+    success_count = 0
+    fail_count = 0
     for g in groups:
         try:
             await context.bot.ban_chat_member(chat_id=g["id"], user_id=target_id, revoke_messages=True)
-            results.append(f"✅ {g['title']}")
+            success_count += 1
         except Exception as e:
-            results.append(f"❌ {g['title']}: {e}")
+            fail_count += 1
+            logger.error(f"Ban failed for {target_id} in {g['id']}: {e}")
 
     remember_group_ban([g["id"] for g in groups], target_id, target_name, target_username)
 
-    result_text = "\n".join(results)
     await update.message.reply_text(
-        f"🚫 *{target_name}* (`{target_id}`) gebannt:\n\n{result_text}",
+        f"🚫 User `{target_id}` wurde erfolgreich gebannt.",
         parse_mode="Markdown",
     )
     await log_action(
         context,
-        f"BANALL: {target_name} ({target_id}) von {update.effective_user.full_name}\n{result_text}",
+        f"BANALL: {target_name} ({target_id}) von {update.effective_user.full_name} — {success_count} OK, {fail_count} Fehler",
     )
 
 # --- /unbanall ---
