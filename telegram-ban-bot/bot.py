@@ -497,7 +497,12 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         bot_data["scheduled"] = [s for s in bot_data.get("scheduled", []) if s["id"] != sched_id]
         save_data(bot_data)
         remove_scheduled_job(context, sched_id)
-        await query.edit_message_text("🗑 Wiederholte Nachricht gelöscht.")
+        keyboard = [[InlineKeyboardButton("📋 Alle Nachrichten anzeigen", callback_data="menu_scheduled")],
+                     [InlineKeyboardButton("🔙 Hauptmenü", callback_data="back_main")]]
+        await query.edit_message_text(
+            "🗑 Wiederholte Nachricht wurde gelöscht.",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+        )
 
     elif data.startswith("sched_del_prev_"):
         sched_id = data.replace("sched_del_prev_", "")
