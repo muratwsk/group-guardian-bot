@@ -574,6 +574,10 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     elif data.startswith("sched_edit_text_"):
         sched_id = data.replace("sched_edit_text_", "")
+        await show_sched_content_menu(query, context, user_id, sched_id)
+
+    elif data.startswith("sched_set_text_"):
+        sched_id = data.replace("sched_set_text_", "")
         user_data_store[user_id] = {"action": "sched_edit_text", "sched_id": sched_id}
         await query.edit_message_text(
             "✏️ Sende mir die neue Nachricht.\n\n"
