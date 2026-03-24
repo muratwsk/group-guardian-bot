@@ -1100,6 +1100,125 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         context.user_data["state"] = WAITING_MESSENGER_INPUT
 
+    # === CONFIG MENU ===
+    elif data == "menu_config":
+        bot_data = load_data()
+        cmd_count = len(bot_data.get("personal_commands", {}))
+        keyboard = [
+            [InlineKeyboardButton("» 🏗 Persönliche Befehle «", callback_data="pcmd_menu")],
+            [InlineKeyboardButton("🔙 Zurück", callback_data="back_main")],
+        ]
+        await query.edit_message_text(
+            f"⚙️ <b>Konfiguration</b>\n\n"
+            f"Persönliche Befehle: {cmd_count}",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode="HTML",
+        )
+
+    # === PERSONAL COMMANDS MENU ===
+    elif data == "pcmd_menu":
+        bot_data = load_data()
+        cmds = bot_data.get("personal_commands", {})
+        cmd_count = len(cmds)
+        keyboard = [
+            [InlineKeyboardButton("» 🏗 Persönliche Befehle «", callback_data="noop")],
+            [InlineKeyboardButton("🔤 Liste", callback_data="pcmd_list")],
+            [InlineKeyboardButton("➕ Hinzufügen", callback_data="pcmd_add"),
+             InlineKeyboardButton("➖ Entfernen", callback_data="pcmd_remove")],
+            [InlineKeyboardButton("🗑 Alle löschen", callback_data="pcmd_clear_confirm")],
+            [InlineKeyboardButton("🔙 Zurück", callback_data="menu_config")],
+        ]
+        await query.edit_message_text(
+            f"🏗 <b>Persönliche Befehle</b>\n\n"
+            f"Gespeicherte Befehle: {cmd_count}\n\n"
+            f"<i>Nutze /personal &lt;Name&gt; als Antwort auf eine Nachricht in einer Gruppe, "
+            f"um einen Befehl zu erstellen.\n"
+            f"Lösche mit /unpersonal &lt;Name&gt;</i>",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode="HTML",
+        )
+
+    elif data == "pcmd_list":
+        bot_data = load_data()
+        cmds = bot_data.get("personal_commands", {})
+        if not cmds:
+            keyboard = [[InlineKeyboardButton("🔙 Zurück", callback_data="pcmd_menu")]]
+            await query.edit_message_text(
+                "📋 <b>Persönliche Befehle</b>\n\nKeine Befehle gespeichert.",
+                reply_markup=InlineKeyboardMarkup(keyboard),
+                parse_mode="HTML",
+            )
+            return
+        text = "📋 <b>Persönliche Befehle</b>\n\n"
+        for name, info in cmds.items():
+            preview = html.escape((info.get("text") or "")[:40])
+            has_media = " 🖼" if info.get("media_file_id") else ""
+            text += f"• /<b>{html.escape(name)}</b> — {preview}{has_media}\n"
+        keyboard = [[InlineKeyboardButton("🔙 Zurück", callback_data="pcmd_menu")]]
+        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
+
+    elif data == "pcmd_add":
+        user_data_store[user_id] = {"action": "pcmd_add"}
+        keyboard = [[InlineKeyboardButton("❌ Abbrechen", callback_data="pcmd_menu")]]
+        await query.edit_message_text(
+            "➕ <b>Befehl hinzufügen</b>\n\n"
+            "Sende mir den Namen für den neuen Befehl (ohne /).\n"
+            "Beispiel: <code>hele</code>\n\n"
+            "<i>Danach wird der Befehl /hele verfügbar.</i>",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode="HTML",
+        )
+        context.user_data["state"] = WAITING_PCMD_NAME
+
+    elif data == "pcmd_remove":
+        bot_data = load_data()
+        cmds = bot_data.get("personal_commands", {})
+        if not cmds:
+            await query.answer("Keine Befehle vorhanden.", show_alert=True)
+            return
+        keyboard = []
+        for name in cmds:
+            keyboard.append([InlineKeyboardButton(f"🗑 /{name}", callback_data=f"pcmd_del_{name}")])
+        keyboard.append([InlineKeyboardButton("🔙 Zurück", callback_data="pcmd_menu")])
+        await query.edit_message_text(
+            "➖ <b>Befehl entfernen</b>\n\nWähle den Befehl zum Löschen:",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode="HTML",
+        )
+
+    elif data.startswith("pcmd_del_"):
+        cmd_name = data.replace("pcmd_del_", "")
+        bot_data = load_data()
+        cmds = bot_data.get("personal_commands", {})
+        cmds.pop(cmd_name, None)
+        save_data(bot_data)
+        keyboard = [[InlineKeyboardButton("🔙 Zurück", callback_data="pcmd_menu")]]
+        await query.edit_message_text(
+            f"✅ Befehl /{html.escape(cmd_name)} gelöscht.",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode="HTML",
+        )
+
+    elif data == "pcmd_clear_confirm":
+        keyboard = [
+            [InlineKeyboardButton("✅ Ja, alle löschen", callback_data="pcmd_clear"),
+             InlineKeyboardButton("❌ Abbrechen", callback_data="pcmd_menu")],
+        ]
+        await query.edit_message_text(
+            "⚠️ Wirklich ALLE persönlichen Befehle löschen?",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+        )
+
+    elif data == "pcmd_clear":
+        bot_data = load_data()
+        bot_data["personal_commands"] = {}
+        save_data(bot_data)
+        keyboard = [[InlineKeyboardButton("🔙 Zurück", callback_data="pcmd_menu")]]
+        await query.edit_message_text(
+            "✅ Alle persönlichen Befehle gelöscht.",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+        )
+
     # === SETTINGS ===
     elif data == "menu_settings":
         if not is_owner(user_id):
