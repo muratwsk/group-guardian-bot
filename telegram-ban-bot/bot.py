@@ -569,12 +569,12 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         bot_data = load_data()
         for s in bot_data.get("scheduled", []):
             if s["id"] == sched_id:
-                preview = s.get("text", "(leer)")
+                preview_html = s.get("text_html", s.get("text", "(leer)"))
                 keyboard = [[InlineKeyboardButton("🔙 Zurück", callback_data=f"sched_view_{sched_id}")]]
                 await query.edit_message_text(
-                    f"📄 *Nachrichtentext:*\n\n{preview}",
+                    f"📄 <b>Nachrichtentext:</b>\n\n{preview_html}",
                     reply_markup=InlineKeyboardMarkup(keyboard),
-                    parse_mode="Markdown",
+                    parse_mode="HTML",
                 )
                 return
         await query.edit_message_text("⚠️ Nicht gefunden.")
@@ -645,6 +645,27 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data["state"] = WAITING_UNBAN_INPUT
 
     # === SETTINGS ===
+    elif data == "menu_settings":
+        if not is_owner(user_id):
+            await query.edit_message_text("⛔ Nur für Owner.")
+            return
+        cfg = load_config()
+        admins = cfg.get("admin_ids", [])
+        log_ch = cfg.get("log_channel_id", "Nicht gesetzt")
+        text = (
+            f"⚙️ *Einstellungen*\n\n"
+            f"👮 Admins: {len(admins)}\n"
+            f"📋 Log-Kanal: `{log_ch}`"
+        )
+        keyboard = [
+            [InlineKeyboardButton("➕ Admin hinzufügen", callback_data="add_admin"),
+             InlineKeyboardButton("➖ Admin entfernen", callback_data="remove_admin")],
+            [InlineKeyboardButton("📋 Log-Kanal setzen", callback_data="set_log")],
+            [InlineKeyboardButton("👥 Gruppen anzeigen", callback_data="show_groups")],
+            [InlineKeyboardButton("🔙 Zurück", callback_data="back_main")],
+        ]
+        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
+
     elif data == "add_admin":
         if not is_owner(user_id):
             await query.edit_message_text("⛔ Nur für Owner.")
