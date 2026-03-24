@@ -535,7 +535,7 @@ async def banall(update: Update, context: ContextTypes.DEFAULT_TYPE):
     remember_group_ban([g["id"] for g in groups], target_id, target_name, target_username)
 
     await update.message.reply_text(
-        f"🚫 User `{target_id}` wurde erfolgreich gebannt.",
+        f"`{target_id}` wurde erfolgreich gebannt✅",
         parse_mode="Markdown",
     )
     await log_action(
