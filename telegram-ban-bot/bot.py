@@ -804,6 +804,77 @@ async def block_banned_join_request(update: Update, context: ContextTypes.DEFAUL
         except Exception as e:
             logger.error(f"Decline join request failed for {member.id} in {request.chat.id}: {e}")
 
+# --- Import groups from JSON file ---
+
+async def document_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Import groups from a JSON file sent in private chat."""
+    user_id = update.effective_user.id
+    if not is_owner(user_id):
+        await update.message.reply_text("⛔ Nur Owner können Gruppen importieren.")
+        return
+
+    doc = update.message.document
+    if not doc.file_name.endswith(".json"):
+        await update.message.reply_text("⚠️ Bitte sende eine `.json` Datei.", parse_mode="Markdown")
+        return
+
+    try:
+        file = await doc.get_file()
+        file_bytes = await file.download_as_bytearray()
+        groups_dict = json.loads(file_bytes.decode("utf-8"))
+    except Exception as e:
+        await update.message.reply_text(f"⚠️ Fehler beim Lesen der Datei: {e}")
+        return
+
+    if not isinstance(groups_dict, dict):
+        await update.message.reply_text(
+            "⚠️ Format muss ein JSON-Objekt sein:\n"
+            '`{"Gruppenname": -100xxx, ...}`',
+            parse_mode="Markdown",
+        )
+        return
+
+    data = load_data()
+    existing_ids = {g["id"] for g in data.get("groups", [])}
+    added = 0
+    skipped = 0
+    not_admin = 0
+
+    for name, gid in groups_dict.items():
+        try:
+            gid = int(gid)
+        except (ValueError, TypeError):
+            skipped += 1
+            continue
+
+        if gid in existing_ids:
+            skipped += 1
+            continue
+
+        # Check if bot is admin
+        try:
+            bot_me = await context.bot.get_me()
+            bot_member = await context.bot.get_chat_member(gid, bot_me.id)
+            if bot_member.status not in ("administrator", "creator"):
+                not_admin += 1
+                continue
+        except Exception:
+            not_admin += 1
+            continue
+
+        data.setdefault("groups", []).append({"id": gid, "title": name})
+        existing_ids.add(gid)
+        added += 1
+
+    save_data(data)
+    text = f"✅ {added} Gruppen importiert"
+    if skipped:
+        text += f"\n⏩ {skipped} übersprungen (bereits vorhanden/ungültig)"
+    if not_admin:
+        text += f"\n⚠️ {not_admin} übersprungen (Bot nicht Admin)"
+    await update.message.reply_text(text)
+    await log_action(context, f"GRUPPEN-IMPORT: {added} Gruppen von {update.effective_user.full_name} ({user_id})")
+
 # --- Main ---
 
 def ensure_single_instance():
@@ -874,6 +945,7 @@ def main():
     app.add_handler(CommandHandler("unbanall", unbanall))
     app.add_handler(CallbackQueryHandler(button_handler))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & filters.ChatType.PRIVATE, text_handler))
+    app.add_handler(MessageHandler(filters.Document.ALL & filters.ChatType.PRIVATE, document_handler))
     app.add_handler(MessageHandler(filters.ALL & (filters.ChatType.GROUP | filters.ChatType.SUPERGROUP), track_message), group=1)
     app.add_handler(ChatMemberHandler(enforce_ban_on_chat_member, ChatMemberHandler.CHAT_MEMBER), group=2)
     app.add_handler(ChatJoinRequestHandler(block_banned_join_request), group=3)
