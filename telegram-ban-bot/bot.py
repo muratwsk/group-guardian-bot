@@ -2544,6 +2544,45 @@ async def execute_scheduled_message(context: ContextTypes.DEFAULT_TYPE):
             logger.info(f"Scheduled message {sched_id} not found or inactive")
             return
         
+        # Check start_date / end_date
+        now = now_de()
+        start_date = sched.get("start_date")
+        end_date = sched.get("end_date")
+        if start_date:
+            try:
+                sd = datetime.datetime.strptime(start_date, "%d.%m.%Y").replace(tzinfo=BERLIN_TZ)
+                if now < sd:
+                    logger.info(f"Scheduled {sched_id} not yet started (start_date={start_date})")
+                    return
+            except Exception:
+                pass
+        if end_date:
+            try:
+                ed = datetime.datetime.strptime(end_date, "%d.%m.%Y").replace(tzinfo=BERLIN_TZ).replace(hour=23, minute=59)
+                if now > ed:
+                    logger.info(f"Scheduled {sched_id} expired (end_date={end_date}), deactivating")
+                    sched["active"] = False
+                    save_data(bot_data)
+                    remove_scheduled_job(context, sched_id)
+                    return
+            except Exception:
+                pass
+        
+        # Check weekday filter (0=Mon, 6=Sun)
+        weekdays = sched.get("weekdays")
+        if weekdays and len(weekdays) > 0:
+            current_weekday = now.weekday()  # 0=Monday
+            if current_weekday not in weekdays:
+                logger.info(f"Scheduled {sched_id} skipped: weekday {current_weekday} not in {weekdays}")
+                return
+        
+        # Check monthday filter
+        monthdays = sched.get("monthdays")
+        if monthdays and len(monthdays) > 0:
+            if now.day not in monthdays:
+                logger.info(f"Scheduled {sched_id} skipped: day {now.day} not in {monthdays}")
+                return
+        
         text_html = sched.get("text_html", sched.get("text", ""))
         media_fid = sched.get("media_file_id")
         
