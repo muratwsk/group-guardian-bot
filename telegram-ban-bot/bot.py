@@ -550,8 +550,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         new_sched = {
             "id": sched_id,
             "groups": pending["groups"],
-            "text": pending["text"],
-            "text_html": pending.get("text_html", pending["text"]),
+            "messages": [{"text": pending["text"], "text_html": pending.get("text_html", pending["text"])}],
+            "rotation_index": 0,
             "time": pending.get("time", now_de().strftime("%H:%M")),
             "interval_minutes": minutes,
             "interval_label": f"Alle {get_interval_label(minutes)}",
