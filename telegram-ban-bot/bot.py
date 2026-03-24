@@ -1809,6 +1809,38 @@ async def show_sched_group_selection(query, context, user_id, groups):
     )
 
 
+
+async def show_sched_edit_groups(query, context, user_id, sched_id):
+    """Show group selection for editing an existing scheduled message."""
+    bot_data = load_data()
+    sched = next((s for s in bot_data.get("scheduled", []) if s["id"] == sched_id), None)
+    if not sched:
+        await query.edit_message_text("⚠️ Nicht gefunden.")
+        return
+    selected = set(sched.get("groups", []))
+    all_groups = await get_bot_groups(context)
+    keyboard = []
+    row = []
+    for g in all_groups:
+        check = "✅" if g["id"] in selected else "⬜"
+        row.append(InlineKeyboardButton(f"{check} {g['title']}", callback_data=f"sched_grp_toggle_{sched_id}_{g['id']}"))
+        if len(row) == 2:
+            keyboard.append(row)
+            row = []
+    if row:
+        keyboard.append(row)
+    keyboard.append([
+        InlineKeyboardButton("☑️ Alle", callback_data=f"sched_grp_all_{sched_id}"),
+        InlineKeyboardButton("◻️ Keine", callback_data=f"sched_grp_none_{sched_id}"),
+    ])
+    keyboard.append([InlineKeyboardButton(f"↩️ Zurück ({len(selected)} gewählt)", callback_data=f"sched_view_{sched_id}")])
+    await query.edit_message_text(
+        f"👥 <b>Gruppen ändern</b>\n\nWähle die Gruppen für diese wiederholte Nachricht:",
+        reply_markup=InlineKeyboardMarkup(keyboard),
+        parse_mode="HTML",
+    )
+
+
 async def show_sched_content_menu(query, context, user_id, sched_id):
     """Show content editing menu: Text, Medien, Buttons - like Worldskandi screenshot."""
     bot_data = load_data()
