@@ -36,6 +36,7 @@ USERS_FILE = os.path.join(os.path.dirname(__file__), "users.json")
 def normalize_data(data):
     data.setdefault("groups", [])
     data.setdefault("banned_users", {})
+    data.setdefault("broadcasts", {})
     return data
 
 def load_data():
