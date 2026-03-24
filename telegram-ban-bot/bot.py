@@ -459,6 +459,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         groups = await get_bot_groups(context)
         group_names = [g["title"] for g in groups if g["id"] in pending["groups"]]
         
+        keyboard = [[InlineKeyboardButton("📋 Alle Nachrichten anzeigen", callback_data="menu_scheduled")]]
         await query.edit_message_text(
             f"✅ *Wiederholte Nachricht erstellt!*\n\n"
             f"⏰ Zeit: {new_sched['time']}\n"
@@ -466,6 +467,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"📨 Gruppen: {', '.join(group_names)}\n"
             f"📝 Text: {pending['text'][:50]}...\n\n"
             f"🚀 Nächster Versand wird geplant",
+            reply_markup=InlineKeyboardMarkup(keyboard),
             parse_mode="Markdown",
         )
         user_data_store.pop(user_id, None)
