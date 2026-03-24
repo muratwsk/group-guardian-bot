@@ -896,6 +896,129 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 break
         await show_sched_content_menu(query, context, user_id, sched_id)
 
+    # === SLOT EDITING ===
+    elif data.startswith("sched_slot_edit_"):
+        parts = data.replace("sched_slot_edit_", "").rsplit("_", 1)
+        sched_id, slot_idx = parts[0], int(parts[1])
+        bot_data = load_data()
+        sched = next((s for s in bot_data.get("scheduled", []) if s["id"] == sched_id), None)
+        if not sched or slot_idx >= len(sched.get("messages", [])):
+            await query.answer("⚠️ Nicht gefunden.", show_alert=True)
+            return
+        slot = sched["messages"][slot_idx]
+        has_text = "✅" if slot.get("text") else "❌"
+        has_media = "✅" if slot.get("media_file_id") else "❌"
+        text = (
+            f"✏️ <b>Nachricht {slot_idx+1} bearbeiten</b>\n\n"
+            f"📄 Text {has_text}\n"
+            f"🖼 Medien {has_media}"
+        )
+        keyboard = [
+            [InlineKeyboardButton("📄 Text ändern", callback_data=f"sched_slot_text_{sched_id}_{slot_idx}"),
+             InlineKeyboardButton("👀 Text", callback_data=f"sched_slot_viewtxt_{sched_id}_{slot_idx}")],
+            [InlineKeyboardButton("🖼 Medien setzen", callback_data=f"sched_slot_media_{sched_id}_{slot_idx}"),
+             InlineKeyboardButton("👀 Medien", callback_data=f"sched_slot_viewmed_{sched_id}_{slot_idx}")],
+            [InlineKeyboardButton("🗑 Nachricht löschen", callback_data=f"sched_slot_del_{sched_id}_{slot_idx}")],
+            [InlineKeyboardButton("↩️ Zurück", callback_data=f"sched_edit_text_{sched_id}")],
+        ]
+        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
+
+    elif data.startswith("sched_slot_text_"):
+        parts = data.replace("sched_slot_text_", "").rsplit("_", 1)
+        sched_id, slot_idx = parts[0], int(parts[1])
+        user_data_store[user_id] = {"action": "sched_edit_text", "sched_id": sched_id, "slot_idx": slot_idx}
+        await query.edit_message_text(
+            f"✏️ Sende mir den Text für <b>Nachricht {slot_idx+1}</b>.\n\n"
+            "Tipp: Nutze die Telegram-Formatierung (Fett, Kursiv, Link, Zitat).",
+            parse_mode="HTML",
+        )
+        context.user_data["state"] = WAITING_SCHEDULED_TEXT
+
+    elif data.startswith("sched_slot_media_"):
+        parts = data.replace("sched_slot_media_", "").rsplit("_", 1)
+        sched_id, slot_idx = parts[0], int(parts[1])
+        user_data_store[user_id] = {"action": "sched_set_media", "sched_id": sched_id, "slot_idx": slot_idx}
+        keyboard = []
+        bot_data = load_data()
+        sched = next((s for s in bot_data.get("scheduled", []) if s["id"] == sched_id), None)
+        if sched and slot_idx < len(sched.get("messages", [])) and sched["messages"][slot_idx].get("media_file_id"):
+            keyboard.append([InlineKeyboardButton("🚫 Medium entfernen", callback_data=f"sched_remove_media_{sched_id}_{slot_idx}")])
+        keyboard.append([InlineKeyboardButton("❌ Abbrechen", callback_data=f"sched_slot_edit_{sched_id}_{slot_idx}")])
+        await query.edit_message_text(
+            f"👉 <b>Sende jetzt ein Medium</b> für Nachricht {slot_idx+1}.",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode="HTML",
+        )
+        context.user_data["state"] = WAITING_SCHEDULED_MEDIA
+
+    elif data.startswith("sched_slot_viewtxt_"):
+        parts = data.replace("sched_slot_viewtxt_", "").rsplit("_", 1)
+        sched_id, slot_idx = parts[0], int(parts[1])
+        bot_data = load_data()
+        sched = next((s for s in bot_data.get("scheduled", []) if s["id"] == sched_id), None)
+        if sched and slot_idx < len(sched.get("messages", [])):
+            slot = sched["messages"][slot_idx]
+            preview_html = slot.get("text_html") or slot.get("text") or "(leer)"
+            keyboard = [[InlineKeyboardButton("🔙 Zurück", callback_data=f"sched_slot_edit_{sched_id}_{slot_idx}")]]
+            await query.edit_message_text(
+                f"📄 <b>Nachricht {slot_idx+1} Text:</b>\n\n{preview_html}",
+                reply_markup=InlineKeyboardMarkup(keyboard),
+                parse_mode="HTML",
+            )
+        else:
+            await query.answer("⚠️ Nicht gefunden.", show_alert=True)
+
+    elif data.startswith("sched_slot_viewmed_"):
+        parts = data.replace("sched_slot_viewmed_", "").rsplit("_", 1)
+        sched_id, slot_idx = parts[0], int(parts[1])
+        bot_data = load_data()
+        sched = next((s for s in bot_data.get("scheduled", []) if s["id"] == sched_id), None)
+        if not sched or slot_idx >= len(sched.get("messages", [])) or not sched["messages"][slot_idx].get("media_file_id"):
+            await query.answer("Kein Medium gesetzt.", show_alert=True)
+            return
+        slot = sched["messages"][slot_idx]
+        keyboard = [[InlineKeyboardButton("🔙 Zurück", callback_data=f"sched_slot_edit_{sched_id}_{slot_idx}")]]
+        media_type = slot.get("media_type", "photo")
+        try:
+            if media_type == "photo":
+                await context.bot.send_photo(chat_id=query.message.chat_id, photo=slot["media_file_id"], reply_markup=InlineKeyboardMarkup(keyboard))
+            elif media_type == "video":
+                await context.bot.send_video(chat_id=query.message.chat_id, video=slot["media_file_id"], reply_markup=InlineKeyboardMarkup(keyboard))
+            else:
+                await context.bot.send_document(chat_id=query.message.chat_id, document=slot["media_file_id"], reply_markup=InlineKeyboardMarkup(keyboard))
+        except Exception as e:
+            await query.edit_message_text(f"⚠️ Fehler: {e}")
+
+    elif data.startswith("sched_slot_del_"):
+        parts = data.replace("sched_slot_del_", "").rsplit("_", 1)
+        sched_id, slot_idx = parts[0], int(parts[1])
+        bot_data = load_data()
+        for s in bot_data.get("scheduled", []):
+            if s["id"] == sched_id:
+                msgs = s.get("messages", [])
+                if len(msgs) <= 1:
+                    await query.answer("⚠️ Mindestens 1 Nachricht muss bleiben!", show_alert=True)
+                    return
+                if slot_idx < len(msgs):
+                    msgs.pop(slot_idx)
+                    # Fix rotation index
+                    if s.get("rotation_index", 0) >= len(msgs):
+                        s["rotation_index"] = 0
+                    save_data(bot_data)
+                break
+        await show_sched_content_menu(query, context, user_id, sched_id)
+
+    elif data.startswith("sched_slot_add_"):
+        sched_id = data.replace("sched_slot_add_", "")
+        user_data_store[user_id] = {"action": "sched_edit_text", "sched_id": sched_id, "slot_idx": -1}
+        await query.edit_message_text(
+            "➕ <b>Neue Nachricht zur Rotation hinzufügen</b>\n\n"
+            "Sende mir jetzt den Text.\n"
+            "Tipp: Nutze die Telegram-Formatierung (Fett, Kursiv, Link, Zitat).",
+            parse_mode="HTML",
+        )
+        context.user_data["state"] = WAITING_SCHEDULED_TEXT
+
     elif data.startswith("sched_preview_"):
         sched_id = data.replace("sched_preview_", "")
         bot_data = load_data()
