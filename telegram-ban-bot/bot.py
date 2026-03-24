@@ -265,12 +265,10 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             gid = int(data.replace("msg_group_", ""))
             user_data_store[user_id] = {"action": "messenger", "groups": [gid]}
         await query.edit_message_text(
-            "📨 *Sende mir jetzt die Nachricht:*\n\n"
-            "Formatierung:\n"
-            "• `*fett*` → *fett*\n"
-            "• `_kursiv_` → _kursiv_\n"
-            "• `` `code` `` → `code`\n"
-            "• `[Link](https://...)` → Link",
+            "📨 Sende mir jetzt die Nachricht:\n\n"
+            "Du kannst normal schreiben.\n"
+            "Für *fett* schreibe: *text*\n"
+            "Für kursiv schreibe: _text_",
             parse_mode="Markdown",
         )
         context.user_data["state"] = WAITING_MESSENGER_INPUT
