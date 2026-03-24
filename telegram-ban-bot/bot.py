@@ -459,6 +459,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         groups = await get_bot_groups(context)
         group_names = [g["title"] for g in groups if g["id"] in pending["groups"]]
         
+        keyboard = [[InlineKeyboardButton("📋 Alle Nachrichten anzeigen", callback_data="menu_scheduled")]]
         await query.edit_message_text(
             f"✅ *Wiederholte Nachricht erstellt!*\n\n"
             f"⏰ Zeit: {new_sched['time']}\n"
@@ -466,6 +467,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"📨 Gruppen: {', '.join(group_names)}\n"
             f"📝 Text: {pending['text'][:50]}...\n\n"
             f"🚀 Nächster Versand wird geplant",
+            reply_markup=InlineKeyboardMarkup(keyboard),
             parse_mode="Markdown",
         )
         user_data_store.pop(user_id, None)
@@ -495,7 +497,12 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         bot_data["scheduled"] = [s for s in bot_data.get("scheduled", []) if s["id"] != sched_id]
         save_data(bot_data)
         remove_scheduled_job(context, sched_id)
-        await query.edit_message_text("🗑 Wiederholte Nachricht gelöscht.")
+        keyboard = [[InlineKeyboardButton("📋 Alle Nachrichten anzeigen", callback_data="menu_scheduled")],
+                     [InlineKeyboardButton("🔙 Hauptmenü", callback_data="back_main")]]
+        await query.edit_message_text(
+            "🗑 Wiederholte Nachricht wurde gelöscht.",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+        )
 
     elif data.startswith("sched_del_prev_"):
         sched_id = data.replace("sched_del_prev_", "")
@@ -837,7 +844,11 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     s["text_html"] = update.message.text_html
                     save_data(bot_data)
                     break
-            await update.message.reply_text("✅ Nachricht aktualisiert.")
+            keyboard = [[InlineKeyboardButton("🔙 Zurück zur Nachricht", callback_data=f"sched_view_{sched_id}")]]
+            await update.message.reply_text(
+                "✅ Nachricht aktualisiert.",
+                reply_markup=InlineKeyboardMarkup(keyboard),
+            )
             context.user_data["state"] = None
             user_data_store.pop(user_id, None)
         else:
@@ -1391,12 +1402,11 @@ async def show_hour_picker(query, context, user_id, back_callback="menu_schedule
 
 
 async def show_minute_picker(query, context, user_id, hour, back_callback="menu_scheduled", edit_sched_id=None):
-    """Show minute picker 00, 05, 10, ..., 55 in rows of 4."""
+    """Show minute picker 0-59 in rows of 6."""
     keyboard = []
-    minutes = [0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55]
-    for row_start in range(0, len(minutes), 4):
+    for row_start in range(0, 60, 6):
         row = []
-        for m in minutes[row_start:row_start + 4]:
+        for m in range(row_start, min(row_start + 6, 60)):
             label = f"{m:02d}"
             if edit_sched_id:
                 cb = f"sched_edit_min_{edit_sched_id}_{m}"
@@ -1499,9 +1509,25 @@ async def execute_scheduled_message(context: ContextTypes.DEFAULT_TYPE):
     logger.info(f"Scheduled message {sched_id} sent to {len(sent_msgs)} groups")
 
 
+def _get_job_queue(context):
+    """Get job_queue from either Application or CallbackContext."""
+    # Application object
+    if hasattr(context, 'job_queue') and context.job_queue is not None:
+        return context.job_queue
+    # CallbackContext
+    if hasattr(context, 'application') and context.application.job_queue is not None:
+        return context.application.job_queue
+    return None
+
+
 def schedule_job(context, sched):
     """Schedule a repeating job for a scheduled message."""
     import datetime
+    
+    jq = _get_job_queue(context)
+    if not jq:
+        logger.error("No job_queue available for scheduling")
+        return
     
     sched_id = sched["id"]
     interval = sched.get("interval_minutes", 60) * 60  # convert to seconds
@@ -1525,7 +1551,7 @@ def schedule_job(context, sched):
     if delay < 0:
         delay = 0
     
-    context.job_queue.run_repeating(
+    jq.run_repeating(
         execute_scheduled_message,
         interval=interval,
         first=delay,
@@ -1537,7 +1563,10 @@ def schedule_job(context, sched):
 
 def remove_scheduled_job(context, sched_id):
     """Remove a scheduled job."""
-    jobs = context.job_queue.get_jobs_by_name(f"sched_{sched_id}")
+    jq = _get_job_queue(context)
+    if not jq:
+        return
+    jobs = jq.get_jobs_by_name(f"sched_{sched_id}")
     for job in jobs:
         job.schedule_removal()
 
@@ -1572,7 +1601,7 @@ def main():
     except Exception:
         pass
 
-    app = Application.builder().token(token).post_init(post_init).build()
+    app = Application.builder().token(token).build()
 
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("registergroup", register_group))
@@ -1585,6 +1614,16 @@ def main():
     app.add_handler(MessageHandler(filters.ALL & (filters.ChatType.GROUP | filters.ChatType.SUPERGROUP), track_message), group=1)
     app.add_handler(ChatMemberHandler(enforce_ban_on_chat_member, ChatMemberHandler.CHAT_MEMBER), group=2)
     app.add_handler(ChatJoinRequestHandler(block_banned_join_request), group=3)
+
+    # Restore scheduled jobs
+    if app.job_queue:
+        bot_data = load_data()
+        count = 0
+        for sched in bot_data.get("scheduled", []):
+            if sched.get("active"):
+                schedule_job(app, sched)
+                count += 1
+        logger.info(f"Restored {count} scheduled jobs")
 
     print("🤖 Bot gestartet!")
     app.run_polling(drop_pending_updates=True, allowed_updates=Update.ALL_TYPES)
