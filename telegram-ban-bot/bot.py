@@ -673,16 +673,25 @@ def main():
 
     ensure_single_instance()
 
-    # Force-clear any existing getUpdates session to prevent 409 Conflict
-    try:
-        _requests.post(
-            f"https://api.telegram.org/bot{token}/deleteWebhook",
-            json={"drop_pending_updates": True},
-            timeout=10,
-        )
-        import time; time.sleep(2)
-    except Exception as e:
-        logger.warning(f"deleteWebhook pre-clear failed: {e}")
+    import time as _time
+
+    # Force-clear any existing getUpdates session
+    for attempt in range(5):
+        try:
+            _requests.post(
+                f"https://api.telegram.org/bot{token}/deleteWebhook",
+                json={"drop_pending_updates": True},
+                timeout=10,
+            )
+            # Also call getUpdates with timeout=0 to flush
+            _requests.post(
+                f"https://api.telegram.org/bot{token}/getUpdates",
+                json={"offset": -1, "timeout": 0},
+                timeout=10,
+            )
+        except Exception as e:
+            logger.warning(f"Pre-clear attempt {attempt} failed: {e}")
+        _time.sleep(3)
 
     app = Application.builder().token(token).build()
 
