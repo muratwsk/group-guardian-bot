@@ -1296,6 +1296,7 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     chat_id=gid,
                     text=update.message.text_html,
                     parse_mode="HTML",
+                    disable_web_page_preview=True,
                 )
                 sent_msgs.append((gid, msg.message_id))
                 success += 1
@@ -2636,7 +2637,7 @@ async def execute_scheduled_message(context: ContextTypes.DEFAULT_TYPE):
                     else:
                         msg = await context.bot.send_document(chat_id=gid, document=media_fid, caption=text_html or None, parse_mode="HTML" if text_html else None)
                 else:
-                    msg = await context.bot.send_message(chat_id=gid, text=text_html, parse_mode="HTML")
+                    msg = await context.bot.send_message(chat_id=gid, text=text_html, parse_mode="HTML", disable_web_page_preview=True)
                 sent_msgs.append([gid, msg.message_id])
                 if sched.get("pin_message"):
                     try:
