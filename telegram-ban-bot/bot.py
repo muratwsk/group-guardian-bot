@@ -2152,19 +2152,22 @@ def schedule_job(context, sched):
     
     # Calculate first run time
     now = datetime.datetime.now()
-    h, m = 0, 0
-    try:
-        h, m = map(int, sched.get("time", "00:00").split(":"))
-    except Exception:
-        pass
+    time_str = sched.get("time", "")
     
-    first_run = now.replace(hour=h, minute=m, second=0, microsecond=0)
-    if first_run <= now:
-        first_run += datetime.timedelta(minutes=sched.get("interval_minutes", 60))
-    
-    delay = (first_run - now).total_seconds()
-    if delay < 0:
+    if time_str and time_str != "00:00":
+        # User set a specific start time
+        try:
+            h, m = map(int, time_str.split(":"))
+        except Exception:
+            h, m = 0, 0
+        first_run = now.replace(hour=h, minute=m, second=0, microsecond=0)
+        if first_run <= now:
+            first_run += datetime.timedelta(minutes=sched.get("interval_minutes", 60))
+        delay = max(0, (first_run - now).total_seconds())
+    else:
+        # No time set – start immediately, only interval matters
         delay = 0
+        logger.info(f"No start time set for {sched_id}, starting immediately")
     
     jq.run_repeating(
         execute_scheduled_message,
