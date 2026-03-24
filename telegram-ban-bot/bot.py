@@ -1331,16 +1331,21 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Check if editing existing scheduled message
         if pending.get("action") == "sched_edit_text":
             sched_id = pending["sched_id"]
+            raw_text = update.message.text or ""
+            html_text = getattr(update.message, "text_html", None) or raw_text
             bot_data = load_data()
+            updated = False
             for s in bot_data.get("scheduled", []):
-                if s["id"] == sched_id:
-                    s["text"] = update.message.text
-                    s["text_html"] = update.message.text_html
+                if str(s.get("id")) == str(sched_id):
+                    s["text"] = raw_text
+                    s["text_html"] = html_text
                     save_data(bot_data)
+                    updated = True
+                    logger.info(f"Scheduled text saved for {sched_id}: {raw_text[:80]}")
                     break
             keyboard = [[InlineKeyboardButton("🔙 Zurück zur Nachricht", callback_data=f"sched_view_{sched_id}")]]
             await update.message.reply_text(
-                "✅ Nachricht aktualisiert.",
+                "✅ Nachricht aktualisiert." if updated else "⚠️ Nachricht nicht gefunden.",
                 reply_markup=InlineKeyboardMarkup(keyboard),
             )
             context.user_data["state"] = None
