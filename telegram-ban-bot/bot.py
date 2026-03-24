@@ -202,20 +202,17 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     keyboard = [
-        [InlineKeyboardButton("🚫 BannALL", callback_data="menu_banall")],
-        [InlineKeyboardButton("📨 Messenger", callback_data="menu_messenger")],
-        [InlineKeyboardButton("🔁 Wiederholte Nachrichten", callback_data="menu_scheduled")],
-        [InlineKeyboardButton("🔓 Open / Close", callback_data="menu_openclose")],
-        [InlineKeyboardButton("⚙️ Konfiguration", callback_data="menu_config")],
+        [InlineKeyboardButton("🚫 BannALL", callback_data="menu_banall"),
+         InlineKeyboardButton("📨 Messenger", callback_data="menu_messenger")],
+        [InlineKeyboardButton("🔁 Wiederholte", callback_data="menu_scheduled"),
+         InlineKeyboardButton("🔓 Open/Close", callback_data="menu_openclose")],
+        [InlineKeyboardButton("🏗 Befehle", callback_data="pcmd_menu"),
+         InlineKeyboardButton("⚙️ Einstellungen", callback_data="menu_settings")],
     ]
-
-    # Owner-only settings
-    if is_owner(user_id):
-        keyboard.append([InlineKeyboardButton("⚙️ Einstellungen", callback_data="menu_settings")])
 
     role = "👑 Owner" if is_owner(user_id) else "🛡️ Admin"
     await update.message.reply_text(
-        f"🤖 *Bot Menü* ({role})\nWähle eine Aktion:",
+        f"🤖 *Bot Menü* ({role})\n_Wähle eine Einstellung:_",
         reply_markup=InlineKeyboardMarkup(keyboard),
         parse_mode="Markdown",
     )
@@ -295,19 +292,18 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # === BACK TO MAIN MENU ===
     if data == "back_main":
         keyboard = [
-            [InlineKeyboardButton("🚫 BannALL", callback_data="menu_banall")],
-            [InlineKeyboardButton("📨 Messenger", callback_data="menu_messenger")],
-            [InlineKeyboardButton("🔁 Wiederholte Nachrichten", callback_data="menu_scheduled")],
-            [InlineKeyboardButton("🔓 Open / Close", callback_data="menu_openclose")],
-            [InlineKeyboardButton("⚙️ Konfiguration", callback_data="menu_config")],
+            [InlineKeyboardButton("🚫 BannALL", callback_data="menu_banall"),
+             InlineKeyboardButton("📨 Messenger", callback_data="menu_messenger")],
+            [InlineKeyboardButton("🔁 Wiederholte", callback_data="menu_scheduled"),
+             InlineKeyboardButton("🔓 Open/Close", callback_data="menu_openclose")],
+            [InlineKeyboardButton("🏗 Befehle", callback_data="pcmd_menu"),
+             InlineKeyboardButton("⚙️ Einstellungen", callback_data="menu_settings")],
         ]
-        if is_owner(user_id):
-            keyboard.append([InlineKeyboardButton("⚙️ Einstellungen", callback_data="menu_settings")])
         role = "👑 Owner" if is_owner(user_id) else "🛡️ Admin"
         # Clear any pending state
         user_data_store.pop(user_id, None)
         await query.edit_message_text(
-            f"🤖 *Bot Menü* ({role})\nWähle eine Aktion:",
+            f"🤖 *Bot Menü* ({role})\n_Wähle eine Einstellung:_",
             reply_markup=InlineKeyboardMarkup(keyboard),
             parse_mode="Markdown",
         )
@@ -1127,7 +1123,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             [InlineKeyboardButton("➕ Hinzufügen", callback_data="pcmd_add"),
              InlineKeyboardButton("➖ Entfernen", callback_data="pcmd_remove")],
             [InlineKeyboardButton("🗑 Alle löschen", callback_data="pcmd_clear_confirm")],
-            [InlineKeyboardButton("🔙 Zurück", callback_data="menu_config")],
+            [InlineKeyboardButton("🔙 Zurück", callback_data="back_main")],
         ]
         await query.edit_message_text(
             f"🏗 <b>Persönliche Befehle</b>\n\n"
