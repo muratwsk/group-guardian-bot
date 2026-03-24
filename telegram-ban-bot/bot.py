@@ -276,17 +276,38 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         context.user_data["state"] = WAITING_MESSENGER_INPUT
 
+    # === SHOW BROADCASTS FOR DELETION ===
+    elif data == "show_broadcasts":
+        bot_data = load_data()
+        broadcasts = bot_data.get("broadcasts", {})
+        if not broadcasts:
+            await query.edit_message_text("Keine gesendeten Nachrichten vorhanden.")
+            return
+        keyboard = []
+        for bid, info in list(broadcasts.items()):
+            label = f"🗑 {info.get('date', '?')} – {info.get('count', '?')} Gruppen"
+            keyboard.append([InlineKeyboardButton(label, callback_data=f"del_broadcast_{bid}")])
+        keyboard.append([InlineKeyboardButton("🔙 Zurück", callback_data="menu_messenger")])
+        await query.edit_message_text(
+            "🗑 *Gesendete Nachrichten:*\nWähle eine zum Löschen:",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode="Markdown",
+        )
+
     # === DELETE BROADCAST ===
     elif data.startswith("del_broadcast_"):
         broadcast_id = data.replace("del_broadcast_", "")
-        msgs = sent_broadcasts.pop(broadcast_id, [])
+        bot_data = load_data()
+        broadcasts = bot_data.get("broadcasts", {})
+        msgs = broadcasts.pop(broadcast_id, {}).get("messages", [])
+        save_data(bot_data)
         deleted = 0
-        for chat_id, msg_id in msgs:
+        for entry in msgs:
             try:
-                await context.bot.delete_message(chat_id=chat_id, message_id=msg_id)
+                await context.bot.delete_message(chat_id=entry[0], message_id=entry[1])
                 deleted += 1
             except Exception as e:
-                logger.error(f"Delete broadcast msg failed in {chat_id}: {e}")
+                logger.error(f"Delete broadcast msg failed in {entry[0]}: {e}")
         await query.edit_message_text(f"🗑 {deleted} Nachrichten gelöscht.")
 
     # === BAN/UNBAN ===
