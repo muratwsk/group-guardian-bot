@@ -412,6 +412,10 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Show interval picker
         await show_interval_picker(query, context, user_id)
 
+    elif data == "noop":
+        # Do nothing - used for section headers
+        return
+
     elif data.startswith("sched_interval_"):
         minutes = int(data.replace("sched_interval_", ""))
         pending = user_data_store.get(user_id, {})
@@ -423,12 +427,6 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         sched_id = str(int(_time.time() * 1000))
         bot_data = load_data()
         
-        interval_labels = {
-            30: "Alle 30 Min", 60: "Jede Stunde", 120: "Alle 2 Stunden",
-            240: "Alle 4 Stunden", 360: "Alle 6 Stunden", 720: "Alle 12 Stunden",
-            1440: "Alle 24 Stunden",
-        }
-        
         new_sched = {
             "id": sched_id,
             "groups": pending["groups"],
@@ -436,7 +434,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "text_html": pending.get("text_html", pending["text"]),
             "time": pending.get("time", datetime.datetime.now().strftime("%H:%M")),
             "interval_minutes": minutes,
-            "interval_label": interval_labels.get(minutes, f"Alle {minutes} Min"),
+            "interval_label": f"Alle {get_interval_label(minutes)}",
             "active": True,
             "created_by": user_id,
             "created_at": datetime.datetime.now().strftime("%d.%m.%Y %H:%M"),
