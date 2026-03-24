@@ -985,6 +985,92 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text("Sende mir jetzt die User-ID oder den @username zum Entbannen:")
         context.user_data["state"] = WAITING_UNBAN_INPUT
 
+    # === OPEN / CLOSE MENU ===
+    elif data == "menu_openclose":
+        await show_openclose_menu(query, context, user_id)
+
+    elif data == "oc_set_open_sticker":
+        user_data_store[user_id] = {"action": "set_open_sticker"}
+        context.user_data["state"] = WAITING_OPEN_STICKER
+        keyboard = [[InlineKeyboardButton("❌ Abbrechen", callback_data="menu_openclose")]]
+        await query.edit_message_text(
+            "🔓 Sende mir jetzt den **Open-Sticker**.",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode="Markdown",
+        )
+
+    elif data == "oc_set_close_sticker":
+        user_data_store[user_id] = {"action": "set_close_sticker"}
+        context.user_data["state"] = WAITING_CLOSE_STICKER
+        keyboard = [[InlineKeyboardButton("❌ Abbrechen", callback_data="menu_openclose")]]
+        await query.edit_message_text(
+            "🔒 Sende mir jetzt den **Close-Sticker**.",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode="Markdown",
+        )
+
+    elif data == "oc_remove_open_sticker":
+        bot_data = load_data()
+        bot_data["open_close"]["open_sticker"] = None
+        save_data(bot_data)
+        await show_openclose_menu(query, context, user_id)
+
+    elif data == "oc_remove_close_sticker":
+        bot_data = load_data()
+        bot_data["open_close"]["close_sticker"] = None
+        save_data(bot_data)
+        await show_openclose_menu(query, context, user_id)
+
+    elif data == "oc_notify_groups":
+        await show_openclose_group_selection(query, context, user_id)
+
+    elif data.startswith("oc_grp_toggle_"):
+        gid = int(data.replace("oc_grp_toggle_", ""))
+        bot_data = load_data()
+        notify = set(bot_data["open_close"].get("notify_groups", []))
+        if gid in notify:
+            notify.discard(gid)
+        else:
+            notify.add(gid)
+        bot_data["open_close"]["notify_groups"] = list(notify)
+        save_data(bot_data)
+        await show_openclose_group_selection(query, context, user_id)
+
+    elif data == "oc_grp_all":
+        groups = await get_bot_groups(context)
+        bot_data = load_data()
+        bot_data["open_close"]["notify_groups"] = [g["id"] for g in groups]
+        save_data(bot_data)
+        await show_openclose_group_selection(query, context, user_id)
+
+    elif data == "oc_grp_none":
+        bot_data = load_data()
+        bot_data["open_close"]["notify_groups"] = []
+        save_data(bot_data)
+        await show_openclose_group_selection(query, context, user_id)
+
+    elif data == "oc_edit_open_text":
+        user_data_store[user_id] = {"action": "oc_edit_open_text"}
+        keyboard = [[InlineKeyboardButton("❌ Abbrechen", callback_data="menu_openclose")]]
+        await query.edit_message_text(
+            "✏️ Sende mir den neuen **Open-Text**.\n\n"
+            "Nutze `{link}` als Platzhalter für den Gruppen-Link.\n"
+            "Nutze `{name}` für den Gruppennamen.",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode="Markdown",
+        )
+        context.user_data["state"] = WAITING_MESSENGER_INPUT
+
+    elif data == "oc_edit_close_text":
+        user_data_store[user_id] = {"action": "oc_edit_close_text"}
+        keyboard = [[InlineKeyboardButton("❌ Abbrechen", callback_data="menu_openclose")]]
+        await query.edit_message_text(
+            "✏️ Sende mir den neuen **Close-Text**.",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode="Markdown",
+        )
+        context.user_data["state"] = WAITING_MESSENGER_INPUT
+
     # === SETTINGS ===
     elif data == "menu_settings":
         if not is_owner(user_id):
