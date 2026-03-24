@@ -1164,6 +1164,58 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             context.user_data["state"] = None
 
+    elif state == WAITING_SCHED_STARTDATE:
+        pending = user_data_store.get(user_id)
+        if not pending:
+            await update.message.reply_text("Bitte starte mit /start.")
+            return
+        sched_id = pending["sched_id"]
+        import datetime
+        try:
+            dt = datetime.datetime.strptime(update.message.text.strip(), "%d/%m/%y %H:%M")
+            bot_data = load_data()
+            for s in bot_data.get("scheduled", []):
+                if s["id"] == sched_id:
+                    s["start_date"] = dt.strftime("%d.%m.%Y %H:%M")
+                    save_data(bot_data)
+                    break
+            keyboard = [[InlineKeyboardButton("🔙 Zurück zur Nachricht", callback_data=f"sched_view_{sched_id}")]]
+            await update.message.reply_text(
+                f"✅ Anfangsdatum gesetzt: {dt.strftime('%d.%m.%Y %H:%M')}",
+                reply_markup=InlineKeyboardMarkup(keyboard),
+            )
+        except ValueError:
+            await update.message.reply_text("⚠️ Falsches Format! Bitte tt/mm/jj hh:mm senden.\nBeispiel: 24/03/26 03:54")
+            return
+        context.user_data["state"] = None
+        user_data_store.pop(user_id, None)
+
+    elif state == WAITING_SCHED_ENDDATE:
+        pending = user_data_store.get(user_id)
+        if not pending:
+            await update.message.reply_text("Bitte starte mit /start.")
+            return
+        sched_id = pending["sched_id"]
+        import datetime
+        try:
+            dt = datetime.datetime.strptime(update.message.text.strip(), "%d/%m/%y %H:%M")
+            bot_data = load_data()
+            for s in bot_data.get("scheduled", []):
+                if s["id"] == sched_id:
+                    s["end_date"] = dt.strftime("%d.%m.%Y %H:%M")
+                    save_data(bot_data)
+                    break
+            keyboard = [[InlineKeyboardButton("🔙 Zurück zur Nachricht", callback_data=f"sched_view_{sched_id}")]]
+            await update.message.reply_text(
+                f"✅ Enddatum gesetzt: {dt.strftime('%d.%m.%Y %H:%M')}",
+                reply_markup=InlineKeyboardMarkup(keyboard),
+            )
+        except ValueError:
+            await update.message.reply_text("⚠️ Falsches Format! Bitte tt/mm/jj hh:mm senden.\nBeispiel: 24/03/26 03:54")
+            return
+        context.user_data["state"] = None
+        user_data_store.pop(user_id, None)
+
 # --- /registergroup - run in a group to add it ---
 
 async def register_group(update: Update, context: ContextTypes.DEFAULT_TYPE):
