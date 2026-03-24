@@ -562,6 +562,16 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 break
         await show_scheduled_detail(query, context, user_id, sched_id)
 
+    elif data.startswith("sched_pin_"):
+        sched_id = data.replace("sched_pin_", "")
+        bot_data = load_data()
+        for s in bot_data.get("scheduled", []):
+            if s["id"] == sched_id:
+                s["pin_message"] = not s.get("pin_message", False)
+                save_data(bot_data)
+                break
+        await show_scheduled_detail(query, context, user_id, sched_id)
+
     elif data.startswith("sched_edit_text_"):
         sched_id = data.replace("sched_edit_text_", "")
         user_data_store[user_id] = {"action": "sched_edit_text", "sched_id": sched_id}
