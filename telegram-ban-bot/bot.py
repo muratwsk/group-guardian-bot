@@ -566,16 +566,11 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif data.startswith("sched_set_int_"):
         parts = data.replace("sched_set_int_", "").rsplit("_", 1)
         sched_id, minutes = parts[0], int(parts[1])
-        interval_labels = {
-            30: "Alle 30 Min", 60: "Jede Stunde", 120: "Alle 2 Stunden",
-            240: "Alle 4 Stunden", 360: "Alle 6 Stunden", 720: "Alle 12 Stunden",
-            1440: "Alle 24 Stunden",
-        }
         bot_data = load_data()
         for s in bot_data.get("scheduled", []):
             if s["id"] == sched_id:
                 s["interval_minutes"] = minutes
-                s["interval_label"] = interval_labels.get(minutes, f"Alle {minutes} Min")
+                s["interval_label"] = f"Alle {get_interval_label(minutes)}"
                 save_data(bot_data)
                 if s.get("active"):
                     schedule_job(context, s)
