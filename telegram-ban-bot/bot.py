@@ -356,6 +356,35 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif data == "menu_scheduled":
         await show_scheduled_list(query, context, user_id)
 
+    elif data.startswith("sched_page_"):
+        page = int(data.replace("sched_page_", ""))
+        await show_scheduled_list(query, context, user_id, page=page)
+
+    elif data.startswith("sched_toggle_active_list_"):
+        sched_id = data.replace("sched_toggle_active_list_", "")
+        bot_data = load_data()
+        for s in bot_data.get("scheduled", []):
+            if s["id"] == sched_id:
+                s["active"] = not s["active"]
+                save_data(bot_data)
+                if s["active"]:
+                    schedule_job(context, s)
+                else:
+                    remove_scheduled_job(context, sched_id)
+                break
+        await show_scheduled_list(query, context, user_id)
+
+    elif data.startswith("sched_delete_confirm_"):
+        sched_id = data.replace("sched_delete_confirm_", "")
+        keyboard = [
+            [InlineKeyboardButton("✅ Ja, löschen", callback_data=f"sched_delete_{sched_id}"),
+             InlineKeyboardButton("❌ Abbrechen", callback_data="menu_scheduled")],
+        ]
+        await query.edit_message_text(
+            "⚠️ Nachricht wirklich löschen?",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+        )
+
     elif data == "sched_new":
         groups = await get_bot_groups(context)
         if not groups:
