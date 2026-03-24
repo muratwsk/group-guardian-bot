@@ -156,25 +156,19 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_authorized(user_id):
         await update.message.reply_text("⛔ Kein Zugriff.")
         return
-    
-    # Ban/Unban buttons for everyone (admin + owner)
+
     keyboard = [
-        [InlineKeyboardButton("🚫 Ban", callback_data="action_ban"),
-         InlineKeyboardButton("✅ Unban", callback_data="action_unban")],
+        [InlineKeyboardButton("🚫 BannALL", callback_data="menu_banall")],
+        [InlineKeyboardButton("📨 Messenger", callback_data="menu_messenger")],
     ]
-    
-    # Owner-only buttons
+
+    # Owner-only settings
     if is_owner(user_id):
-        keyboard.append([InlineKeyboardButton("👥 Gruppen anzeigen", callback_data="show_groups")])
-        keyboard.append([
-            InlineKeyboardButton("➕ Admin hinzufügen", callback_data="add_admin"),
-            InlineKeyboardButton("➖ Admin entfernen", callback_data="remove_admin"),
-        ])
-        keyboard.append([InlineKeyboardButton("📢 Log-Kanal setzen", callback_data="set_log")])
+        keyboard.append([InlineKeyboardButton("⚙️ Einstellungen", callback_data="menu_settings")])
 
     role = "👑 Owner" if is_owner(user_id) else "🛡️ Admin"
     await update.message.reply_text(
-        f"🤖 *Ban-Bot Menü* ({role})\nWähle eine Aktion:",
+        f"🤖 *Bot Menü* ({role})\nWähle eine Aktion:",
         reply_markup=InlineKeyboardMarkup(keyboard),
         parse_mode="Markdown",
     )
@@ -186,6 +180,7 @@ WAITING_BAN_INPUT, WAITING_UNBAN_INPUT = range(2)
 WAITING_ADMIN_ADD, WAITING_ADMIN_REMOVE = range(2, 4)
 WAITING_LOG_CHANNEL = 4
 WAITING_GROUP_SELECT_BAN, WAITING_GROUP_SELECT_UNBAN = range(5, 7)
+WAITING_MESSENGER_INPUT = 7
 
 # Store pending data
 user_data_store = {}
@@ -201,7 +196,87 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     data = query.data
 
-    if data == "action_ban":
+    # === MAIN MENU ===
+    if data == "menu_banall":
+        keyboard = [
+            [InlineKeyboardButton("🚫 Ban", callback_data="action_ban"),
+             InlineKeyboardButton("✅ Unban", callback_data="action_unban")],
+            [InlineKeyboardButton("🔙 Zurück", callback_data="back_main")],
+        ]
+        await query.edit_message_text(
+            "🚫 *BannALL*\nWähle eine Aktion:",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode="Markdown",
+        )
+
+    elif data == "menu_messenger":
+        groups = await get_bot_groups(context)
+        if not groups:
+            await query.edit_message_text("Keine Gruppen registriert.")
+            return
+        keyboard = []
+        keyboard.append([InlineKeyboardButton("📢 ALLE GRUPPEN", callback_data="msg_all_groups")])
+        for g in groups:
+            keyboard.append([InlineKeyboardButton(g["title"], callback_data=f"msg_group_{g['id']}")])
+        keyboard.append([InlineKeyboardButton("🔙 Zurück", callback_data="back_main")])
+        await query.edit_message_text(
+            "📨 *Messenger*\nWähle die Gruppe(n) für die Nachricht:",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode="Markdown",
+        )
+
+    elif data == "menu_settings":
+        if not is_owner(user_id):
+            await query.edit_message_text("⛔ Nur für Owner.")
+            return
+        keyboard = [
+            [InlineKeyboardButton("👥 Gruppen anzeigen", callback_data="show_groups")],
+            [InlineKeyboardButton("➕ Admin hinzufügen", callback_data="add_admin"),
+             InlineKeyboardButton("➖ Admin entfernen", callback_data="remove_admin")],
+            [InlineKeyboardButton("📢 Log-Kanal setzen", callback_data="set_log")],
+            [InlineKeyboardButton("🔙 Zurück", callback_data="back_main")],
+        ]
+        await query.edit_message_text(
+            "⚙️ *Einstellungen*",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode="Markdown",
+        )
+
+    elif data == "back_main":
+        keyboard = [
+            [InlineKeyboardButton("🚫 BannALL", callback_data="menu_banall")],
+            [InlineKeyboardButton("📨 Messenger", callback_data="menu_messenger")],
+        ]
+        if is_owner(user_id):
+            keyboard.append([InlineKeyboardButton("⚙️ Einstellungen", callback_data="menu_settings")])
+        role = "👑 Owner" if is_owner(user_id) else "🛡️ Admin"
+        await query.edit_message_text(
+            f"🤖 *Bot Menü* ({role})\nWähle eine Aktion:",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode="Markdown",
+        )
+
+    # === MESSENGER ===
+    elif data == "msg_all_groups" or data.startswith("msg_group_"):
+        if data == "msg_all_groups":
+            groups = await get_bot_groups(context)
+            user_data_store[user_id] = {"action": "messenger", "groups": [g["id"] for g in groups]}
+        else:
+            gid = int(data.replace("msg_group_", ""))
+            user_data_store[user_id] = {"action": "messenger", "groups": [gid]}
+        await query.edit_message_text(
+            "📨 *Sende mir jetzt die Nachricht:*\n\n"
+            "Formatierung:\n"
+            "• `*fett*` → *fett*\n"
+            "• `_kursiv_` → _kursiv_\n"
+            "• `` `code` `` → `code`\n"
+            "• `[Link](https://...)` → Link",
+            parse_mode="Markdown",
+        )
+        context.user_data["state"] = WAITING_MESSENGER_INPUT
+
+    # === BAN/UNBAN ===
+    elif data == "action_ban":
         groups = await get_bot_groups(context)
         if not groups:
             await query.edit_message_text("Keine Gruppen registriert.")
@@ -210,6 +285,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         keyboard.append([InlineKeyboardButton("🔴 ALLE GRUPPEN", callback_data="ban_all_groups")])
         for g in groups:
             keyboard.append([InlineKeyboardButton(g["title"], callback_data=f"ban_group_{g['id']}")])
+        keyboard.append([InlineKeyboardButton("🔙 Zurück", callback_data="menu_banall")])
         await query.edit_message_text(
             "Wähle die Gruppe(n) für den Ban:",
             reply_markup=InlineKeyboardMarkup(keyboard),
@@ -224,6 +300,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         keyboard.append([InlineKeyboardButton("🟢 ALLE GRUPPEN", callback_data="unban_all_groups")])
         for g in groups:
             keyboard.append([InlineKeyboardButton(g["title"], callback_data=f"unban_group_{g['id']}")])
+        keyboard.append([InlineKeyboardButton("🔙 Zurück", callback_data="menu_banall")])
         await query.edit_message_text(
             "Wähle die Gruppe(n) für den Unban:",
             reply_markup=InlineKeyboardMarkup(keyboard),
@@ -249,6 +326,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text("Sende mir jetzt die User-ID oder den @username zum Entbannen:")
         context.user_data["state"] = WAITING_UNBAN_INPUT
 
+    # === SETTINGS ===
     elif data == "add_admin":
         if not is_owner(user_id):
             await query.edit_message_text("⛔ Nur für Owner.")
@@ -386,6 +464,35 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except ValueError:
             await update.message.reply_text("⚠️ Bitte eine numerische Chat-ID senden.")
         context.user_data["state"] = None
+
+    elif state == WAITING_MESSENGER_INPUT:
+        pending = user_data_store.get(user_id)
+        if not pending:
+            await update.message.reply_text("Bitte starte mit /start.")
+            return
+
+        groups = pending["groups"]
+        success = 0
+        fail = 0
+        for gid in groups:
+            try:
+                await context.bot.send_message(
+                    chat_id=gid,
+                    text=text,
+                    parse_mode="Markdown",
+                )
+                success += 1
+            except Exception as e:
+                fail += 1
+                logger.error(f"Messenger send failed in {gid}: {e}")
+
+        await update.message.reply_text(
+            f"📨 Nachricht gesendet!\n✅ {success} Gruppen erfolgreich"
+            + (f"\n❌ {fail} Fehler" if fail else ""),
+        )
+        await log_action(context, f"MESSENGER: {update.effective_user.full_name} ({user_id}) → {success} Gruppen\nText: {text[:100]}")
+        context.user_data["state"] = None
+        del user_data_store[user_id]
 
 # --- /registergroup - run in a group to add it ---
 
