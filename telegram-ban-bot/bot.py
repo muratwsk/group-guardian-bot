@@ -509,7 +509,7 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         groups = pending["groups"]
         success = 0
         fail = 0
-        import time
+        import time, datetime
         broadcast_id = str(int(time.time() * 1000))
         sent_msgs = []
         for gid in groups:
@@ -525,7 +525,15 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 fail += 1
                 logger.error(f"Messenger send failed in {gid}: {e}")
 
-        sent_broadcasts[broadcast_id] = sent_msgs
+        # Save broadcast persistently
+        bot_data = load_data()
+        bot_data.setdefault("broadcasts", {})[broadcast_id] = {
+            "messages": sent_msgs,
+            "date": datetime.datetime.now().strftime("%d.%m %H:%M"),
+            "count": success,
+            "preview": update.message.text[:50] if update.message.text else "...",
+        }
+        save_data(bot_data)
 
         keyboard = [[InlineKeyboardButton("🗑 Nachricht in allen Gruppen löschen", callback_data=f"del_broadcast_{broadcast_id}")]]
         await update.message.reply_text(
