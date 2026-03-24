@@ -1467,6 +1467,17 @@ async def unbanall(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"UNBANALL: {target_name} ({target_id}) von {update.effective_user.full_name}\n{result_text}",
     )
 
+# --- Delete service messages (pinned, joined, left, etc.) ---
+
+async def delete_service_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Automatically delete service/system messages in groups."""
+    if update.message:
+        try:
+            await update.message.delete()
+            logger.info(f"Deleted service message in {update.effective_chat.title} ({update.effective_chat.id})")
+        except Exception as e:
+            logger.error(f"Could not delete service message in {update.effective_chat.id}: {e}")
+
 # --- User tracker + auto re-ban ---
 
 async def track_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
