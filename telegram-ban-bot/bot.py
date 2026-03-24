@@ -2,6 +2,7 @@ import atexit
 import json
 import logging
 import os
+import requests as _requests
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     Application, CommandHandler, CallbackQueryHandler,
