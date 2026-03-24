@@ -1123,7 +1123,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             [InlineKeyboardButton("➕ Hinzufügen", callback_data="pcmd_add"),
              InlineKeyboardButton("➖ Entfernen", callback_data="pcmd_remove")],
             [InlineKeyboardButton("🗑 Alle löschen", callback_data="pcmd_clear_confirm")],
-            [InlineKeyboardButton("🔙 Zurück", callback_data="menu_config")],
+            [InlineKeyboardButton("🔙 Zurück", callback_data="back_main")],
         ]
         await query.edit_message_text(
             f"🏗 <b>Persönliche Befehle</b>\n\n"
