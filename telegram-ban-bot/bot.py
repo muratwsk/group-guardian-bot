@@ -186,6 +186,7 @@ WAITING_GROUP_SELECT_BAN, WAITING_GROUP_SELECT_UNBAN = range(5, 7)
 WAITING_MESSENGER_INPUT = 7
 WAITING_SCHEDULED_TEXT = 8
 WAITING_SCHEDULED_TIME = 9
+WAITING_SCHEDULED_MEDIA = 10
 
 # Store pending data
 user_data_store = {}
@@ -632,7 +633,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         for s in bot_data.get("scheduled", []):
             if s["id"] == sched_id:
                 preview_html = s.get("text_html", s.get("text", "(leer)"))
-                keyboard = [[InlineKeyboardButton("🔙 Zurück", callback_data=f"sched_view_{sched_id}")]]
+                keyboard = [[InlineKeyboardButton("🔙 Zurück", callback_data=f"sched_edit_text_{sched_id}")]]
                 await query.edit_message_text(
                     f"📄 <b>Nachrichtentext:</b>\n\n{preview_html}",
                     reply_markup=InlineKeyboardMarkup(keyboard),
@@ -640,6 +641,93 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 )
                 return
         await query.edit_message_text("⚠️ Nicht gefunden.")
+
+    elif data.startswith("sched_set_media_"):
+        sched_id = data.replace("sched_set_media_", "")
+        user_data_store[user_id] = {"action": "sched_set_media", "sched_id": sched_id}
+        bot_data = load_data()
+        sched = next((s for s in bot_data.get("scheduled", []) if s["id"] == sched_id), None)
+        keyboard = []
+        if sched and sched.get("media_file_id"):
+            keyboard.append([InlineKeyboardButton("🚫 Mitteilung entfernen", callback_data=f"sched_remove_media_{sched_id}")])
+        keyboard.append([InlineKeyboardButton("❌ Abbrechen", callback_data=f"sched_edit_text_{sched_id}")])
+        await query.edit_message_text(
+            "👉 <b>Sende jetzt ein Medium</b> (Foto, Video, Sticker ... ), das Du einstellen möchtest.\n"
+            "<i>Du kannst auch eine Bildunterschrift eingeben.</i>",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode="HTML",
+        )
+        context.user_data["state"] = WAITING_SCHEDULED_MEDIA
+
+    elif data.startswith("sched_remove_media_"):
+        sched_id = data.replace("sched_remove_media_", "")
+        bot_data = load_data()
+        for s in bot_data.get("scheduled", []):
+            if s["id"] == sched_id:
+                s.pop("media_file_id", None)
+                s.pop("media_type", None)
+                save_data(bot_data)
+                break
+        await show_sched_content_menu(query, context, user_id, sched_id)
+
+    elif data.startswith("sched_view_media_"):
+        sched_id = data.replace("sched_view_media_", "")
+        bot_data = load_data()
+        sched = next((s for s in bot_data.get("scheduled", []) if s["id"] == sched_id), None)
+        if not sched or not sched.get("media_file_id"):
+            await query.answer("Kein Medium gesetzt.", show_alert=True)
+            return
+        keyboard = [[InlineKeyboardButton("🔙 Zurück", callback_data=f"sched_edit_text_{sched_id}")]]
+        media_type = sched.get("media_type", "photo")
+        try:
+            if media_type == "photo":
+                await context.bot.send_photo(chat_id=query.message.chat_id, photo=sched["media_file_id"], reply_markup=InlineKeyboardMarkup(keyboard))
+            elif media_type == "video":
+                await context.bot.send_video(chat_id=query.message.chat_id, video=sched["media_file_id"], reply_markup=InlineKeyboardMarkup(keyboard))
+            elif media_type == "animation":
+                await context.bot.send_animation(chat_id=query.message.chat_id, animation=sched["media_file_id"], reply_markup=InlineKeyboardMarkup(keyboard))
+            elif media_type == "sticker":
+                await context.bot.send_sticker(chat_id=query.message.chat_id, sticker=sched["media_file_id"])
+                await context.bot.send_message(chat_id=query.message.chat_id, text="⬆️ Aktueller Sticker", reply_markup=InlineKeyboardMarkup(keyboard))
+            else:
+                await context.bot.send_document(chat_id=query.message.chat_id, document=sched["media_file_id"], reply_markup=InlineKeyboardMarkup(keyboard))
+        except Exception as e:
+            await query.edit_message_text(f"⚠️ Fehler beim Anzeigen: {e}")
+
+    elif data.startswith("sched_preview_"):
+        sched_id = data.replace("sched_preview_", "")
+        bot_data = load_data()
+        sched = next((s for s in bot_data.get("scheduled", []) if s["id"] == sched_id), None)
+        if not sched:
+            await query.edit_message_text("⚠️ Nicht gefunden.")
+            return
+        keyboard = [[InlineKeyboardButton("🔙 Zurück", callback_data=f"sched_edit_text_{sched_id}")]]
+        text_html = sched.get("text_html", sched.get("text", ""))
+        media_fid = sched.get("media_file_id")
+        media_type = sched.get("media_type", "photo")
+        try:
+            if media_fid and text_html:
+                if media_type == "photo":
+                    await context.bot.send_photo(chat_id=query.message.chat_id, photo=media_fid, caption=text_html, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(keyboard))
+                elif media_type == "video":
+                    await context.bot.send_video(chat_id=query.message.chat_id, video=media_fid, caption=text_html, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(keyboard))
+                elif media_type == "animation":
+                    await context.bot.send_animation(chat_id=query.message.chat_id, animation=media_fid, caption=text_html, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(keyboard))
+                else:
+                    await context.bot.send_document(chat_id=query.message.chat_id, document=media_fid, caption=text_html, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(keyboard))
+            elif media_fid:
+                if media_type == "photo":
+                    await context.bot.send_photo(chat_id=query.message.chat_id, photo=media_fid, reply_markup=InlineKeyboardMarkup(keyboard))
+                elif media_type == "video":
+                    await context.bot.send_video(chat_id=query.message.chat_id, video=media_fid, reply_markup=InlineKeyboardMarkup(keyboard))
+                else:
+                    await context.bot.send_document(chat_id=query.message.chat_id, document=media_fid, reply_markup=InlineKeyboardMarkup(keyboard))
+            elif text_html:
+                await query.edit_message_text(f"👀 <b>Vorschau:</b>\n\n{text_html}", reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
+            else:
+                await query.answer("Kein Inhalt gesetzt.", show_alert=True)
+        except Exception as e:
+            await query.edit_message_text(f"⚠️ Vorschau-Fehler: {e}")
 
     elif data.startswith("sched_set_int_"):
         parts = data.replace("sched_set_int_", "").rsplit("_", 1)
@@ -1214,7 +1302,74 @@ async def block_banned_join_request(update: Update, context: ContextTypes.DEFAUL
         except Exception as e:
             logger.error(f"Decline join request failed for {member.id} in {request.chat.id}: {e}")
 
-# --- Import groups from JSON file ---
+# --- Media handler (photos, videos, stickers for scheduled messages + JSON import) ---
+
+async def media_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle media uploads for scheduled messages, or JSON file imports."""
+    user_id = update.effective_user.id
+    state = context.user_data.get("state")
+    
+    # If waiting for scheduled media
+    if state == WAITING_SCHEDULED_MEDIA:
+        pending = user_data_store.get(user_id)
+        if not pending or pending.get("action") != "sched_set_media":
+            return
+        sched_id = pending["sched_id"]
+        
+        # Determine media type and file_id
+        media_file_id = None
+        media_type = None
+        msg = update.message
+        
+        if msg.photo:
+            media_file_id = msg.photo[-1].file_id  # highest resolution
+            media_type = "photo"
+        elif msg.video:
+            media_file_id = msg.video.file_id
+            media_type = "video"
+        elif msg.animation:
+            media_file_id = msg.animation.file_id
+            media_type = "animation"
+        elif msg.sticker:
+            media_file_id = msg.sticker.file_id
+            media_type = "sticker"
+        elif msg.document:
+            # Check if it's a JSON import or a media document
+            if msg.document.file_name and msg.document.file_name.endswith(".json"):
+                # Redirect to document_handler for JSON import
+                context.user_data["state"] = None
+                user_data_store.pop(user_id, None)
+                return await document_handler(update, context)
+            media_file_id = msg.document.file_id
+            media_type = "document"
+        
+        if not media_file_id:
+            await msg.reply_text("⚠️ Konnte kein Medium erkennen. Bitte sende ein Foto, Video oder Sticker.")
+            return
+        
+        # Save to scheduled message
+        bot_data = load_data()
+        for s in bot_data.get("scheduled", []):
+            if s["id"] == sched_id:
+                s["media_file_id"] = media_file_id
+                s["media_type"] = media_type
+                save_data(bot_data)
+                break
+        
+        context.user_data["state"] = None
+        user_data_store.pop(user_id, None)
+        
+        keyboard = [[InlineKeyboardButton("🔙 Zurück zur Nachricht", callback_data=f"sched_edit_text_{sched_id}")]]
+        await msg.reply_text(
+            f"✅ Medium ({media_type}) gespeichert!",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+        )
+        return
+    
+    # If it's a document and not in media state, try JSON import
+    if update.message.document:
+        return await document_handler(update, context)
+
 
 async def document_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Import groups from a JSON file sent in private chat."""
@@ -1439,26 +1594,21 @@ async def show_sched_content_menu(query, context, user_id, sched_id):
         return
     
     has_text = "✅" if sched.get("text") else "❌"
-    has_media = "✅" if sched.get("media") else "❌"
-    has_buttons = "✅" if sched.get("buttons") else "❌"
+    has_media = "✅" if sched.get("media_file_id") else "❌"
     
     text = (
         f"🕐 <b>Wiederholte Mitteilungen</b>\n\n"
         f"📄 Text {has_text}\n"
-        f"🖼 Medien {has_media}\n"
-        f"🔤 Buttons {has_buttons}\n\n"
+        f"🖼 Medien {has_media}\n\n"
         f"👉 Mit den Schaltflächen hier kannst Du auswählen, was Du einstellen willst."
     )
     
     keyboard = [
         [InlineKeyboardButton("📄 Text", callback_data=f"sched_set_text_{sched_id}"),
          InlineKeyboardButton("👀 Sehen", callback_data=f"sched_view_text_{sched_id}")],
-        [InlineKeyboardButton("🖼 Medien", callback_data="noop"),
-         InlineKeyboardButton("👀 Sehen", callback_data="noop")],
-        [InlineKeyboardButton("🔤 Buttons", callback_data="noop"),
-         InlineKeyboardButton("👀 Sehen", callback_data="noop")],
-        [InlineKeyboardButton("👀 Vollständige Vorschau", callback_data=f"sched_view_text_{sched_id}")],
-        [InlineKeyboardButton("📂 Wähle Thema 🆕", callback_data="noop")],
+        [InlineKeyboardButton("🖼 Medien", callback_data=f"sched_set_media_{sched_id}"),
+         InlineKeyboardButton("👀 Sehen", callback_data=f"sched_view_media_{sched_id}")],
+        [InlineKeyboardButton("👀 Vollständige Vorschau", callback_data=f"sched_preview_{sched_id}")],
         [InlineKeyboardButton("↩️ Zurück", callback_data=f"sched_view_{sched_id}")],
     ]
     
@@ -1632,14 +1782,32 @@ async def execute_scheduled_message(context: ContextTypes.DEFAULT_TYPE):
     
     # Send new messages
     sent_msgs = []
+    text_html = sched.get("text_html", sched.get("text", ""))
+    media_fid = sched.get("media_file_id")
+    media_type = sched.get("media_type", "photo")
+    
     for gid in sched.get("groups", []):
         try:
-            msg = await context.bot.send_message(
-                chat_id=gid,
-                text=sched.get("text_html", sched.get("text", "")),
-                parse_mode="HTML",
-            )
+            if media_fid:
+                if media_type == "photo":
+                    msg = await context.bot.send_photo(chat_id=gid, photo=media_fid, caption=text_html or None, parse_mode="HTML" if text_html else None)
+                elif media_type == "video":
+                    msg = await context.bot.send_video(chat_id=gid, video=media_fid, caption=text_html or None, parse_mode="HTML" if text_html else None)
+                elif media_type == "animation":
+                    msg = await context.bot.send_animation(chat_id=gid, animation=media_fid, caption=text_html or None, parse_mode="HTML" if text_html else None)
+                elif media_type == "sticker":
+                    msg = await context.bot.send_sticker(chat_id=gid, sticker=media_fid)
+                else:
+                    msg = await context.bot.send_document(chat_id=gid, document=media_fid, caption=text_html or None, parse_mode="HTML" if text_html else None)
+            else:
+                msg = await context.bot.send_message(chat_id=gid, text=text_html, parse_mode="HTML")
             sent_msgs.append([gid, msg.message_id])
+            # Pin if enabled
+            if sched.get("pin_message"):
+                try:
+                    await context.bot.pin_chat_message(chat_id=gid, message_id=msg.message_id, disable_notification=True)
+                except Exception:
+                    pass
         except Exception as e:
             logger.error(f"Scheduled send failed in {gid}: {e}")
     
@@ -1752,7 +1920,7 @@ def main():
     app.add_handler(CommandHandler("unbanall", unbanall))
     app.add_handler(CallbackQueryHandler(button_handler))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & filters.ChatType.PRIVATE, text_handler))
-    app.add_handler(MessageHandler(filters.Document.ALL & filters.ChatType.PRIVATE, document_handler))
+    app.add_handler(MessageHandler((filters.PHOTO | filters.VIDEO | filters.Sticker.ALL | filters.ANIMATION | filters.Document.ALL) & filters.ChatType.PRIVATE, media_handler))
     app.add_handler(MessageHandler(filters.ALL & (filters.ChatType.GROUP | filters.ChatType.SUPERGROUP), track_message), group=1)
     app.add_handler(ChatMemberHandler(enforce_ban_on_chat_member, ChatMemberHandler.CHAT_MEMBER), group=2)
     app.add_handler(ChatJoinRequestHandler(block_banned_join_request), group=3)
