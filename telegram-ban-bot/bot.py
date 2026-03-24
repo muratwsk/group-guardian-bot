@@ -1767,9 +1767,24 @@ async def info_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if target_id is None:
         return
 
-    # Get additional info
+    # Get additional info from tracked users
     tracked = lookup_user(str(target_id))
     username = tracked.get("username") if tracked else None
+
+    # Try to get full user info from Telegram API
+    try:
+        chat_info = await context.bot.get_chat(target_id)
+        bio = chat_info.bio or "—"
+        has_photo = chat_info.photo is not None
+        first_name = chat_info.first_name or ""
+        last_name = chat_info.last_name or ""
+        full_name = f"{first_name} {last_name}".strip() or target_name
+        if chat_info.username:
+            username = chat_info.username
+    except Exception:
+        bio = "—"
+        has_photo = False
+        full_name = target_name
 
     # Check ban status across groups
     bot_data = load_data()
@@ -1779,12 +1794,15 @@ async def info_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if is_banned_in_group(g["id"], target_id):
             banned_in += 1
 
-    # Try to get chat member info from the first group
+    # Try to get chat member info from groups
     situation = "Unbekannt"
     join_date = None
-    try:
-        if groups:
-            member = await context.bot.get_chat_member(chat_id=groups[0]["id"], user_id=target_id)
+    member_status_raw = None
+    is_premium = False
+    for g in groups:
+        try:
+            member = await context.bot.get_chat_member(chat_id=g["id"], user_id=target_id)
+            member_status_raw = member.status
             status_map = {
                 "creator": "👑 Ersteller",
                 "administrator": "🛡️ Admin",
@@ -1794,25 +1812,39 @@ async def info_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "kicked": "🚫 Gebannt",
             }
             situation = status_map.get(member.status, member.status)
-    except Exception:
-        pass
+            # Check premium
+            if hasattr(member, 'user') and member.user:
+                is_premium = getattr(member.user, 'is_premium', False) or False
+            break
+        except Exception:
+            continue
 
-    # Build info text
-    name_display = f"<a href='tg://user?id={target_id}'>{html.escape(target_name)}</a>"
+    # Build info text like the screenshot
+    name_display = f"<a href='tg://user?id={target_id}'>{html.escape(full_name)}</a>"
     username_display = f"@{username}" if username else "—"
+    photo_icon = "✅" if has_photo else "❌"
+    premium_icon = "⭐ Ja" if is_premium else "Nein"
+    ban_status = f"🚫 {banned_in}/{len(groups)} Gruppen" if banned_in > 0 else "✅ Nicht gebannt"
 
     info_text = (
-        f"🆔 <b>ID:</b> <code>{target_id}</code>\n"
+        f"━━━━━━━━━━━━━━━━━━\n"
+        f"🆔 <b>ID:</b> <code>{target_id}</code> <code>#id{target_id}</code>\n"
         f"👤 <b>Name:</b> {name_display}\n"
         f"🔗 <b>Username:</b> {username_display}\n"
         f"👀 <b>Situation:</b> {situation}\n"
-        f"🚫 <b>Gebannt in:</b> {banned_in}/{len(groups)} Gruppen"
+        f"📷 <b>Profilbild:</b> {photo_icon}\n"
+        f"⭐ <b>Premium:</b> {premium_icon}\n"
+        f"📝 <b>Bio:</b> {html.escape(bio[:100]) if bio != '—' else '—'}\n"
+        f"🚫 <b>Ban-Status:</b> {ban_status}\n"
+        f"━━━━━━━━━━━━━━━━━━"
     )
 
-    # Inline buttons
+    # Inline buttons - 2 column grid like screenshot
     keyboard = [
         [InlineKeyboardButton("🚫 BanALL", callback_data=f"info_ban_{target_id}"),
          InlineKeyboardButton("✅ UnbanALL", callback_data=f"info_unban_{target_id}")],
+        [InlineKeyboardButton("🔇 Mute", callback_data=f"info_mute_{target_id}"),
+         InlineKeyboardButton("🔊 Unmute", callback_data=f"info_unmute_{target_id}")],
     ]
 
     await update.message.reply_text(
