@@ -1426,6 +1426,49 @@ async def show_sched_group_selection(query, context, user_id, groups):
     )
 
 
+async def show_sched_content_menu(query, context, user_id, sched_id):
+    """Show content editing menu: Text, Medien, Buttons - like Worldskandi screenshot."""
+    bot_data = load_data()
+    sched = None
+    for s in bot_data.get("scheduled", []):
+        if s["id"] == sched_id:
+            sched = s
+            break
+    if not sched:
+        await query.edit_message_text("⚠️ Nachricht nicht gefunden.")
+        return
+    
+    has_text = "✅" if sched.get("text") else "❌"
+    has_media = "✅" if sched.get("media") else "❌"
+    has_buttons = "✅" if sched.get("buttons") else "❌"
+    
+    text = (
+        f"🕐 <b>Wiederholte Mitteilungen</b>\n\n"
+        f"📄 Text {has_text}\n"
+        f"🖼 Medien {has_media}\n"
+        f"🔤 Buttons {has_buttons}\n\n"
+        f"👉 Mit den Schaltflächen hier kannst Du auswählen, was Du einstellen willst."
+    )
+    
+    keyboard = [
+        [InlineKeyboardButton("📄 Text", callback_data=f"sched_set_text_{sched_id}"),
+         InlineKeyboardButton("👀 Sehen", callback_data=f"sched_view_text_{sched_id}")],
+        [InlineKeyboardButton("🖼 Medien", callback_data="noop"),
+         InlineKeyboardButton("👀 Sehen", callback_data="noop")],
+        [InlineKeyboardButton("🔤 Buttons", callback_data="noop"),
+         InlineKeyboardButton("👀 Sehen", callback_data="noop")],
+        [InlineKeyboardButton("👀 Vollständige Vorschau", callback_data=f"sched_view_text_{sched_id}")],
+        [InlineKeyboardButton("📂 Wähle Thema 🆕", callback_data="noop")],
+        [InlineKeyboardButton("↩️ Zurück", callback_data=f"sched_view_{sched_id}")],
+    ]
+    
+    await query.edit_message_text(
+        text,
+        reply_markup=InlineKeyboardMarkup(keyboard),
+        parse_mode="HTML",
+    )
+
+
 async def show_scheduled_detail(query, context, user_id, sched_id):
     """Show detail view matching Worldskandi screenshot exactly."""
     bot_data = load_data()
