@@ -465,6 +465,35 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("⚠️ Bitte eine numerische Chat-ID senden.")
         context.user_data["state"] = None
 
+    elif state == WAITING_MESSENGER_INPUT:
+        pending = user_data_store.get(user_id)
+        if not pending:
+            await update.message.reply_text("Bitte starte mit /start.")
+            return
+
+        groups = pending["groups"]
+        success = 0
+        fail = 0
+        for gid in groups:
+            try:
+                await context.bot.send_message(
+                    chat_id=gid,
+                    text=text,
+                    parse_mode="Markdown",
+                )
+                success += 1
+            except Exception as e:
+                fail += 1
+                logger.error(f"Messenger send failed in {gid}: {e}")
+
+        await update.message.reply_text(
+            f"📨 Nachricht gesendet!\n✅ {success} Gruppen erfolgreich"
+            + (f"\n❌ {fail} Fehler" if fail else ""),
+        )
+        await log_action(context, f"MESSENGER: {update.effective_user.full_name} ({user_id}) → {success} Gruppen\nText: {text[:100]}")
+        context.user_data["state"] = None
+        del user_data_store[user_id]
+
 # --- /registergroup - run in a group to add it ---
 
 async def register_group(update: Update, context: ContextTypes.DEFAULT_TYPE):
