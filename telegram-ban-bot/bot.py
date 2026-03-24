@@ -277,6 +277,19 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         context.user_data["state"] = WAITING_MESSENGER_INPUT
 
+    # === DELETE BROADCAST ===
+    elif data.startswith("del_broadcast_"):
+        broadcast_id = data.replace("del_broadcast_", "")
+        msgs = sent_broadcasts.pop(broadcast_id, [])
+        deleted = 0
+        for chat_id, msg_id in msgs:
+            try:
+                await context.bot.delete_message(chat_id=chat_id, message_id=msg_id)
+                deleted += 1
+            except Exception as e:
+                logger.error(f"Delete broadcast msg failed in {chat_id}: {e}")
+        await query.edit_message_text(f"🗑 {deleted} Nachrichten gelöscht.")
+
     # === BAN/UNBAN ===
     elif data == "action_ban":
         groups = await get_bot_groups(context)
