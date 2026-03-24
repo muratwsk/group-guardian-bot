@@ -2326,6 +2326,21 @@ def main():
     app.add_handler(ChatMemberHandler(enforce_ban_on_chat_member, ChatMemberHandler.CHAT_MEMBER), group=2)
     app.add_handler(ChatJoinRequestHandler(block_banned_join_request), group=3)
 
+    # Delete ALL service messages (pinned, joined, left, title change, etc.)
+    service_filter = (
+        filters.StatusUpdate.PINNED_MESSAGE
+        | filters.StatusUpdate.NEW_CHAT_MEMBERS
+        | filters.StatusUpdate.LEFT_CHAT_MEMBER
+        | filters.StatusUpdate.NEW_CHAT_TITLE
+        | filters.StatusUpdate.NEW_CHAT_PHOTO
+        | filters.StatusUpdate.DELETE_CHAT_PHOTO
+        | filters.StatusUpdate.MIGRATE
+    )
+    app.add_handler(MessageHandler(
+        service_filter & (filters.ChatType.GROUP | filters.ChatType.SUPERGROUP),
+        delete_service_message
+    ), group=4)
+
     # Restore scheduled jobs
     if app.job_queue:
         bot_data = load_data()
