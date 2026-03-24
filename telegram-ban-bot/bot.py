@@ -266,16 +266,37 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             gid = int(data.replace("msg_group_", ""))
             user_data_store[user_id] = {"action": "messenger", "groups": [gid]}
+        keyboard = [
+            [
+                InlineKeyboardButton("𝗕 Fett", callback_data="fmt_bold"),
+                InlineKeyboardButton("𝘐 Kursiv", callback_data="fmt_italic"),
+            ],
+            [
+                InlineKeyboardButton("🔗 Link", callback_data="fmt_link"),
+                InlineKeyboardButton("💬 Zitat", callback_data="fmt_quote"),
+            ],
+        ]
         await query.edit_message_text(
             "📨 Sende mir jetzt die Nachricht:\n\n"
-            "Formatierung:\n"
-            "• <b>fett</b> → schreibe: &lt;b&gt;text&lt;/b&gt;\n"
-            "• <i>kursiv</i> → schreibe: &lt;i&gt;text&lt;/i&gt;\n"
-            "• <a href='https://example.com'>Klick mich</a> → schreibe: &lt;a href='URL'&gt;Text&lt;/a&gt;\n"
-            "• Zitat → schreibe: &lt;blockquote&gt;text&lt;/blockquote&gt;",
-            parse_mode="HTML",
+            "Tipp: Klicke auf einen Button um die Formatierung zu sehen.",
+            reply_markup=InlineKeyboardMarkup(keyboard),
         )
         context.user_data["state"] = WAITING_MESSENGER_INPUT
+
+    # === FORMAT HELP BUTTONS ===
+    elif data.startswith("fmt_"):
+        fmt_examples = {
+            "fmt_bold": "Für <b>fett</b> schreibe:\n<code>&lt;b&gt;dein Text&lt;/b&gt;</code>",
+            "fmt_italic": "Für <i>kursiv</i> schreibe:\n<code>&lt;i&gt;dein Text&lt;/i&gt;</code>",
+            "fmt_link": "Für einen <a href='https://example.com'>klickbaren Link</a> schreibe:\n<code>&lt;a href='https://dein-link.de'&gt;Text&lt;/a&gt;</code>",
+            "fmt_quote": "Für ein Zitat schreibe:\n<code>&lt;blockquote&gt;dein Text&lt;/blockquote&gt;</code>",
+        }
+        await query.answer()
+        await context.bot.send_message(
+            chat_id=query.message.chat_id,
+            text=fmt_examples.get(data, ""),
+            parse_mode="HTML",
+        )
 
     # === DELETE BROADCAST ===
     elif data.startswith("del_broadcast_"):
