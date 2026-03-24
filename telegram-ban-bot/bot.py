@@ -2051,18 +2051,28 @@ async def show_interval_picker(query, context, user_id, back_callback="menu_sche
 
 async def execute_scheduled_message(context: ContextTypes.DEFAULT_TYPE):
     """Execute a scheduled message job."""
-    job = context.job
-    sched_id = job.data
-    
-    bot_data = load_data()
-    sched = None
-    for s in bot_data.get("scheduled", []):
-        if s["id"] == sched_id:
-            sched = s
-            break
-    
-    if not sched or not sched.get("active"):
-        return
+    try:
+        job = context.job
+        sched_id = job.data
+        logger.info(f"Executing scheduled message {sched_id}")
+        
+        bot_data = load_data()
+        sched = None
+        for s in bot_data.get("scheduled", []):
+            if s["id"] == sched_id:
+                sched = s
+                break
+        
+        if not sched or not sched.get("active"):
+            logger.info(f"Scheduled message {sched_id} not found or inactive")
+            return
+        
+        text_html = sched.get("text_html", sched.get("text", ""))
+        media_fid = sched.get("media_file_id")
+        
+        if not text_html and not media_fid:
+            logger.warning(f"Scheduled message {sched_id} has no text and no media, skipping")
+            return
     
     import datetime
     
