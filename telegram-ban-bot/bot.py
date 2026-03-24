@@ -1467,6 +1467,17 @@ async def unbanall(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"UNBANALL: {target_name} ({target_id}) von {update.effective_user.full_name}\n{result_text}",
     )
 
+# --- Delete service messages (pinned, joined, left, etc.) ---
+
+async def delete_service_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Automatically delete service/system messages in groups."""
+    if update.message:
+        try:
+            await update.message.delete()
+            logger.info(f"Deleted service message in {update.effective_chat.title} ({update.effective_chat.id})")
+        except Exception as e:
+            logger.error(f"Could not delete service message in {update.effective_chat.id}: {e}")
+
 # --- User tracker + auto re-ban ---
 
 async def track_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -2325,6 +2336,21 @@ def main():
     app.add_handler(MessageHandler(filters.ALL & (filters.ChatType.GROUP | filters.ChatType.SUPERGROUP), track_message), group=1)
     app.add_handler(ChatMemberHandler(enforce_ban_on_chat_member, ChatMemberHandler.CHAT_MEMBER), group=2)
     app.add_handler(ChatJoinRequestHandler(block_banned_join_request), group=3)
+
+    # Delete ALL service messages (pinned, joined, left, title change, etc.)
+    service_filter = (
+        filters.StatusUpdate.PINNED_MESSAGE
+        | filters.StatusUpdate.NEW_CHAT_MEMBERS
+        | filters.StatusUpdate.LEFT_CHAT_MEMBER
+        | filters.StatusUpdate.NEW_CHAT_TITLE
+        | filters.StatusUpdate.NEW_CHAT_PHOTO
+        | filters.StatusUpdate.DELETE_CHAT_PHOTO
+        | filters.StatusUpdate.MIGRATE
+    )
+    app.add_handler(MessageHandler(
+        service_filter & (filters.ChatType.GROUP | filters.ChatType.SUPERGROUP),
+        delete_service_message
+    ), group=4)
 
     # Restore scheduled jobs
     if app.job_queue:
