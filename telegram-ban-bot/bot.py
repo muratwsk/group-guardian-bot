@@ -37,6 +37,7 @@ def normalize_data(data):
     data.setdefault("groups", [])
     data.setdefault("banned_users", {})
     data.setdefault("broadcasts", {})
+    data.setdefault("scheduled", [])
     return data
 
 def load_data():
