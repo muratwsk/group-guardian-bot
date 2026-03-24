@@ -949,6 +949,165 @@ def ensure_single_instance():
 
     atexit.register(cleanup_lock)
 
+    # === SCHEDULED MESSAGES ===
+    elif data == "menu_scheduled":
+        await show_scheduled_list(query, context, user_id)
+
+    elif data == "sched_new":
+        groups = await get_bot_groups(context)
+        if not groups:
+            await query.edit_message_text("Keine Gruppen registriert.")
+            return
+        user_data_store[user_id] = {"action": "sched_select", "selected": set()}
+        await show_sched_group_selection(query, context, user_id, groups)
+
+    elif data.startswith("sched_toggle_"):
+        gid = int(data.replace("sched_toggle_", ""))
+        pending = user_data_store.get(user_id, {})
+        selected = pending.get("selected", set())
+        if gid in selected:
+            selected.discard(gid)
+        else:
+            selected.add(gid)
+        pending["selected"] = selected
+        user_data_store[user_id] = pending
+        groups = await get_bot_groups(context)
+        await show_sched_group_selection(query, context, user_id, groups)
+
+    elif data == "sched_select_all":
+        groups = await get_bot_groups(context)
+        user_data_store[user_id] = {"action": "sched_select", "selected": {g["id"] for g in groups}}
+        await show_sched_group_selection(query, context, user_id, groups)
+
+    elif data == "sched_select_none":
+        user_data_store[user_id] = {"action": "sched_select", "selected": set()}
+        groups = await get_bot_groups(context)
+        await show_sched_group_selection(query, context, user_id, groups)
+
+    elif data == "sched_confirm_groups":
+        pending = user_data_store.get(user_id, {})
+        selected = pending.get("selected", set())
+        if not selected:
+            await query.answer("⚠️ Wähle mindestens eine Gruppe!", show_alert=True)
+            return
+        user_data_store[user_id] = {"action": "sched_text", "groups": list(selected)}
+        await query.edit_message_text(
+            "📝 Sende mir jetzt die Nachricht für die wiederholte Sendung.\n\n"
+            "Tipp: Nutze die Telegram-Formatierung (Fett, Kursiv, Link, Zitat).",
+        )
+        context.user_data["state"] = WAITING_SCHEDULED_TEXT
+
+    elif data == "sched_time_confirm":
+        pending = user_data_store.get(user_id, {})
+        if not pending or pending.get("action") != "sched_set_time":
+            await query.edit_message_text("⚠️ Bitte starte nochmal.")
+            return
+        # Show interval selection
+        keyboard = [
+            [InlineKeyboardButton("⏱ Alle 30 Min", callback_data="sched_interval_30"),
+             InlineKeyboardButton("🕐 Jede Stunde", callback_data="sched_interval_60")],
+            [InlineKeyboardButton("🕑 Alle 2 Std", callback_data="sched_interval_120"),
+             InlineKeyboardButton("🕓 Alle 4 Std", callback_data="sched_interval_240")],
+            [InlineKeyboardButton("🕕 Alle 6 Std", callback_data="sched_interval_360"),
+             InlineKeyboardButton("🕛 Alle 12 Std", callback_data="sched_interval_720")],
+            [InlineKeyboardButton("📅 Alle 24 Std", callback_data="sched_interval_1440")],
+            [InlineKeyboardButton("🔙 Zurück", callback_data="menu_scheduled")],
+        ]
+        await query.edit_message_text(
+            "🔁 *Wiederholung wählen:*\nWie oft soll die Nachricht gesendet werden?",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode="Markdown",
+        )
+
+    elif data.startswith("sched_interval_"):
+        minutes = int(data.replace("sched_interval_", ""))
+        pending = user_data_store.get(user_id, {})
+        if not pending:
+            await query.edit_message_text("⚠️ Bitte starte nochmal.")
+            return
+        
+        import time as _time, datetime
+        sched_id = str(int(_time.time() * 1000))
+        bot_data = load_data()
+        
+        interval_labels = {
+            30: "Alle 30 Min", 60: "Jede Stunde", 120: "Alle 2 Stunden",
+            240: "Alle 4 Stunden", 360: "Alle 6 Stunden", 720: "Alle 12 Stunden",
+            1440: "Alle 24 Stunden",
+        }
+        
+        new_sched = {
+            "id": sched_id,
+            "groups": pending["groups"],
+            "text": pending["text"],
+            "text_html": pending.get("text_html", pending["text"]),
+            "time": pending.get("time", datetime.datetime.now().strftime("%H:%M")),
+            "interval_minutes": minutes,
+            "interval_label": interval_labels.get(minutes, f"Alle {minutes} Min"),
+            "active": True,
+            "created_by": user_id,
+            "created_at": datetime.datetime.now().strftime("%d.%m.%Y %H:%M"),
+            "last_sent": None,
+            "last_sent_messages": [],
+            "delete_previous": True,
+        }
+        bot_data.setdefault("scheduled", []).append(new_sched)
+        save_data(bot_data)
+        
+        # Schedule the job
+        schedule_job(context, new_sched)
+        
+        groups = await get_bot_groups(context)
+        group_names = [g["title"] for g in groups if g["id"] in pending["groups"]]
+        
+        await query.edit_message_text(
+            f"✅ *Wiederholte Nachricht erstellt!*\n\n"
+            f"⏰ Zeit: {new_sched['time']}\n"
+            f"🔁 {new_sched['interval_label']}\n"
+            f"📨 Gruppen: {', '.join(group_names)}\n"
+            f"📝 Text: {pending['text'][:50]}...\n\n"
+            f"🚀 Nächster Versand: {new_sched['time']}",
+            parse_mode="Markdown",
+        )
+        user_data_store.pop(user_id, None)
+        context.user_data["state"] = None
+
+    elif data.startswith("sched_view_"):
+        sched_id = data.replace("sched_view_", "")
+        await show_scheduled_detail(query, context, user_id, sched_id)
+
+    elif data.startswith("sched_toggle_active_"):
+        sched_id = data.replace("sched_toggle_active_", "")
+        bot_data = load_data()
+        for s in bot_data.get("scheduled", []):
+            if s["id"] == sched_id:
+                s["active"] = not s["active"]
+                save_data(bot_data)
+                if s["active"]:
+                    schedule_job(context, s)
+                else:
+                    remove_scheduled_job(context, sched_id)
+                break
+        await show_scheduled_detail(query, context, user_id, sched_id)
+
+    elif data.startswith("sched_delete_"):
+        sched_id = data.replace("sched_delete_", "")
+        bot_data = load_data()
+        bot_data["scheduled"] = [s for s in bot_data.get("scheduled", []) if s["id"] != sched_id]
+        save_data(bot_data)
+        remove_scheduled_job(context, sched_id)
+        await query.edit_message_text("🗑 Wiederholte Nachricht gelöscht.")
+
+    elif data.startswith("sched_del_prev_"):
+        sched_id = data.replace("sched_del_prev_", "")
+        bot_data = load_data()
+        for s in bot_data.get("scheduled", []):
+            if s["id"] == sched_id:
+                s["delete_previous"] = not s.get("delete_previous", True)
+                save_data(bot_data)
+                break
+        await show_scheduled_detail(query, context, user_id, sched_id)
+
 
 def main():
     cfg = load_config()
