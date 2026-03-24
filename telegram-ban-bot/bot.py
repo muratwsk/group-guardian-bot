@@ -1296,6 +1296,7 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     chat_id=gid,
                     text=update.message.text_html,
                     parse_mode="HTML",
+                    disable_web_page_preview=True,
                 )
                 sent_msgs.append((gid, msg.message_id))
                 success += 1
