@@ -870,6 +870,58 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 break
         await show_scheduled_detail(query, context, user_id, sched_id)
 
+    # === EDIT GROUPS ON EXISTING SCHEDULED MESSAGE ===
+    elif data.startswith("sched_edit_groups_"):
+        sched_id = data.replace("sched_edit_groups_", "")
+        await show_sched_edit_groups(query, context, user_id, sched_id)
+
+    elif data.startswith("sched_grp_toggle_"):
+        rest = data.replace("sched_grp_toggle_", "")
+        # Format: sched_grp_toggle_SCHEDID_GROUPID
+        parts = rest.rsplit("_", 1)
+        sched_id, gid = parts[0], int(parts[1])
+        bot_data = load_data()
+        for s in bot_data.get("scheduled", []):
+            if s["id"] == sched_id:
+                groups_set = set(s.get("groups", []))
+                if gid in groups_set:
+                    groups_set.discard(gid)
+                else:
+                    groups_set.add(gid)
+                s["groups"] = list(groups_set)
+                save_data(bot_data)
+                if s.get("active"):
+                    schedule_job(context, s)
+                break
+        await show_sched_edit_groups(query, context, user_id, sched_id)
+
+    elif data.startswith("sched_grp_all_"):
+        sched_id = data.replace("sched_grp_all_", "")
+        groups = await get_bot_groups(context)
+        bot_data = load_data()
+        for s in bot_data.get("scheduled", []):
+            if s["id"] == sched_id:
+                s["groups"] = [g["id"] for g in groups]
+                save_data(bot_data)
+                if s.get("active"):
+                    schedule_job(context, s)
+                break
+        await show_sched_edit_groups(query, context, user_id, sched_id)
+
+    elif data.startswith("sched_grp_none_"):
+        sched_id = data.replace("sched_grp_none_", "")
+        bot_data = load_data()
+        for s in bot_data.get("scheduled", []):
+            if s["id"] == sched_id:
+                s["groups"] = []
+                save_data(bot_data)
+                if s.get("active"):
+                    remove_scheduled_job(context, sched_id)
+                    s["active"] = False
+                    save_data(bot_data)
+                break
+        await show_sched_edit_groups(query, context, user_id, sched_id)
+
     # === BAN/UNBAN ===
     elif data == "action_ban":
         groups = await get_bot_groups(context)
@@ -1757,6 +1809,38 @@ async def show_sched_group_selection(query, context, user_id, groups):
     )
 
 
+
+async def show_sched_edit_groups(query, context, user_id, sched_id):
+    """Show group selection for editing an existing scheduled message."""
+    bot_data = load_data()
+    sched = next((s for s in bot_data.get("scheduled", []) if s["id"] == sched_id), None)
+    if not sched:
+        await query.edit_message_text("⚠️ Nicht gefunden.")
+        return
+    selected = set(sched.get("groups", []))
+    all_groups = await get_bot_groups(context)
+    keyboard = []
+    row = []
+    for g in all_groups:
+        check = "✅" if g["id"] in selected else "⬜"
+        row.append(InlineKeyboardButton(f"{check} {g['title']}", callback_data=f"sched_grp_toggle_{sched_id}_{g['id']}"))
+        if len(row) == 2:
+            keyboard.append(row)
+            row = []
+    if row:
+        keyboard.append(row)
+    keyboard.append([
+        InlineKeyboardButton("☑️ Alle", callback_data=f"sched_grp_all_{sched_id}"),
+        InlineKeyboardButton("◻️ Keine", callback_data=f"sched_grp_none_{sched_id}"),
+    ])
+    keyboard.append([InlineKeyboardButton(f"↩️ Zurück ({len(selected)} gewählt)", callback_data=f"sched_view_{sched_id}")])
+    await query.edit_message_text(
+        f"👥 <b>Gruppen ändern</b>\n\nWähle die Gruppen für diese wiederholte Nachricht:",
+        reply_markup=InlineKeyboardMarkup(keyboard),
+        parse_mode="HTML",
+    )
+
+
 async def show_sched_content_menu(query, context, user_id, sched_id):
     """Show content editing menu: Text, Medien, Buttons - like Worldskandi screenshot."""
     bot_data = load_data()
@@ -1813,17 +1897,25 @@ async def show_scheduled_detail(query, context, user_id, sched_id):
     pin = "✅" if sched.get("pin_message") else "✖"
     del_prev = "✅" if sched.get("delete_previous") else "✖"
     
+    # Resolve group names
+    all_groups = await get_bot_groups(context)
+    sched_group_ids = set(sched.get("groups", []))
+    group_names = [g["title"] for g in all_groups if g["id"] in sched_group_ids]
+    groups_str = ", ".join(group_names) if group_names else "Keine"
+    
     text = (
         f"🕐 <b>Wiederholte Mitteilungen</b>\n\n"
         f"💡 <b>Status</b>: {status}\n"
         f"🕐 <b>Zeit</b>: {time_str}\n"
         f"🔁 <b>Wiederholung</b>: {interval}\n"
+        f"👥 <b>Gruppen</b>: {groups_str}\n"
         f"📌 <b>Mitteilung anheften:</b>  {pin}\n"
         f"♻️ <b>Letzte Nachricht löschen:</b>  {del_prev}"
     )
     
     keyboard = [
         [InlineKeyboardButton("✍️ Nachricht anpassen", callback_data=f"sched_edit_text_{sched_id}")],
+        [InlineKeyboardButton("👥 Gruppen ändern", callback_data=f"sched_edit_groups_{sched_id}")],
         [InlineKeyboardButton("🕐 Zeit", callback_data=f"sched_edit_time_{sched_id}"),
          InlineKeyboardButton("🔁 Wiederholung", callback_data=f"sched_edit_interval_{sched_id}")],
         [InlineKeyboardButton("📅 Wochentage", callback_data=f"sched_weekdays_{sched_id}")],
