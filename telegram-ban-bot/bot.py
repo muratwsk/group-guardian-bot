@@ -2661,7 +2661,7 @@ def schedule_job(context, sched):
     
     jq = _get_job_queue(context)
     if not jq:
-        logger.error("No job_queue available for scheduling")
+        logger.error(f"Cannot schedule repeating message {sched.get('id')}: job_queue unavailable")
         return
     
     sched_id = sched["id"]
