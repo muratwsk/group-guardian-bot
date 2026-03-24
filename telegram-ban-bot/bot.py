@@ -356,6 +356,35 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif data == "menu_scheduled":
         await show_scheduled_list(query, context, user_id)
 
+    elif data.startswith("sched_page_"):
+        page = int(data.replace("sched_page_", ""))
+        await show_scheduled_list(query, context, user_id, page=page)
+
+    elif data.startswith("sched_toggle_active_list_"):
+        sched_id = data.replace("sched_toggle_active_list_", "")
+        bot_data = load_data()
+        for s in bot_data.get("scheduled", []):
+            if s["id"] == sched_id:
+                s["active"] = not s["active"]
+                save_data(bot_data)
+                if s["active"]:
+                    schedule_job(context, s)
+                else:
+                    remove_scheduled_job(context, sched_id)
+                break
+        await show_scheduled_list(query, context, user_id)
+
+    elif data.startswith("sched_delete_confirm_"):
+        sched_id = data.replace("sched_delete_confirm_", "")
+        keyboard = [
+            [InlineKeyboardButton("✅ Ja, löschen", callback_data=f"sched_delete_{sched_id}"),
+             InlineKeyboardButton("❌ Abbrechen", callback_data="menu_scheduled")],
+        ]
+        await query.edit_message_text(
+            "⚠️ Nachricht wirklich löschen?",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+        )
+
     elif data == "sched_new":
         groups = await get_bot_groups(context)
         if not groups:
@@ -1267,49 +1296,74 @@ def ensure_single_instance():
 
 # --- Scheduled messages helper functions ---
 
-async def show_scheduled_list(query, context, user_id):
+async def show_scheduled_list(query, context, user_id, page=0):
     """Show list of all scheduled messages - layout like the Worldskandi bot screenshot."""
     bot_data = load_data()
     scheduled = bot_data.get("scheduled", [])
     
     import datetime
     now = datetime.datetime.now().strftime("%d.%m.%Y, %H:%M")
-    text = f"*Aktuelle Zeit:* {now}\n"
+    
+    text = (
+        "🕐 <b>Wiederholte Mitteilungen</b>\n"
+        "In diesem Menü kann man Nachrichten erstellen, die nach einer festgelegten "
+        "Zeitspanne (Minuten/Stunden) oder nach einer festgelegten Anzahl von Nachrichten "
+        "in der Gruppe wiederholt versendet werden.\n\n"
+        f"<b>Aktuelle Zeit:</b> {now}\n"
+    )
     
     for i, s in enumerate(scheduled, 1):
         status = "Aktiv ✅" if s.get("active") else "Pausiert ⏸"
         preview = s.get("text", "")[:20]
         time_str = s.get("time", "?")
         interval = s.get("interval_label", "?")
+        emoji = "🟢" if s.get("active") else "🔴"
         
         text += (
-            f"\n🟢 *{i}* · *{status}*\n"
-            f"  ├ Zeit: {time_str}\n"
-            f"  ├ _{interval}_\n"
-            f"  └ {preview}..\n"
-        ) if s.get("active") else (
-            f"\n🔴 *{i}* · *{status}*\n"
-            f"  ├ Zeit: {time_str}\n"
-            f"  ├ _{interval}_\n"
+            f"\n💬{emoji} <b>{i}</b> · <b>{status}</b>\n"
+            f"  ├ <i>Zeit: {time_str}</i>\n"
+            f"  ├ <i>{interval}</i>\n"
             f"  └ {preview}..\n"
         )
     
     if not scheduled:
         text += "\nKeine wiederholten Nachrichten eingerichtet."
     
-    # Buttons: one per scheduled message to view details
+    # Buttons
     keyboard = []
-    for i, s in enumerate(scheduled, 1):
-        emoji = "🟢" if s.get("active") else "🔴"
-        keyboard.append([InlineKeyboardButton(f"{emoji} Nachricht {i} bearbeiten", callback_data=f"sched_view_{s['id']}")])
-    
     keyboard.append([InlineKeyboardButton("➕ Nachricht hinzufügen", callback_data="sched_new")])
-    keyboard.append([InlineKeyboardButton("🔙 Zurück", callback_data="back_main")])
+    
+    # 3-column grid per message: [🔥 number] [✅ Aktiv] [🗑]
+    PER_PAGE = 5
+    total_pages = max(1, (len(scheduled) + PER_PAGE - 1) // PER_PAGE)
+    page = min(page, total_pages - 1)
+    start = page * PER_PAGE
+    end = min(start + PER_PAGE, len(scheduled))
+    
+    for i in range(start, end):
+        s = scheduled[i]
+        num = i + 1
+        active_label = "✅ Aktiv" if s.get("active") else "⏸ Pause"
+        keyboard.append([
+            InlineKeyboardButton(f"💬 {num}", callback_data=f"sched_view_{s['id']}"),
+            InlineKeyboardButton(active_label, callback_data=f"sched_toggle_active_list_{s['id']}"),
+            InlineKeyboardButton("🗑", callback_data=f"sched_delete_confirm_{s['id']}"),
+        ])
+    
+    # Pagination
+    if total_pages > 1:
+        page_row = []
+        for p in range(total_pages):
+            label = f"·{p+1}·" if p == page else str(p+1)
+            page_row.append(InlineKeyboardButton(label, callback_data=f"sched_page_{p}"))
+        keyboard.append(page_row)
+    
+    keyboard.append([InlineKeyboardButton("↩️ Zurück", callback_data="back_main")])
     
     await query.edit_message_text(
         text,
         reply_markup=InlineKeyboardMarkup(keyboard),
-        parse_mode="Markdown",
+        parse_mode="HTML",
     )
 
 
