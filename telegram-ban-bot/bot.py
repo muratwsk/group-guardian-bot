@@ -216,60 +216,41 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not groups:
             await query.edit_message_text("Keine Gruppen registriert.")
             return
-        keyboard = []
-        keyboard.append([InlineKeyboardButton("📢 ALLE GRUPPEN", callback_data="msg_all_groups")])
-        for g in groups:
-            keyboard.append([InlineKeyboardButton(g["title"], callback_data=f"msg_group_{g['id']}")])
-        # Show delete old broadcasts button if any exist
-        bot_data = load_data()
-        if bot_data.get("broadcasts"):
-            keyboard.append([InlineKeyboardButton("🗑 Gesendete Nachrichten löschen", callback_data="show_broadcasts")])
-        keyboard.append([InlineKeyboardButton("🔙 Zurück", callback_data="back_main")])
-        await query.edit_message_text(
-            "📨 *Messenger*\nWähle die Gruppe(n) für die Nachricht:",
-            reply_markup=InlineKeyboardMarkup(keyboard),
-            parse_mode="Markdown",
-        )
+        # Initialize selection state
+        if user_id not in user_data_store or user_data_store[user_id].get("action") != "msg_select":
+            user_data_store[user_id] = {"action": "msg_select", "selected": set()}
+        await show_messenger_selection(query, context, user_id, groups)
 
-    elif data == "menu_settings":
-        if not is_owner(user_id):
-            await query.edit_message_text("⛔ Nur für Owner.")
-            return
-        keyboard = [
-            [InlineKeyboardButton("👥 Gruppen anzeigen", callback_data="show_groups")],
-            [InlineKeyboardButton("➕ Admin hinzufügen", callback_data="add_admin"),
-             InlineKeyboardButton("➖ Admin entfernen", callback_data="remove_admin")],
-            [InlineKeyboardButton("📢 Log-Kanal setzen", callback_data="set_log")],
-            [InlineKeyboardButton("🔙 Zurück", callback_data="back_main")],
-        ]
-        await query.edit_message_text(
-            "⚙️ *Einstellungen*",
-            reply_markup=InlineKeyboardMarkup(keyboard),
-            parse_mode="Markdown",
-        )
-
-    elif data == "back_main":
-        keyboard = [
-            [InlineKeyboardButton("🚫 BannALL", callback_data="menu_banall")],
-            [InlineKeyboardButton("📨 Messenger", callback_data="menu_messenger")],
-        ]
-        if is_owner(user_id):
-            keyboard.append([InlineKeyboardButton("⚙️ Einstellungen", callback_data="menu_settings")])
-        role = "👑 Owner" if is_owner(user_id) else "🛡️ Admin"
-        await query.edit_message_text(
-            f"🤖 *Bot Menü* ({role})\nWähle eine Aktion:",
-            reply_markup=InlineKeyboardMarkup(keyboard),
-            parse_mode="Markdown",
-        )
-
-    # === MESSENGER ===
-    elif data == "msg_all_groups" or data.startswith("msg_group_"):
-        if data == "msg_all_groups":
-            groups = await get_bot_groups(context)
-            user_data_store[user_id] = {"action": "messenger", "groups": [g["id"] for g in groups]}
+    elif data.startswith("msg_toggle_"):
+        gid = int(data.replace("msg_toggle_", ""))
+        pending = user_data_store.get(user_id, {})
+        selected = pending.get("selected", set())
+        if gid in selected:
+            selected.discard(gid)
         else:
-            gid = int(data.replace("msg_group_", ""))
-            user_data_store[user_id] = {"action": "messenger", "groups": [gid]}
+            selected.add(gid)
+        pending["selected"] = selected
+        user_data_store[user_id] = pending
+        groups = await get_bot_groups(context)
+        await show_messenger_selection(query, context, user_id, groups)
+
+    elif data == "msg_select_all":
+        groups = await get_bot_groups(context)
+        user_data_store[user_id] = {"action": "msg_select", "selected": {g["id"] for g in groups}}
+        await show_messenger_selection(query, context, user_id, groups)
+
+    elif data == "msg_select_none":
+        user_data_store[user_id] = {"action": "msg_select", "selected": set()}
+        groups = await get_bot_groups(context)
+        await show_messenger_selection(query, context, user_id, groups)
+
+    elif data == "msg_confirm_selection":
+        pending = user_data_store.get(user_id, {})
+        selected = pending.get("selected", set())
+        if not selected:
+            await query.answer("⚠️ Wähle mindestens eine Gruppe!", show_alert=True)
+            return
+        user_data_store[user_id] = {"action": "messenger", "groups": list(selected)}
         await query.edit_message_text(
             "📨 Sende mir jetzt die Nachricht.\n\n"
             "Tipp: Markiere deinen Text und nutze die Telegram-Formatierung (Fett, Kursiv, Link, Zitat usw.) – wird 1:1 übernommen.",
