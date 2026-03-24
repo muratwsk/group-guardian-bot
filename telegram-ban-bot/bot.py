@@ -1388,7 +1388,7 @@ def main():
     except Exception:
         pass
 
-    app = Application.builder().token(token).build()
+    app = Application.builder().token(token).post_init(post_init).build()
 
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("registergroup", register_group))
