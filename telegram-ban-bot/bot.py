@@ -1398,12 +1398,11 @@ async def show_hour_picker(query, context, user_id, back_callback="menu_schedule
 
 
 async def show_minute_picker(query, context, user_id, hour, back_callback="menu_scheduled", edit_sched_id=None):
-    """Show minute picker 00, 05, 10, ..., 55 in rows of 4."""
+    """Show minute picker 0-59 in rows of 6."""
     keyboard = []
-    minutes = [0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55]
-    for row_start in range(0, len(minutes), 4):
+    for row_start in range(0, 60, 6):
         row = []
-        for m in minutes[row_start:row_start + 4]:
+        for m in range(row_start, min(row_start + 6, 60)):
             label = f"{m:02d}"
             if edit_sched_id:
                 cb = f"sched_edit_min_{edit_sched_id}_{m}"
