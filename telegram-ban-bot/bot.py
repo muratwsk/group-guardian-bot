@@ -1160,25 +1160,43 @@ def ensure_single_instance():
 # --- Scheduled messages helper functions ---
 
 async def show_scheduled_list(query, context, user_id):
-    """Show list of all scheduled messages."""
+    """Show list of all scheduled messages - layout like the Worldskandi bot screenshot."""
     bot_data = load_data()
     scheduled = bot_data.get("scheduled", [])
-    keyboard = []
-    
-    for i, s in enumerate(scheduled, 1):
-        status = "✅" if s.get("active") else "⏸"
-        preview = s.get("text", "")[:20]
-        label = f"{'🟢' if s.get('active') else '🔴'} {i} · {status} {s.get('interval_label', '?')} · {preview}.."
-        keyboard.append([InlineKeyboardButton(label, callback_data=f"sched_view_{s['id']}")])
-    
-    keyboard.append([InlineKeyboardButton("➕ Neue wiederholte Nachricht", callback_data="sched_new")])
-    keyboard.append([InlineKeyboardButton("🔙 Zurück", callback_data="back_main")])
     
     import datetime
     now = datetime.datetime.now().strftime("%d.%m.%Y, %H:%M")
-    text = f"🔁 *Wiederholte Nachrichten*\n\n*Aktuelle Zeit:* {now}\n"
+    text = f"*Aktuelle Zeit:* {now}\n"
+    
+    for i, s in enumerate(scheduled, 1):
+        status = "Aktiv ✅" if s.get("active") else "Pausiert ⏸"
+        preview = s.get("text", "")[:20]
+        time_str = s.get("time", "?")
+        interval = s.get("interval_label", "?")
+        
+        text += (
+            f"\n🟢 *{i}* · *{status}*\n"
+            f"  ├ Zeit: {time_str}\n"
+            f"  ├ _{interval}_\n"
+            f"  └ {preview}..\n"
+        ) if s.get("active") else (
+            f"\n🔴 *{i}* · *{status}*\n"
+            f"  ├ Zeit: {time_str}\n"
+            f"  ├ _{interval}_\n"
+            f"  └ {preview}..\n"
+        )
+    
     if not scheduled:
         text += "\nKeine wiederholten Nachrichten eingerichtet."
+    
+    # Buttons: one per scheduled message to view details
+    keyboard = []
+    for i, s in enumerate(scheduled, 1):
+        emoji = "🟢" if s.get("active") else "🔴"
+        keyboard.append([InlineKeyboardButton(f"{emoji} Nachricht {i} bearbeiten", callback_data=f"sched_view_{s['id']}")])
+    
+    keyboard.append([InlineKeyboardButton("➕ Nachricht hinzufügen", callback_data="sched_new")])
+    keyboard.append([InlineKeyboardButton("🔙 Zurück", callback_data="back_main")])
     
     await query.edit_message_text(
         text,
@@ -1214,7 +1232,7 @@ async def show_sched_group_selection(query, context, user_id, groups):
 
 
 async def show_scheduled_detail(query, context, user_id, sched_id):
-    """Show detail view of a scheduled message."""
+    """Show detail view of a scheduled message - like the Worldskandi screenshot."""
     bot_data = load_data()
     sched = None
     for s in bot_data.get("scheduled", []):
@@ -1225,11 +1243,7 @@ async def show_scheduled_detail(query, context, user_id, sched_id):
         await query.edit_message_text("⚠️ Nachricht nicht gefunden.")
         return
     
-    groups = await get_bot_groups(context)
-    group_names = [g["title"] for g in groups if g["id"] in sched.get("groups", [])]
-    
     status = "Aktiv" if sched.get("active") else "Pausiert"
-    status_emoji = "🟢" if sched.get("active") else "🔴"
     del_prev = "✅" if sched.get("delete_previous", True) else "❌"
     
     import datetime
@@ -1246,16 +1260,19 @@ async def show_scheduled_detail(query, context, user_id, sched_id):
         f"💡 *Status:* {status}\n"
         f"🕐 *Zeit:* {sched.get('time', '?')}\n"
         f"🔁 *Wiederholung:* {sched.get('interval_label', '?')}\n"
-        f"♻️ *Letzte Nachricht löschen:* {del_prev}\n"
-        f"📨 *Gruppen:* {', '.join(group_names)}\n"
-        f"📝 *Text:* {sched.get('text', '?')[:100]}\n\n"
-        f"🚀 *Nächster Versand:*\n{next_send}"
+        f"♻️ *Letzte Nachricht löschen:* {del_prev}\n\n"
+        f"🚀 *Nächster Versandtermin:*\n{next_send}"
     )
     
     toggle_label = "⏸ Pausieren" if sched.get("active") else "▶️ Aktivieren"
+    toggle_emoji = "🟢" if sched.get("active") else "🔴"
+    
     keyboard = [
-        [InlineKeyboardButton(f"{status_emoji} {toggle_label}", callback_data=f"sched_toggle_active_{sched_id}")],
-        [InlineKeyboardButton(f"♻️ Letzte löschen: {del_prev}", callback_data=f"sched_del_prev_{sched_id}")],
+        [InlineKeyboardButton(f"{toggle_emoji} {toggle_label}", callback_data=f"sched_toggle_active_{sched_id}")],
+        [InlineKeyboardButton("✏️ Nachricht anpassen", callback_data=f"sched_edit_text_{sched_id}")],
+        [InlineKeyboardButton("🕐 Zeit", callback_data=f"sched_edit_time_{sched_id}"),
+         InlineKeyboardButton("🔁 Wiederholung", callback_data=f"sched_edit_interval_{sched_id}")],
+        [InlineKeyboardButton(f"♻️ Letzte Nachricht löschen: {del_prev}", callback_data=f"sched_del_prev_{sched_id}")],
         [InlineKeyboardButton("🗑 Löschen", callback_data=f"sched_delete_{sched_id}")],
         [InlineKeyboardButton("🔙 Zurück", callback_data="menu_scheduled")],
     ]
