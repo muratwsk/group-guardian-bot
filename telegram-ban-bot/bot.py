@@ -190,6 +190,15 @@ WAITING_SCHEDULED_TIME = 9
 # Store pending data
 user_data_store = {}
 
+def get_interval_label(minutes):
+    labels = {
+        1: "1 Min", 2: "2 Min", 3: "3 Min", 5: "5 Min",
+        10: "10 Min", 15: "15 Min", 20: "20 Min", 30: "30 Min",
+        60: "1 Stunde", 120: "2 Stunden", 180: "3 Stunden", 240: "4 Stunden",
+        360: "6 Stunden", 480: "8 Stunden", 720: "12 Stunden", 1440: "24 Stunden",
+    }
+    return labels.get(minutes, f"{minutes} Min")
+
 async def show_messenger_selection(query, context, user_id, groups):
     """Show group selection grid with checkboxes in 2-column layout."""
     selected = user_data_store.get(user_id, {}).get("selected", set())
@@ -392,25 +401,29 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data["state"] = WAITING_SCHEDULED_TEXT
 
     elif data == "sched_time_confirm":
+        # After text is set, show hour picker
+        await show_hour_picker(query, context, user_id)
+
+    elif data.startswith("sched_hour_"):
+        hour = int(data.replace("sched_hour_", ""))
         pending = user_data_store.get(user_id, {})
-        if not pending or pending.get("action") != "sched_set_time":
-            await query.edit_message_text("⚠️ Bitte starte nochmal.")
-            return
-        keyboard = [
-            [InlineKeyboardButton("⏱ Alle 30 Min", callback_data="sched_interval_30"),
-             InlineKeyboardButton("🕐 Jede Stunde", callback_data="sched_interval_60")],
-            [InlineKeyboardButton("🕑 Alle 2 Std", callback_data="sched_interval_120"),
-             InlineKeyboardButton("🕓 Alle 4 Std", callback_data="sched_interval_240")],
-            [InlineKeyboardButton("🕕 Alle 6 Std", callback_data="sched_interval_360"),
-             InlineKeyboardButton("🕛 Alle 12 Std", callback_data="sched_interval_720")],
-            [InlineKeyboardButton("📅 Alle 24 Std", callback_data="sched_interval_1440")],
-            [InlineKeyboardButton("🔙 Zurück", callback_data="menu_scheduled")],
-        ]
-        await query.edit_message_text(
-            "🔁 *Wiederholung wählen:*\nWie oft soll die Nachricht gesendet werden?",
-            reply_markup=InlineKeyboardMarkup(keyboard),
-            parse_mode="Markdown",
-        )
+        pending["hour"] = hour
+        user_data_store[user_id] = pending
+        await show_minute_picker(query, context, user_id, hour)
+
+    elif data.startswith("sched_minute_"):
+        minute = int(data.replace("sched_minute_", ""))
+        pending = user_data_store.get(user_id, {})
+        hour = pending.get("hour", 0)
+        pending["time"] = f"{hour:02d}:{minute:02d}"
+        pending["action"] = "sched_set_time"
+        user_data_store[user_id] = pending
+        # Show interval picker
+        await show_interval_picker(query, context, user_id)
+
+    elif data == "noop":
+        # Do nothing - used for section headers
+        return
 
     elif data.startswith("sched_interval_"):
         minutes = int(data.replace("sched_interval_", ""))
@@ -423,12 +436,6 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         sched_id = str(int(_time.time() * 1000))
         bot_data = load_data()
         
-        interval_labels = {
-            30: "Alle 30 Min", 60: "Jede Stunde", 120: "Alle 2 Stunden",
-            240: "Alle 4 Stunden", 360: "Alle 6 Stunden", 720: "Alle 12 Stunden",
-            1440: "Alle 24 Stunden",
-        }
-        
         new_sched = {
             "id": sched_id,
             "groups": pending["groups"],
@@ -436,7 +443,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "text_html": pending.get("text_html", pending["text"]),
             "time": pending.get("time", datetime.datetime.now().strftime("%H:%M")),
             "interval_minutes": minutes,
-            "interval_label": interval_labels.get(minutes, f"Alle {minutes} Min"),
+            "interval_label": f"Alle {get_interval_label(minutes)}",
             "active": True,
             "created_by": user_id,
             "created_at": datetime.datetime.now().strftime("%d.%m.%Y %H:%M"),
@@ -512,40 +519,67 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif data.startswith("sched_edit_time_"):
         sched_id = data.replace("sched_edit_time_", "")
         user_data_store[user_id] = {"action": "sched_edit_time", "sched_id": sched_id}
-        await query.edit_message_text("🕐 Sende mir die neue Zeit im Format *HH:MM* (z.B. 14:30):", parse_mode="Markdown")
-        context.user_data["state"] = WAITING_SCHEDULED_TIME
+        await show_hour_picker(query, context, user_id, back_callback=f"sched_view_{sched_id}")
+
+    elif data.startswith("sched_edit_hour_"):
+        # Format: sched_edit_hour_SCHEDID_HOUR
+        parts = data.replace("sched_edit_hour_", "").rsplit("_", 1)
+        sched_id, hour = parts[0], int(parts[1])
+        user_data_store[user_id] = {"action": "sched_edit_time", "sched_id": sched_id, "hour": hour}
+        await show_minute_picker(query, context, user_id, hour, back_callback=f"sched_edit_time_{sched_id}", edit_sched_id=sched_id)
+
+    elif data.startswith("sched_edit_min_"):
+        # Format: sched_edit_min_SCHEDID_MINUTE
+        parts = data.replace("sched_edit_min_", "").rsplit("_", 1)
+        sched_id, minute = parts[0], int(parts[1])
+        pending = user_data_store.get(user_id, {})
+        hour = pending.get("hour", 0)
+        time_str = f"{hour:02d}:{minute:02d}"
+        bot_data = load_data()
+        for s in bot_data.get("scheduled", []):
+            if s["id"] == sched_id:
+                s["time"] = time_str
+                save_data(bot_data)
+                if s.get("active"):
+                    schedule_job(context, s)
+                break
+        user_data_store.pop(user_id, None)
+        await show_scheduled_detail(query, context, user_id, sched_id)
 
     elif data.startswith("sched_edit_interval_"):
         sched_id = data.replace("sched_edit_interval_", "")
-        keyboard = [
-            [InlineKeyboardButton("⏱ Alle 30 Min", callback_data=f"sched_set_int_{sched_id}_30"),
-             InlineKeyboardButton("🕐 Jede Stunde", callback_data=f"sched_set_int_{sched_id}_60")],
-            [InlineKeyboardButton("🕑 Alle 2 Std", callback_data=f"sched_set_int_{sched_id}_120"),
-             InlineKeyboardButton("🕓 Alle 4 Std", callback_data=f"sched_set_int_{sched_id}_240")],
-            [InlineKeyboardButton("🕕 Alle 6 Std", callback_data=f"sched_set_int_{sched_id}_360"),
-             InlineKeyboardButton("🕛 Alle 12 Std", callback_data=f"sched_set_int_{sched_id}_720")],
-            [InlineKeyboardButton("📅 Alle 24 Std", callback_data=f"sched_set_int_{sched_id}_1440")],
-            [InlineKeyboardButton("🔙 Zurück", callback_data=f"sched_view_{sched_id}")],
-        ]
-        await query.edit_message_text(
-            "🔁 *Wiederholung ändern:*",
-            reply_markup=InlineKeyboardMarkup(keyboard),
-            parse_mode="Markdown",
-        )
+        # Get current interval to show checkmark
+        bot_data = load_data()
+        current_minutes = 240
+        for s in bot_data.get("scheduled", []):
+            if s["id"] == sched_id:
+                current_minutes = s.get("interval_minutes", 240)
+                break
+        await show_interval_picker(query, context, user_id, back_callback=f"sched_view_{sched_id}", edit_sched_id=sched_id, current_minutes=current_minutes)
+
+    elif data.startswith("sched_view_text_"):
+        sched_id = data.replace("sched_view_text_", "")
+        bot_data = load_data()
+        for s in bot_data.get("scheduled", []):
+            if s["id"] == sched_id:
+                preview = s.get("text", "(leer)")
+                keyboard = [[InlineKeyboardButton("🔙 Zurück", callback_data=f"sched_view_{sched_id}")]]
+                await query.edit_message_text(
+                    f"📄 *Nachrichtentext:*\n\n{preview}",
+                    reply_markup=InlineKeyboardMarkup(keyboard),
+                    parse_mode="Markdown",
+                )
+                return
+        await query.edit_message_text("⚠️ Nicht gefunden.")
 
     elif data.startswith("sched_set_int_"):
         parts = data.replace("sched_set_int_", "").rsplit("_", 1)
         sched_id, minutes = parts[0], int(parts[1])
-        interval_labels = {
-            30: "Alle 30 Min", 60: "Jede Stunde", 120: "Alle 2 Stunden",
-            240: "Alle 4 Stunden", 360: "Alle 6 Stunden", 720: "Alle 12 Stunden",
-            1440: "Alle 24 Stunden",
-        }
         bot_data = load_data()
         for s in bot_data.get("scheduled", []):
             if s["id"] == sched_id:
                 s["interval_minutes"] = minutes
-                s["interval_label"] = interval_labels.get(minutes, f"Alle {minutes} Min")
+                s["interval_label"] = f"Alle {get_interval_label(minutes)}"
                 save_data(bot_data)
                 if s.get("active"):
                     schedule_job(context, s)
@@ -807,65 +841,21 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             context.user_data["state"] = None
             user_data_store.pop(user_id, None)
         else:
-            # New scheduled message flow
+            # New scheduled message flow - save text, then show hour picker
             pending["text"] = update.message.text
             pending["text_html"] = update.message.text_html
             pending["action"] = "sched_set_time"
             user_data_store[user_id] = pending
+            # Build hour picker as inline reply
+            keyboard = []
+            for row_start in range(0, 24, 5):
+                row = []
+                for h in range(row_start, min(row_start + 5, 24)):
+                    row.append(InlineKeyboardButton(str(h), callback_data=f"sched_hour_{h}"))
+                keyboard.append(row)
+            keyboard.append([InlineKeyboardButton("🔙 Zurück", callback_data="menu_scheduled")])
             await update.message.reply_text(
-                "⏰ Sende mir jetzt die Startzeit im Format *HH:MM* (z.B. 14:30):",
-                parse_mode="Markdown",
-            )
-            context.user_data["state"] = WAITING_SCHEDULED_TIME
-
-    elif state == WAITING_SCHEDULED_TIME:
-        pending = user_data_store.get(user_id)
-        if not pending:
-            await update.message.reply_text("Bitte starte mit /start.")
-            return
-        import re
-        match = re.match(r"^(\d{1,2}):(\d{2})$", text)
-        if not match:
-            await update.message.reply_text("⚠️ Bitte im Format HH:MM senden (z.B. 14:30):")
-            return
-        h, m = int(match.group(1)), int(match.group(2))
-        if h > 23 or m > 59:
-            await update.message.reply_text("⚠️ Ungültige Zeit. Bitte erneut senden:")
-            return
-        time_str = f"{h:02d}:{m:02d}"
-        
-        # Check if editing existing scheduled message
-        if pending.get("action") == "sched_edit_time":
-            sched_id = pending["sched_id"]
-            bot_data = load_data()
-            for s in bot_data.get("scheduled", []):
-                if s["id"] == sched_id:
-                    s["time"] = time_str
-                    save_data(bot_data)
-                    if s.get("active"):
-                        schedule_job(context, s)
-                    break
-            await update.message.reply_text(f"✅ Zeit auf *{time_str}* aktualisiert.", parse_mode="Markdown")
-            context.user_data["state"] = None
-            user_data_store.pop(user_id, None)
-        else:
-            # New scheduled message flow
-            pending["time"] = time_str
-            pending["action"] = "sched_set_time"
-            user_data_store[user_id] = pending
-            
-            keyboard = [
-                [InlineKeyboardButton("⏱ Alle 30 Min", callback_data="sched_interval_30"),
-                 InlineKeyboardButton("🕐 Jede Stunde", callback_data="sched_interval_60")],
-                [InlineKeyboardButton("🕑 Alle 2 Std", callback_data="sched_interval_120"),
-                 InlineKeyboardButton("🕓 Alle 4 Std", callback_data="sched_interval_240")],
-                [InlineKeyboardButton("🕕 Alle 6 Std", callback_data="sched_interval_360"),
-                 InlineKeyboardButton("🕛 Alle 12 Std", callback_data="sched_interval_720")],
-                [InlineKeyboardButton("📅 Alle 24 Std", callback_data="sched_interval_1440")],
-                [InlineKeyboardButton("🔙 Zurück", callback_data="menu_scheduled")],
-            ]
-            await update.message.reply_text(
-                f"⏰ Startzeit: *{time_str}*\n\n🔁 Wähle jetzt die Wiederholung:",
+                "🕐 *Wiederholte Mitteilungen*\n\n👉 Wähle die Startzeit.",
                 reply_markup=InlineKeyboardMarkup(keyboard),
                 parse_mode="Markdown",
             )
@@ -1318,7 +1308,7 @@ async def show_sched_group_selection(query, context, user_id, groups):
 
 
 async def show_scheduled_detail(query, context, user_id, sched_id):
-    """Show detail view of a scheduled message - like the Worldskandi screenshot."""
+    """Show detail view like Worldskandi screenshot with Text/Sehen buttons."""
     bot_data = load_data()
     sched = None
     for s in bot_data.get("scheduled", []):
@@ -1331,6 +1321,7 @@ async def show_scheduled_detail(query, context, user_id, sched_id):
     
     status = "Aktiv" if sched.get("active") else "Pausiert"
     del_prev = "✅" if sched.get("delete_previous", True) else "❌"
+    has_text = "✅" if sched.get("text") else "❌"
     
     import datetime
     next_send = "—"
@@ -1343,10 +1334,13 @@ async def show_scheduled_detail(query, context, user_id, sched_id):
         next_send = next_dt.strftime("%d.%m.%Y, %H:%M")
     
     text = (
+        f"🕐 *Wiederholte Mitteilungen*\n\n"
         f"💡 *Status:* {status}\n"
         f"🕐 *Zeit:* {sched.get('time', '?')}\n"
         f"🔁 *Wiederholung:* {sched.get('interval_label', '?')}\n"
         f"♻️ *Letzte Nachricht löschen:* {del_prev}\n\n"
+        f"📄 Text {has_text}\n\n"
+        f"👉 Mit den Schaltflächen hier kannst Du auswählen, was Du einstellen willst.\n\n"
         f"🚀 *Nächster Versandtermin:*\n{next_send}"
     )
     
@@ -1355,16 +1349,103 @@ async def show_scheduled_detail(query, context, user_id, sched_id):
     
     keyboard = [
         [InlineKeyboardButton(f"{toggle_emoji} {toggle_label}", callback_data=f"sched_toggle_active_{sched_id}")],
-        [InlineKeyboardButton("✏️ Nachricht anpassen", callback_data=f"sched_edit_text_{sched_id}")],
+        [InlineKeyboardButton("📄 Text", callback_data=f"sched_edit_text_{sched_id}"),
+         InlineKeyboardButton("👀 Sehen", callback_data=f"sched_view_text_{sched_id}")],
         [InlineKeyboardButton("🕐 Zeit", callback_data=f"sched_edit_time_{sched_id}"),
          InlineKeyboardButton("🔁 Wiederholung", callback_data=f"sched_edit_interval_{sched_id}")],
         [InlineKeyboardButton(f"♻️ Letzte Nachricht löschen: {del_prev}", callback_data=f"sched_del_prev_{sched_id}")],
+        [InlineKeyboardButton("👀 Vollständige Vorschau", callback_data=f"sched_view_text_{sched_id}")],
         [InlineKeyboardButton("🗑 Löschen", callback_data=f"sched_delete_{sched_id}")],
         [InlineKeyboardButton("🔙 Zurück", callback_data="menu_scheduled")],
     ]
     
     await query.edit_message_text(
         text,
+        reply_markup=InlineKeyboardMarkup(keyboard),
+        parse_mode="Markdown",
+    )
+
+
+async def show_hour_picker(query, context, user_id, back_callback="menu_scheduled"):
+    """Show hour picker grid 0-23 in rows of 5 like screenshot."""
+    pending = user_data_store.get(user_id, {})
+    edit_sched_id = pending.get("sched_id")
+    
+    keyboard = []
+    for row_start in range(0, 24, 5):
+        row = []
+        for h in range(row_start, min(row_start + 5, 24)):
+            if edit_sched_id:
+                cb = f"sched_edit_hour_{edit_sched_id}_{h}"
+            else:
+                cb = f"sched_hour_{h}"
+            row.append(InlineKeyboardButton(str(h), callback_data=cb))
+        keyboard.append(row)
+    keyboard.append([InlineKeyboardButton("🔙 Zurück", callback_data=back_callback)])
+    
+    await query.edit_message_text(
+        "🕐 *Wiederholte Mitteilungen*\n\n👉 Wähle die Startzeit.",
+        reply_markup=InlineKeyboardMarkup(keyboard),
+        parse_mode="Markdown",
+    )
+
+
+async def show_minute_picker(query, context, user_id, hour, back_callback="menu_scheduled", edit_sched_id=None):
+    """Show minute picker 00, 05, 10, ..., 55 in rows of 4."""
+    keyboard = []
+    minutes = [0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55]
+    for row_start in range(0, len(minutes), 4):
+        row = []
+        for m in minutes[row_start:row_start + 4]:
+            label = f"{m:02d}"
+            if edit_sched_id:
+                cb = f"sched_edit_min_{edit_sched_id}_{m}"
+            else:
+                cb = f"sched_minute_{m}"
+            row.append(InlineKeyboardButton(label, callback_data=cb))
+        keyboard.append(row)
+    keyboard.append([InlineKeyboardButton("🔙 Zurück", callback_data=back_callback)])
+    
+    await query.edit_message_text(
+        f"🕐 *Stunde: {hour}*\n\n👉 Wähle die Minute.",
+        reply_markup=InlineKeyboardMarkup(keyboard),
+        parse_mode="Markdown",
+    )
+
+
+def get_interval_label(minutes):
+    labels = {
+        1: "1 Min", 2: "2 Min", 3: "3 Min", 5: "5 Min",
+        10: "10 Min", 15: "15 Min", 20: "20 Min", 30: "30 Min",
+        60: "1 Stunde", 120: "2 Stunden", 180: "3 Stunden", 240: "4 Stunden",
+        360: "6 Stunden", 480: "8 Stunden", 720: "12 Stunden", 1440: "24 Stunden",
+    }
+    return labels.get(minutes, f"{minutes} Min")
+
+
+async def show_interval_picker(query, context, user_id, back_callback="menu_scheduled", edit_sched_id=None, current_minutes=None):
+    """Show interval picker with Stunden + Minuten grid like screenshot."""
+    prefix = f"sched_set_int_{edit_sched_id}_" if edit_sched_id else "sched_interval_"
+    
+    def btn(val, label=None):
+        check = " ✅" if current_minutes == val else ""
+        return InlineKeyboardButton(f"{label or val}{check}", callback_data=f"{prefix}{val}")
+    
+    keyboard = [
+        [InlineKeyboardButton("· Stunden ·", callback_data="noop")],
+        [btn(60, "1"), btn(120, "2"), btn(180, "3"), btn(240, "4")],
+        [btn(360, "6"), btn(480, "8"), btn(720, "12"), btn(1440, "24")],
+        [InlineKeyboardButton("· Minuten ·", callback_data="noop")],
+        [btn(1, "1"), btn(2, "2"), btn(3, "3"), btn(5, "5")],
+        [btn(10, "10"), btn(15, "15"), btn(20, "20"), btn(30, "30")],
+        [InlineKeyboardButton("🔙 Zurück", callback_data=back_callback)],
+    ]
+    
+    current_label = get_interval_label(current_minutes) if current_minutes else "—"
+    await query.edit_message_text(
+        f"🕐 *Wiederholte Mitteilungen*\n\n"
+        f"🔁 *Wiederholung:* Alle {current_label}\n\n"
+        f"👉 Wähle aus, wie oft die Nachricht wiederholt werden soll.",
         reply_markup=InlineKeyboardMarkup(keyboard),
         parse_mode="Markdown",
     )
