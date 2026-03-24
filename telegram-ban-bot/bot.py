@@ -1511,9 +1511,11 @@ async def execute_scheduled_message(context: ContextTypes.DEFAULT_TYPE):
 
 def _get_job_queue(context):
     """Get job_queue from either Application or CallbackContext."""
-    if hasattr(context, 'job_queue'):
+    # Application object
+    if hasattr(context, 'job_queue') and context.job_queue is not None:
         return context.job_queue
-    if hasattr(context, 'application'):
+    # CallbackContext
+    if hasattr(context, 'application') and context.application.job_queue is not None:
         return context.application.job_queue
     return None
 
