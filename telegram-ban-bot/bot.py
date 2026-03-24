@@ -1546,6 +1546,52 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data["state"] = None
         user_data_store.pop(user_id, None)
 
+    elif state == WAITING_PCMD_NAME:
+        pending = user_data_store.get(user_id)
+        if not pending:
+            await update.message.reply_text("Bitte starte mit /start.")
+            return
+        cmd_name = text.lower().strip().lstrip("/")
+        if not cmd_name or not cmd_name.isalnum():
+            await update.message.reply_text("⚠️ Der Name darf nur Buchstaben und Zahlen enthalten.")
+            return
+        pending["cmd_name"] = cmd_name
+        pending["action"] = "pcmd_add_text"
+        user_data_store[user_id] = pending
+        keyboard = [[InlineKeyboardButton("❌ Abbrechen", callback_data="pcmd_menu")]]
+        await update.message.reply_text(
+            f"✅ Befehlname: /<b>{html.escape(cmd_name)}</b>\n\n"
+            f"Sende mir jetzt die Antwort-Nachricht für diesen Befehl.\n"
+            f"<i>Formatierung wird übernommen.</i>",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode="HTML",
+        )
+        context.user_data["state"] = WAITING_PCMD_TEXT
+
+    elif state == WAITING_PCMD_TEXT:
+        pending = user_data_store.get(user_id)
+        if not pending or "cmd_name" not in pending:
+            await update.message.reply_text("Bitte starte mit /start.")
+            return
+        cmd_name = pending["cmd_name"]
+        bot_data = load_data()
+        bot_data.setdefault("personal_commands", {})[cmd_name] = {
+            "text": update.message.text or "",
+            "text_html": update.message.text_html or update.message.text or "",
+            "created_by": user_id,
+            "created_at": now_de().strftime("%d.%m.%Y %H:%M"),
+        }
+        save_data(bot_data)
+        context.user_data["state"] = None
+        user_data_store.pop(user_id, None)
+        keyboard = [[InlineKeyboardButton("🔙 Zurück zu Befehle", callback_data="pcmd_menu")]]
+        await update.message.reply_text(
+            f"✅ Befehl /<b>{html.escape(cmd_name)}</b> gespeichert!\n\n"
+            f"Nutze jetzt /{html.escape(cmd_name)} in einer Gruppe.",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode="HTML",
+        )
+
 # --- /registergroup - run in a group to add it ---
 
 async def register_group(update: Update, context: ContextTypes.DEFAULT_TYPE):
