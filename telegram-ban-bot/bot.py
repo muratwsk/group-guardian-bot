@@ -2,6 +2,8 @@ import atexit
 import json
 import logging
 import os
+import signal
+import subprocess
 import requests as _requests
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
