@@ -1413,7 +1413,7 @@ async def show_sched_group_selection(query, context, user_id, groups):
 
 
 async def show_scheduled_detail(query, context, user_id, sched_id):
-    """Show detail view like Worldskandi screenshot with Text/Sehen buttons."""
+    """Show detail view matching Worldskandi screenshot exactly."""
     bot_data = load_data()
     sched = None
     for s in bot_data.get("scheduled", []):
@@ -1424,50 +1424,35 @@ async def show_scheduled_detail(query, context, user_id, sched_id):
         await query.edit_message_text("⚠️ Nachricht nicht gefunden.")
         return
     
-    status = "Aktiv" if sched.get("active") else "Pausiert"
-    del_prev = "✅" if sched.get("delete_previous", True) else "❌"
-    has_text = "✅" if sched.get("text") else "❌"
-    
-    import datetime
-    next_send = "—"
-    if sched.get("active") and sched.get("time"):
-        now = datetime.datetime.now()
-        h, m = map(int, sched["time"].split(":"))
-        next_dt = now.replace(hour=h, minute=m, second=0, microsecond=0)
-        if next_dt <= now:
-            next_dt += datetime.timedelta(minutes=sched.get("interval_minutes", 60))
-        next_send = next_dt.strftime("%d.%m.%Y, %H:%M")
+    status = "Aktiv" if sched.get("active") else "Inaktiv"
+    time_str = sched.get("time", "—")
+    interval = sched.get("interval_label", "—")
+    pin = "✅" if sched.get("pin_message") else "✖"
+    del_prev = "✅" if sched.get("delete_previous") else "✖"
     
     text = (
-        f"🕐 *Wiederholte Mitteilungen*\n\n"
-        f"💡 *Status:* {status}\n"
-        f"🕐 *Zeit:* {sched.get('time', '?')}\n"
-        f"🔁 *Wiederholung:* {sched.get('interval_label', '?')}\n"
-        f"♻️ *Letzte Nachricht löschen:* {del_prev}\n\n"
-        f"📄 Text {has_text}\n\n"
-        f"👉 Mit den Schaltflächen hier kannst Du auswählen, was Du einstellen willst.\n\n"
-        f"🚀 *Nächster Versandtermin:*\n{next_send}"
+        f"🕐 <b>Wiederholte Mitteilungen</b>\n\n"
+        f"💡 <b>Status</b>: {status}\n"
+        f"🕐 <b>Zeit</b>: {time_str}\n"
+        f"🔁 <b>Wiederholung</b>: {interval}\n"
+        f"📌 <b>Mitteilung anheften:</b>  {pin}\n"
+        f"♻️ <b>Letzte Nachricht löschen:</b>  {del_prev}"
     )
     
-    toggle_label = "⏸ Pausieren" if sched.get("active") else "▶️ Aktivieren"
-    toggle_emoji = "🟢" if sched.get("active") else "🔴"
-    
     keyboard = [
-        [InlineKeyboardButton(f"{toggle_emoji} {toggle_label}", callback_data=f"sched_toggle_active_{sched_id}")],
-        [InlineKeyboardButton("📄 Text", callback_data=f"sched_edit_text_{sched_id}"),
-         InlineKeyboardButton("👀 Sehen", callback_data=f"sched_view_text_{sched_id}")],
+        [InlineKeyboardButton("✍️ Nachricht anpassen", callback_data=f"sched_edit_text_{sched_id}")],
         [InlineKeyboardButton("🕐 Zeit", callback_data=f"sched_edit_time_{sched_id}"),
          InlineKeyboardButton("🔁 Wiederholung", callback_data=f"sched_edit_interval_{sched_id}")],
-        [InlineKeyboardButton(f"♻️ Letzte Nachricht löschen: {del_prev}", callback_data=f"sched_del_prev_{sched_id}")],
-        [InlineKeyboardButton("👀 Vollständige Vorschau", callback_data=f"sched_view_text_{sched_id}")],
-        [InlineKeyboardButton("🗑 Löschen", callback_data=f"sched_delete_{sched_id}")],
-        [InlineKeyboardButton("🔙 Zurück", callback_data="menu_scheduled")],
+        [InlineKeyboardButton(f"📌 Mitteilung anheften  {pin}", callback_data=f"sched_pin_{sched_id}")],
+        [InlineKeyboardButton(f"♻️ Letzte Nachricht löschen  {del_prev}", callback_data=f"sched_del_prev_{sched_id}")],
+        [InlineKeyboardButton("🗑 Löschen", callback_data=f"sched_delete_confirm_{sched_id}")],
+        [InlineKeyboardButton("↩️ Zurück", callback_data="menu_scheduled")],
     ]
     
     await query.edit_message_text(
         text,
         reply_markup=InlineKeyboardMarkup(keyboard),
-        parse_mode="Markdown",
+        parse_mode="HTML",
     )
 
 
