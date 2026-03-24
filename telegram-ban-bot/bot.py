@@ -829,20 +829,6 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 break
         await show_interval_picker(query, context, user_id, back_callback=f"sched_view_{sched_id}", edit_sched_id=sched_id, current_minutes=current_minutes)
 
-    elif data.startswith("sched_view_text_"):
-        sched_id = data.replace("sched_view_text_", "")
-        bot_data = load_data()
-        for s in bot_data.get("scheduled", []):
-            if s["id"] == sched_id:
-                preview_html = s.get("text_html", s.get("text", "(leer)"))
-                keyboard = [[InlineKeyboardButton("🔙 Zurück", callback_data=f"sched_edit_text_{sched_id}")]]
-                await query.edit_message_text(
-                    f"📄 <b>Nachrichtentext:</b>\n\n{preview_html}",
-                    reply_markup=InlineKeyboardMarkup(keyboard),
-                    parse_mode="HTML",
-                )
-                return
-        await query.edit_message_text("⚠️ Nicht gefunden.")
 
     elif data.startswith("sched_set_media_"):
         sched_id = data.replace("sched_set_media_", "")
@@ -871,30 +857,6 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 save_data(bot_data)
                 break
         await show_sched_content_menu(query, context, user_id, sched_id)
-
-    elif data.startswith("sched_view_media_"):
-        sched_id = data.replace("sched_view_media_", "")
-        bot_data = load_data()
-        sched = next((s for s in bot_data.get("scheduled", []) if s["id"] == sched_id), None)
-        if not sched or not sched.get("media_file_id"):
-            await query.answer("Kein Medium gesetzt.", show_alert=True)
-            return
-        keyboard = [[InlineKeyboardButton("🔙 Zurück", callback_data=f"sched_edit_text_{sched_id}")]]
-        media_type = sched.get("media_type", "photo")
-        try:
-            if media_type == "photo":
-                await context.bot.send_photo(chat_id=query.message.chat_id, photo=sched["media_file_id"], reply_markup=InlineKeyboardMarkup(keyboard))
-            elif media_type == "video":
-                await context.bot.send_video(chat_id=query.message.chat_id, video=sched["media_file_id"], reply_markup=InlineKeyboardMarkup(keyboard))
-            elif media_type == "animation":
-                await context.bot.send_animation(chat_id=query.message.chat_id, animation=sched["media_file_id"], reply_markup=InlineKeyboardMarkup(keyboard))
-            elif media_type == "sticker":
-                await context.bot.send_sticker(chat_id=query.message.chat_id, sticker=sched["media_file_id"])
-                await context.bot.send_message(chat_id=query.message.chat_id, text="⬆️ Aktueller Sticker", reply_markup=InlineKeyboardMarkup(keyboard))
-            else:
-                await context.bot.send_document(chat_id=query.message.chat_id, document=sched["media_file_id"], reply_markup=InlineKeyboardMarkup(keyboard))
-        except Exception as e:
-            await query.edit_message_text(f"⚠️ Fehler beim Anzeigen: {e}")
 
     elif data.startswith("sched_preview_"):
         sched_id = data.replace("sched_preview_", "")
