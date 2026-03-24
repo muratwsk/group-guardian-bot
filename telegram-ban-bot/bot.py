@@ -27,6 +27,7 @@ logger = logging.getLogger(__name__)
 
 CONFIG_FILE = os.path.join(os.path.dirname(__file__), "config.json")
 DATA_FILE = os.path.join(os.path.dirname(__file__), "data.json")
+GROUPS_FILE = os.path.join(os.path.dirname(__file__), "groups.json")
 LOCK_FILE = os.path.join(os.path.dirname(__file__), "bot.lock")
 
 # --- Config helpers ---
@@ -65,6 +66,29 @@ def load_data():
 def save_data(data):
     with open(DATA_FILE, "w") as f:
         json.dump(data, f, indent=2)
+
+def import_groups_from_file():
+    """Import groups from groups.json into data.json on startup."""
+    if not os.path.exists(GROUPS_FILE):
+        return
+    with open(GROUPS_FILE, "r") as f:
+        groups_map = json.load(f)
+    if not groups_map:
+        return
+    data = load_data()
+    existing_ids = {g["id"] for g in data.get("groups", [])}
+    added = 0
+    for name, gid in groups_map.items():
+        if gid not in existing_ids:
+            data["groups"].append({"id": gid, "title": name})
+            existing_ids.add(gid)
+            added += 1
+    if added > 0:
+        save_data(data)
+        logger.info(f"Imported {added} groups from groups.json")
+
+# Auto-import on module load
+import_groups_from_file()
 
 def remember_group_ban(group_ids, user_id, name=None, username=None):
     data = load_data()
