@@ -1168,5 +1168,15 @@
     "id": 7835678896,
     "name": "F/M",
     "username": null
+  },
+  "trading_mert": {
+    "id": 8507276841,
+    "name": "M 3",
+    "username": "trading_mert"
+  },
+  "8507276841": {
+    "id": 8507276841,
+    "name": "M 3",
+    "username": "trading_mert"
   }
 }
