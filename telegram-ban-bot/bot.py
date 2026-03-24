@@ -870,6 +870,58 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 break
         await show_scheduled_detail(query, context, user_id, sched_id)
 
+    # === EDIT GROUPS ON EXISTING SCHEDULED MESSAGE ===
+    elif data.startswith("sched_edit_groups_"):
+        sched_id = data.replace("sched_edit_groups_", "")
+        await show_sched_edit_groups(query, context, user_id, sched_id)
+
+    elif data.startswith("sched_grp_toggle_"):
+        rest = data.replace("sched_grp_toggle_", "")
+        # Format: sched_grp_toggle_SCHEDID_GROUPID
+        parts = rest.rsplit("_", 1)
+        sched_id, gid = parts[0], int(parts[1])
+        bot_data = load_data()
+        for s in bot_data.get("scheduled", []):
+            if s["id"] == sched_id:
+                groups_set = set(s.get("groups", []))
+                if gid in groups_set:
+                    groups_set.discard(gid)
+                else:
+                    groups_set.add(gid)
+                s["groups"] = list(groups_set)
+                save_data(bot_data)
+                if s.get("active"):
+                    schedule_job(context, s)
+                break
+        await show_sched_edit_groups(query, context, user_id, sched_id)
+
+    elif data.startswith("sched_grp_all_"):
+        sched_id = data.replace("sched_grp_all_", "")
+        groups = await get_bot_groups(context)
+        bot_data = load_data()
+        for s in bot_data.get("scheduled", []):
+            if s["id"] == sched_id:
+                s["groups"] = [g["id"] for g in groups]
+                save_data(bot_data)
+                if s.get("active"):
+                    schedule_job(context, s)
+                break
+        await show_sched_edit_groups(query, context, user_id, sched_id)
+
+    elif data.startswith("sched_grp_none_"):
+        sched_id = data.replace("sched_grp_none_", "")
+        bot_data = load_data()
+        for s in bot_data.get("scheduled", []):
+            if s["id"] == sched_id:
+                s["groups"] = []
+                save_data(bot_data)
+                if s.get("active"):
+                    remove_scheduled_job(context, sched_id)
+                    s["active"] = False
+                    save_data(bot_data)
+                break
+        await show_sched_edit_groups(query, context, user_id, sched_id)
+
     # === BAN/UNBAN ===
     elif data == "action_ban":
         groups = await get_bot_groups(context)
