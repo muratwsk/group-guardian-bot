@@ -1440,26 +1440,21 @@ async def show_sched_content_menu(query, context, user_id, sched_id):
         return
     
     has_text = "✅" if sched.get("text") else "❌"
-    has_media = "✅" if sched.get("media") else "❌"
-    has_buttons = "✅" if sched.get("buttons") else "❌"
+    has_media = "✅" if sched.get("media_file_id") else "❌"
     
     text = (
         f"🕐 <b>Wiederholte Mitteilungen</b>\n\n"
         f"📄 Text {has_text}\n"
-        f"🖼 Medien {has_media}\n"
-        f"🔤 Buttons {has_buttons}\n\n"
+        f"🖼 Medien {has_media}\n\n"
         f"👉 Mit den Schaltflächen hier kannst Du auswählen, was Du einstellen willst."
     )
     
     keyboard = [
         [InlineKeyboardButton("📄 Text", callback_data=f"sched_set_text_{sched_id}"),
          InlineKeyboardButton("👀 Sehen", callback_data=f"sched_view_text_{sched_id}")],
-        [InlineKeyboardButton("🖼 Medien", callback_data="noop"),
-         InlineKeyboardButton("👀 Sehen", callback_data="noop")],
-        [InlineKeyboardButton("🔤 Buttons", callback_data="noop"),
-         InlineKeyboardButton("👀 Sehen", callback_data="noop")],
-        [InlineKeyboardButton("👀 Vollständige Vorschau", callback_data=f"sched_view_text_{sched_id}")],
-        [InlineKeyboardButton("📂 Wähle Thema 🆕", callback_data="noop")],
+        [InlineKeyboardButton("🖼 Medien", callback_data=f"sched_set_media_{sched_id}"),
+         InlineKeyboardButton("👀 Sehen", callback_data=f"sched_view_media_{sched_id}")],
+        [InlineKeyboardButton("👀 Vollständige Vorschau", callback_data=f"sched_preview_{sched_id}")],
         [InlineKeyboardButton("↩️ Zurück", callback_data=f"sched_view_{sched_id}")],
     ]
     
