@@ -1790,6 +1790,127 @@ async def show_scheduled_detail(query, context, user_id, sched_id):
     )
 
 
+async def show_weekdays_picker(query, context, sched_id):
+    """Show weekday selection grid like screenshot."""
+    bot_data = load_data()
+    sched = next((s for s in bot_data.get("scheduled", []) if s["id"] == sched_id), None)
+    if not sched:
+        await query.edit_message_text("⚠️ Nicht gefunden.")
+        return
+    days = set(sched.get("weekdays", [0,1,2,3,4,5,6]))
+    day_names = ["Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag", "Sonntag"]
+    keyboard = []
+    for i in range(0, 6, 2):
+        row = []
+        for j in [i, i+1]:
+            check = "✅" if j in days else "⬜"
+            row.append(InlineKeyboardButton(f"{day_names[j]} {check}", callback_data=f"sched_weekdays_toggle_{sched_id}_{j}"))
+        keyboard.append(row)
+    check6 = "✅" if 6 in days else "⬜"
+    keyboard.append([InlineKeyboardButton(f"Sonntag {check6}", callback_data=f"sched_weekdays_toggle_{sched_id}_6")])
+    keyboard.append([InlineKeyboardButton("↩️ Zurück", callback_data=f"sched_view_{sched_id}")])
+    await query.edit_message_text(
+        "🕐 <b>Wiederholte Mitteilungen</b>\n\n"
+        "👉 Wähle aus, an welchen Wochentagen die Nachricht wiederholt werden soll.",
+        reply_markup=InlineKeyboardMarkup(keyboard),
+        parse_mode="HTML",
+    )
+
+
+async def show_monthdays_picker(query, context, sched_id):
+    """Show month days 1-31 grid like screenshot."""
+    bot_data = load_data()
+    sched = next((s for s in bot_data.get("scheduled", []) if s["id"] == sched_id), None)
+    if not sched:
+        await query.edit_message_text("⚠️ Nicht gefunden.")
+        return
+    days = set(sched.get("monthdays", []))
+    keyboard = []
+    for row_start in range(1, 32, 4):
+        row = []
+        for d in range(row_start, min(row_start + 4, 32)):
+            check = "✅" if d in days else ""
+            label = f"{check}{d}" if check else str(d)
+            row.append(InlineKeyboardButton(label, callback_data=f"sched_monthdays_toggle_{sched_id}_{d}"))
+        keyboard.append(row)
+    keyboard.append([InlineKeyboardButton("↩️ Zurück", callback_data=f"sched_view_{sched_id}")])
+    await query.edit_message_text(
+        "🕐 <b>Wiederholte Mitteilungen</b>\n\n"
+        "👉 Wähle, an welchen Tagen des Monats die Nachricht wiederholt werden soll.\n\n"
+        "<i>Wählst Du keinen Tag aus, wird die Nachricht an jedem Tag des Monats erneut gesendet.</i>",
+        reply_markup=InlineKeyboardMarkup(keyboard),
+        parse_mode="HTML",
+    )
+
+
+async def show_autodelete_picker(query, context, sched_id):
+    """Show auto-delete time picker like screenshot."""
+    bot_data = load_data()
+    sched = next((s for s in bot_data.get("scheduled", []) if s["id"] == sched_id), None)
+    if not sched:
+        await query.edit_message_text("⚠️ Nicht gefunden.")
+        return
+    current = sched.get("autodelete_minutes")
+    current_label = "Nicht löschen"
+    if current:
+        if current >= 60:
+            current_label = f"{current // 60} Stunden"
+        else:
+            current_label = f"{current} Minuten"
+
+    keyboard = []
+    keyboard.append([InlineKeyboardButton("• Stunden •", callback_data="noop")])
+    hours = [1,2,3,4,6,8,10,12,15,24,36,48]
+    for i in range(0, len(hours), 4):
+        row = [InlineKeyboardButton(str(h), callback_data=f"sched_autodelete_set_{sched_id}_{h*60}") for h in hours[i:i+4]]
+        keyboard.append(row)
+    keyboard.append([InlineKeyboardButton("• Minuten •", callback_data="noop")])
+    mins = [1,2,3,4,5,10,15,20,30,40,45,50]
+    for i in range(0, len(mins), 4):
+        row = [InlineKeyboardButton(str(m), callback_data=f"sched_autodelete_set_{sched_id}_{m}") for m in mins[i:i+4]]
+        keyboard.append(row)
+    no_del_check = "✅" if not current else ""
+    keyboard.append([InlineKeyboardButton(f"✖ Nicht löschen {no_del_check}", callback_data=f"sched_autodelete_off_{sched_id}")])
+    keyboard.append([InlineKeyboardButton("↩️ Zurück", callback_data=f"sched_view_{sched_id}")])
+
+    await query.edit_message_text(
+        f"🕐 <b>Wiederholte Mitteilungen</b>\n\n"
+        f"♻️ <b>Automatisch löschen</b>\n"
+        f"  └ Zeitspanne: {current_label}\n\n"
+        f"OK! Sende nun die Anzahl der Minuten, nach denen jede in der Gruppe gesendete Nachricht automatisch gelöscht werden soll.",
+        reply_markup=InlineKeyboardMarkup(keyboard),
+        parse_mode="HTML",
+    )
+
+
+async def show_timespan_picker(query, context, sched_id):
+    """Show timespan picker - same layout as interval picker."""
+    bot_data = load_data()
+    sched = next((s for s in bot_data.get("scheduled", []) if s["id"] == sched_id), None)
+    if not sched:
+        await query.edit_message_text("⚠️ Nicht gefunden.")
+        return
+    keyboard = []
+    keyboard.append([InlineKeyboardButton("• Stunden •", callback_data="noop")])
+    hours = [1,2,3,4,6,8,12,24]
+    for i in range(0, len(hours), 4):
+        row = [InlineKeyboardButton(str(h), callback_data=f"sched_ts_set_{sched_id}_{h*60}") for h in hours[i:i+4]]
+        keyboard.append(row)
+    keyboard.append([InlineKeyboardButton("• Minuten •", callback_data="noop")])
+    mins = [1,2,3,5,10,15,20,30]
+    for i in range(0, len(mins), 4):
+        row = [InlineKeyboardButton(str(m), callback_data=f"sched_ts_set_{sched_id}_{m}") for m in mins[i:i+4]]
+        keyboard.append(row)
+    keyboard.append([InlineKeyboardButton("↩️ Zurück", callback_data=f"sched_view_{sched_id}")])
+    await query.edit_message_text(
+        "🕐 <b>Wiederholte Mitteilungen</b>\n\n"
+        "⏱ <b>Zeitspanne einstellen</b>\n\n"
+        "Wähle die Zeitspanne für die Nachrichtenwiederholung.",
+        reply_markup=InlineKeyboardMarkup(keyboard),
+        parse_mode="HTML",
+    )
+
+
 async def show_hour_picker(query, context, user_id, back_callback="menu_scheduled"):
     """Show hour picker grid 0-23 in rows of 5 like screenshot."""
     pending = user_data_store.get(user_id, {})
