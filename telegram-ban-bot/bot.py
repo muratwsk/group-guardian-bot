@@ -187,6 +187,9 @@ WAITING_MESSENGER_INPUT = 7
 WAITING_SCHEDULED_TEXT = 8
 WAITING_SCHEDULED_TIME = 9
 WAITING_SCHEDULED_MEDIA = 10
+WAITING_SCHED_STARTDATE = 11
+WAITING_SCHED_ENDDATE = 12
+WAITING_SCHED_TIMESPAN = 13
 
 # Store pending data
 user_data_store = {}
@@ -569,6 +572,124 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         for s in bot_data.get("scheduled", []):
             if s["id"] == sched_id:
                 s["pin_message"] = not s.get("pin_message", False)
+                save_data(bot_data)
+                break
+        await show_scheduled_detail(query, context, user_id, sched_id)
+
+    # === WOCHENTAGE ===
+    elif data.startswith("sched_weekdays_") and not data.startswith("sched_weekdays_toggle_"):
+        sched_id = data.replace("sched_weekdays_", "")
+        await show_weekdays_picker(query, context, sched_id)
+
+    elif data.startswith("sched_weekdays_toggle_"):
+        parts = data.replace("sched_weekdays_toggle_", "").rsplit("_", 1)
+        sched_id, day = parts[0], int(parts[1])
+        bot_data = load_data()
+        for s in bot_data.get("scheduled", []):
+            if s["id"] == sched_id:
+                days = set(s.get("weekdays", [0,1,2,3,4,5,6]))
+                if day in days:
+                    days.discard(day)
+                else:
+                    days.add(day)
+                s["weekdays"] = sorted(days)
+                save_data(bot_data)
+                break
+        await show_weekdays_picker(query, context, sched_id)
+
+    # === TAGE DES MONATS ===
+    elif data.startswith("sched_monthdays_") and not data.startswith("sched_monthdays_toggle_"):
+        sched_id = data.replace("sched_monthdays_", "")
+        await show_monthdays_picker(query, context, sched_id)
+
+    elif data.startswith("sched_monthdays_toggle_"):
+        parts = data.replace("sched_monthdays_toggle_", "").rsplit("_", 1)
+        sched_id, day = parts[0], int(parts[1])
+        bot_data = load_data()
+        for s in bot_data.get("scheduled", []):
+            if s["id"] == sched_id:
+                days = set(s.get("monthdays", []))
+                if day in days:
+                    days.discard(day)
+                else:
+                    days.add(day)
+                s["monthdays"] = sorted(days)
+                save_data(bot_data)
+                break
+        await show_monthdays_picker(query, context, sched_id)
+
+    # === ANFANGSDATUM ===
+    elif data.startswith("sched_startdate_"):
+        sched_id = data.replace("sched_startdate_", "")
+        user_data_store[user_id] = {"action": "sched_startdate", "sched_id": sched_id}
+        import datetime
+        now = datetime.datetime.now().strftime("%d/%m/%y %H:%M")
+        keyboard = [[InlineKeyboardButton("❌ Abbrechen", callback_data=f"sched_view_{sched_id}")]]
+        await query.edit_message_text(
+            f"🕐 <b>Wiederholte Mitteilungen</b>\n\n"
+            f"👉 Jetzt das Datum und die Uhrzeit des Beginns der Nachrichtenwiederholung senden.\n\n"
+            f"❓ Du mußt das Datum im Format tt/mm/jj hh:mm angeben\n"
+            f"Beispiel: {now}",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode="HTML",
+        )
+        context.user_data["state"] = WAITING_SCHED_STARTDATE
+
+    # === ENDDATUM ===
+    elif data.startswith("sched_enddate_"):
+        sched_id = data.replace("sched_enddate_", "")
+        user_data_store[user_id] = {"action": "sched_enddate", "sched_id": sched_id}
+        import datetime
+        now = datetime.datetime.now().strftime("%d/%m/%y %H:%M")
+        keyboard = [[InlineKeyboardButton("❌ Abbrechen", callback_data=f"sched_view_{sched_id}")]]
+        await query.edit_message_text(
+            f"🕐 <b>Wiederholte Mitteilungen</b>\n\n"
+            f"👉 Sende jetzt das Ende der Nachrichtenwiederholung mit Datum und Uhrzeit.\n\n"
+            f"❓ Du mußt das Datum im Format tt/mm/jj hh:mm angeben\n"
+            f"Beispiel: {now}",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode="HTML",
+        )
+        context.user_data["state"] = WAITING_SCHED_ENDDATE
+
+    # === ZEITSPANNE ===
+    elif data.startswith("sched_timespan_"):
+        sched_id = data.replace("sched_timespan_", "")
+        await show_timespan_picker(query, context, sched_id)
+
+    elif data.startswith("sched_ts_set_"):
+        parts = data.replace("sched_ts_set_", "").rsplit("_", 1)
+        sched_id, minutes = parts[0], int(parts[1])
+        bot_data = load_data()
+        for s in bot_data.get("scheduled", []):
+            if s["id"] == sched_id:
+                s["timespan_minutes"] = minutes
+                save_data(bot_data)
+                break
+        await show_scheduled_detail(query, context, user_id, sched_id)
+
+    # === AUTOMATISCH LÖSCHEN ===
+    elif data.startswith("sched_autodelete_") and not data.startswith("sched_autodelete_set_") and not data.startswith("sched_autodelete_off_"):
+        sched_id = data.replace("sched_autodelete_", "")
+        await show_autodelete_picker(query, context, sched_id)
+
+    elif data.startswith("sched_autodelete_set_"):
+        parts = data.replace("sched_autodelete_set_", "").rsplit("_", 1)
+        sched_id, minutes = parts[0], int(parts[1])
+        bot_data = load_data()
+        for s in bot_data.get("scheduled", []):
+            if s["id"] == sched_id:
+                s["autodelete_minutes"] = minutes
+                save_data(bot_data)
+                break
+        await show_scheduled_detail(query, context, user_id, sched_id)
+
+    elif data.startswith("sched_autodelete_off_"):
+        sched_id = data.replace("sched_autodelete_off_", "")
+        bot_data = load_data()
+        for s in bot_data.get("scheduled", []):
+            if s["id"] == sched_id:
+                s.pop("autodelete_minutes", None)
                 save_data(bot_data)
                 break
         await show_scheduled_detail(query, context, user_id, sched_id)
@@ -1042,6 +1163,58 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 parse_mode="Markdown",
             )
             context.user_data["state"] = None
+
+    elif state == WAITING_SCHED_STARTDATE:
+        pending = user_data_store.get(user_id)
+        if not pending:
+            await update.message.reply_text("Bitte starte mit /start.")
+            return
+        sched_id = pending["sched_id"]
+        import datetime
+        try:
+            dt = datetime.datetime.strptime(update.message.text.strip(), "%d/%m/%y %H:%M")
+            bot_data = load_data()
+            for s in bot_data.get("scheduled", []):
+                if s["id"] == sched_id:
+                    s["start_date"] = dt.strftime("%d.%m.%Y %H:%M")
+                    save_data(bot_data)
+                    break
+            keyboard = [[InlineKeyboardButton("🔙 Zurück zur Nachricht", callback_data=f"sched_view_{sched_id}")]]
+            await update.message.reply_text(
+                f"✅ Anfangsdatum gesetzt: {dt.strftime('%d.%m.%Y %H:%M')}",
+                reply_markup=InlineKeyboardMarkup(keyboard),
+            )
+        except ValueError:
+            await update.message.reply_text("⚠️ Falsches Format! Bitte tt/mm/jj hh:mm senden.\nBeispiel: 24/03/26 03:54")
+            return
+        context.user_data["state"] = None
+        user_data_store.pop(user_id, None)
+
+    elif state == WAITING_SCHED_ENDDATE:
+        pending = user_data_store.get(user_id)
+        if not pending:
+            await update.message.reply_text("Bitte starte mit /start.")
+            return
+        sched_id = pending["sched_id"]
+        import datetime
+        try:
+            dt = datetime.datetime.strptime(update.message.text.strip(), "%d/%m/%y %H:%M")
+            bot_data = load_data()
+            for s in bot_data.get("scheduled", []):
+                if s["id"] == sched_id:
+                    s["end_date"] = dt.strftime("%d.%m.%Y %H:%M")
+                    save_data(bot_data)
+                    break
+            keyboard = [[InlineKeyboardButton("🔙 Zurück zur Nachricht", callback_data=f"sched_view_{sched_id}")]]
+            await update.message.reply_text(
+                f"✅ Enddatum gesetzt: {dt.strftime('%d.%m.%Y %H:%M')}",
+                reply_markup=InlineKeyboardMarkup(keyboard),
+            )
+        except ValueError:
+            await update.message.reply_text("⚠️ Falsches Format! Bitte tt/mm/jj hh:mm senden.\nBeispiel: 24/03/26 03:54")
+            return
+        context.user_data["state"] = None
+        user_data_store.pop(user_id, None)
 
 # --- /registergroup - run in a group to add it ---
 
@@ -1650,20 +1823,141 @@ async def show_scheduled_detail(query, context, user_id, sched_id):
         [InlineKeyboardButton("✍️ Nachricht anpassen", callback_data=f"sched_edit_text_{sched_id}")],
         [InlineKeyboardButton("🕐 Zeit", callback_data=f"sched_edit_time_{sched_id}"),
          InlineKeyboardButton("🔁 Wiederholung", callback_data=f"sched_edit_interval_{sched_id}")],
-        [InlineKeyboardButton("📅 Wochentage", callback_data="noop")],
-        [InlineKeyboardButton("📅 Tage des Monats 🆕", callback_data="noop")],
-        [InlineKeyboardButton("⏱ Zeitspanne einstellen", callback_data="noop")],
-        [InlineKeyboardButton("🔈 Anfangsdatum", callback_data="noop"),
-         InlineKeyboardButton("🔈 Enddatum", callback_data="noop")],
+        [InlineKeyboardButton("📅 Wochentage", callback_data=f"sched_weekdays_{sched_id}")],
+        [InlineKeyboardButton("📅 Tage des Monats 🆕", callback_data=f"sched_monthdays_{sched_id}")],
+        [InlineKeyboardButton("⏱ Zeitspanne einstellen", callback_data=f"sched_timespan_{sched_id}")],
+        [InlineKeyboardButton("🔈 Anfangsdatum", callback_data=f"sched_startdate_{sched_id}"),
+         InlineKeyboardButton("🔈 Enddatum", callback_data=f"sched_enddate_{sched_id}")],
         [InlineKeyboardButton(f"📌 Mitteilung anheften  {pin}", callback_data=f"sched_pin_{sched_id}")],
         [InlineKeyboardButton(f"♻️ Letzte Nachricht löschen  {del_prev}", callback_data=f"sched_del_prev_{sched_id}")],
-        [InlineKeyboardButton("♻️ Automatisch löschen 🆕", callback_data="noop")],
+        [InlineKeyboardButton("♻️ Automatisch löschen 🆕", callback_data=f"sched_autodelete_{sched_id}")],
         [InlineKeyboardButton("🗑 Löschen", callback_data=f"sched_delete_confirm_{sched_id}")],
         [InlineKeyboardButton("↩️ Zurück", callback_data="menu_scheduled")],
     ]
     
     await query.edit_message_text(
         text,
+        reply_markup=InlineKeyboardMarkup(keyboard),
+        parse_mode="HTML",
+    )
+
+
+async def show_weekdays_picker(query, context, sched_id):
+    """Show weekday selection grid like screenshot."""
+    bot_data = load_data()
+    sched = next((s for s in bot_data.get("scheduled", []) if s["id"] == sched_id), None)
+    if not sched:
+        await query.edit_message_text("⚠️ Nicht gefunden.")
+        return
+    days = set(sched.get("weekdays", [0,1,2,3,4,5,6]))
+    day_names = ["Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag", "Sonntag"]
+    keyboard = []
+    for i in range(0, 6, 2):
+        row = []
+        for j in [i, i+1]:
+            check = "✅" if j in days else "⬜"
+            row.append(InlineKeyboardButton(f"{day_names[j]} {check}", callback_data=f"sched_weekdays_toggle_{sched_id}_{j}"))
+        keyboard.append(row)
+    check6 = "✅" if 6 in days else "⬜"
+    keyboard.append([InlineKeyboardButton(f"Sonntag {check6}", callback_data=f"sched_weekdays_toggle_{sched_id}_6")])
+    keyboard.append([InlineKeyboardButton("↩️ Zurück", callback_data=f"sched_view_{sched_id}")])
+    await query.edit_message_text(
+        "🕐 <b>Wiederholte Mitteilungen</b>\n\n"
+        "👉 Wähle aus, an welchen Wochentagen die Nachricht wiederholt werden soll.",
+        reply_markup=InlineKeyboardMarkup(keyboard),
+        parse_mode="HTML",
+    )
+
+
+async def show_monthdays_picker(query, context, sched_id):
+    """Show month days 1-31 grid like screenshot."""
+    bot_data = load_data()
+    sched = next((s for s in bot_data.get("scheduled", []) if s["id"] == sched_id), None)
+    if not sched:
+        await query.edit_message_text("⚠️ Nicht gefunden.")
+        return
+    days = set(sched.get("monthdays", []))
+    keyboard = []
+    for row_start in range(1, 32, 4):
+        row = []
+        for d in range(row_start, min(row_start + 4, 32)):
+            check = "✅" if d in days else ""
+            label = f"{check}{d}" if check else str(d)
+            row.append(InlineKeyboardButton(label, callback_data=f"sched_monthdays_toggle_{sched_id}_{d}"))
+        keyboard.append(row)
+    keyboard.append([InlineKeyboardButton("↩️ Zurück", callback_data=f"sched_view_{sched_id}")])
+    await query.edit_message_text(
+        "🕐 <b>Wiederholte Mitteilungen</b>\n\n"
+        "👉 Wähle, an welchen Tagen des Monats die Nachricht wiederholt werden soll.\n\n"
+        "<i>Wählst Du keinen Tag aus, wird die Nachricht an jedem Tag des Monats erneut gesendet.</i>",
+        reply_markup=InlineKeyboardMarkup(keyboard),
+        parse_mode="HTML",
+    )
+
+
+async def show_autodelete_picker(query, context, sched_id):
+    """Show auto-delete time picker like screenshot."""
+    bot_data = load_data()
+    sched = next((s for s in bot_data.get("scheduled", []) if s["id"] == sched_id), None)
+    if not sched:
+        await query.edit_message_text("⚠️ Nicht gefunden.")
+        return
+    current = sched.get("autodelete_minutes")
+    current_label = "Nicht löschen"
+    if current:
+        if current >= 60:
+            current_label = f"{current // 60} Stunden"
+        else:
+            current_label = f"{current} Minuten"
+
+    keyboard = []
+    keyboard.append([InlineKeyboardButton("• Stunden •", callback_data="noop")])
+    hours = [1,2,3,4,6,8,10,12,15,24,36,48]
+    for i in range(0, len(hours), 4):
+        row = [InlineKeyboardButton(str(h), callback_data=f"sched_autodelete_set_{sched_id}_{h*60}") for h in hours[i:i+4]]
+        keyboard.append(row)
+    keyboard.append([InlineKeyboardButton("• Minuten •", callback_data="noop")])
+    mins = [1,2,3,4,5,10,15,20,30,40,45,50]
+    for i in range(0, len(mins), 4):
+        row = [InlineKeyboardButton(str(m), callback_data=f"sched_autodelete_set_{sched_id}_{m}") for m in mins[i:i+4]]
+        keyboard.append(row)
+    no_del_check = "✅" if not current else ""
+    keyboard.append([InlineKeyboardButton(f"✖ Nicht löschen {no_del_check}", callback_data=f"sched_autodelete_off_{sched_id}")])
+    keyboard.append([InlineKeyboardButton("↩️ Zurück", callback_data=f"sched_view_{sched_id}")])
+
+    await query.edit_message_text(
+        f"🕐 <b>Wiederholte Mitteilungen</b>\n\n"
+        f"♻️ <b>Automatisch löschen</b>\n"
+        f"  └ Zeitspanne: {current_label}\n\n"
+        f"OK! Sende nun die Anzahl der Minuten, nach denen jede in der Gruppe gesendete Nachricht automatisch gelöscht werden soll.",
+        reply_markup=InlineKeyboardMarkup(keyboard),
+        parse_mode="HTML",
+    )
+
+
+async def show_timespan_picker(query, context, sched_id):
+    """Show timespan picker - same layout as interval picker."""
+    bot_data = load_data()
+    sched = next((s for s in bot_data.get("scheduled", []) if s["id"] == sched_id), None)
+    if not sched:
+        await query.edit_message_text("⚠️ Nicht gefunden.")
+        return
+    keyboard = []
+    keyboard.append([InlineKeyboardButton("• Stunden •", callback_data="noop")])
+    hours = [1,2,3,4,6,8,12,24]
+    for i in range(0, len(hours), 4):
+        row = [InlineKeyboardButton(str(h), callback_data=f"sched_ts_set_{sched_id}_{h*60}") for h in hours[i:i+4]]
+        keyboard.append(row)
+    keyboard.append([InlineKeyboardButton("• Minuten •", callback_data="noop")])
+    mins = [1,2,3,5,10,15,20,30]
+    for i in range(0, len(mins), 4):
+        row = [InlineKeyboardButton(str(m), callback_data=f"sched_ts_set_{sched_id}_{m}") for m in mins[i:i+4]]
+        keyboard.append(row)
+    keyboard.append([InlineKeyboardButton("↩️ Zurück", callback_data=f"sched_view_{sched_id}")])
+    await query.edit_message_text(
+        "🕐 <b>Wiederholte Mitteilungen</b>\n\n"
+        "⏱ <b>Zeitspanne einstellen</b>\n\n"
+        "Wähle die Zeitspanne für die Nachrichtenwiederholung.",
         reply_markup=InlineKeyboardMarkup(keyboard),
         parse_mode="HTML",
     )
