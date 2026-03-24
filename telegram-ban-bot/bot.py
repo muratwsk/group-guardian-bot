@@ -642,15 +642,30 @@ async def block_banned_join_request(update: Update, context: ContextTypes.DEFAUL
 # --- Main ---
 
 def ensure_single_instance():
-    if os.path.exists(LOCK_FILE):
+    # Kill ALL other bot.py processes (not just lock file PID)
+    my_pid = os.getpid()
+    try:
+        result = subprocess.run(
+            ["grep", "-rl", "bot.py", "/proc"],
+            capture_output=True, text=True, timeout=5,
+        )
+    except Exception:
+        pass
+
+    # Simple approach: read /proc/*/cmdline and kill matching PIDs
+    for entry in os.listdir("/proc"):
+        if not entry.isdigit():
+            continue
+        pid = int(entry)
+        if pid == my_pid:
+            continue
         try:
-            with open(LOCK_FILE, "r") as f:
-                existing_pid = int(f.read().strip())
-            os.kill(existing_pid, 0)
-            raise RuntimeError(f"Bot läuft bereits mit PID {existing_pid}")
-        except ProcessLookupError:
-            pass
-        except ValueError:
+            with open(f"/proc/{pid}/cmdline", "rb") as f:
+                cmdline = f.read().decode("utf-8", errors="ignore")
+            if "bot.py" in cmdline and "python" in cmdline:
+                os.kill(pid, signal.SIGKILL)
+                logger.info(f"Killed old bot process {pid}")
+        except (FileNotFoundError, ProcessLookupError, PermissionError):
             pass
 
     with open(LOCK_FILE, "w") as f:
