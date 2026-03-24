@@ -187,6 +187,37 @@ WAITING_MESSENGER_INPUT = 7
 # Store pending data
 user_data_store = {}
 
+async def show_messenger_selection(query, context, user_id, groups):
+    """Show group selection grid with checkboxes in 2-column layout."""
+    selected = user_data_store.get(user_id, {}).get("selected", set())
+    keyboard = []
+    # 2-column layout for groups
+    row = []
+    for g in groups:
+        check = "✅" if g["id"] in selected else "⬜"
+        row.append(InlineKeyboardButton(f"{check} {g['title']}", callback_data=f"msg_toggle_{g['id']}"))
+        if len(row) == 2:
+            keyboard.append(row)
+            row = []
+    if row:
+        keyboard.append(row)
+    # Select all / none
+    keyboard.append([
+        InlineKeyboardButton("☑️ Alle", callback_data="msg_select_all"),
+        InlineKeyboardButton("◻️ Keine", callback_data="msg_select_none"),
+    ])
+    keyboard.append([InlineKeyboardButton(f"📨 Senden ({len(selected)} gewählt)", callback_data="msg_confirm_selection")])
+    # Show delete old broadcasts button if any exist
+    bot_data = load_data()
+    if bot_data.get("broadcasts"):
+        keyboard.append([InlineKeyboardButton("🗑 Gesendete Nachrichten löschen", callback_data="show_broadcasts")])
+    keyboard.append([InlineKeyboardButton("🔙 Zurück", callback_data="back_main")])
+    await query.edit_message_text(
+        "📨 *Messenger*\nWähle die Gruppen aus:",
+        reply_markup=InlineKeyboardMarkup(keyboard),
+        parse_mode="Markdown",
+    )
+
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
