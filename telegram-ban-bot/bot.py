@@ -500,6 +500,58 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 break
         await show_scheduled_detail(query, context, user_id, sched_id)
 
+    elif data.startswith("sched_edit_text_"):
+        sched_id = data.replace("sched_edit_text_", "")
+        user_data_store[user_id] = {"action": "sched_edit_text", "sched_id": sched_id}
+        await query.edit_message_text(
+            "✏️ Sende mir die neue Nachricht.\n\n"
+            "Tipp: Nutze die Telegram-Formatierung (Fett, Kursiv, Link, Zitat).",
+        )
+        context.user_data["state"] = WAITING_SCHEDULED_TEXT
+
+    elif data.startswith("sched_edit_time_"):
+        sched_id = data.replace("sched_edit_time_", "")
+        user_data_store[user_id] = {"action": "sched_edit_time", "sched_id": sched_id}
+        await query.edit_message_text("🕐 Sende mir die neue Zeit im Format *HH:MM* (z.B. 14:30):", parse_mode="Markdown")
+        context.user_data["state"] = WAITING_SCHEDULED_TIME
+
+    elif data.startswith("sched_edit_interval_"):
+        sched_id = data.replace("sched_edit_interval_", "")
+        keyboard = [
+            [InlineKeyboardButton("⏱ Alle 30 Min", callback_data=f"sched_set_int_{sched_id}_30"),
+             InlineKeyboardButton("🕐 Jede Stunde", callback_data=f"sched_set_int_{sched_id}_60")],
+            [InlineKeyboardButton("🕑 Alle 2 Std", callback_data=f"sched_set_int_{sched_id}_120"),
+             InlineKeyboardButton("🕓 Alle 4 Std", callback_data=f"sched_set_int_{sched_id}_240")],
+            [InlineKeyboardButton("🕕 Alle 6 Std", callback_data=f"sched_set_int_{sched_id}_360"),
+             InlineKeyboardButton("🕛 Alle 12 Std", callback_data=f"sched_set_int_{sched_id}_720")],
+            [InlineKeyboardButton("📅 Alle 24 Std", callback_data=f"sched_set_int_{sched_id}_1440")],
+            [InlineKeyboardButton("🔙 Zurück", callback_data=f"sched_view_{sched_id}")],
+        ]
+        await query.edit_message_text(
+            "🔁 *Wiederholung ändern:*",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode="Markdown",
+        )
+
+    elif data.startswith("sched_set_int_"):
+        parts = data.replace("sched_set_int_", "").rsplit("_", 1)
+        sched_id, minutes = parts[0], int(parts[1])
+        interval_labels = {
+            30: "Alle 30 Min", 60: "Jede Stunde", 120: "Alle 2 Stunden",
+            240: "Alle 4 Stunden", 360: "Alle 6 Stunden", 720: "Alle 12 Stunden",
+            1440: "Alle 24 Stunden",
+        }
+        bot_data = load_data()
+        for s in bot_data.get("scheduled", []):
+            if s["id"] == sched_id:
+                s["interval_minutes"] = minutes
+                s["interval_label"] = interval_labels.get(minutes, f"Alle {minutes} Min")
+                save_data(bot_data)
+                if s.get("active"):
+                    schedule_job(context, s)
+                break
+        await show_scheduled_detail(query, context, user_id, sched_id)
+
     # === BAN/UNBAN ===
     elif data == "action_ban":
         groups = await get_bot_groups(context)
