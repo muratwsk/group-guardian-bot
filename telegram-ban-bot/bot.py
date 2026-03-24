@@ -3168,6 +3168,7 @@ def main():
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("registergroup", register_group))
     app.add_handler(CommandHandler("unregistergroup", unregister_group))
+    app.add_handler(CommandHandler("info", info_command))
     app.add_handler(CommandHandler("banall", banall))
     app.add_handler(CommandHandler("unbanall", unbanall))
     app.add_handler(CommandHandler("befehl", personal_command))
