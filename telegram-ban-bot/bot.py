@@ -1106,164 +1106,217 @@ def ensure_single_instance():
 
     atexit.register(cleanup_lock)
 
-    # === SCHEDULED MESSAGES ===
-    elif data == "menu_scheduled":
-        await show_scheduled_list(query, context, user_id)
 
-    elif data == "sched_new":
-        groups = await get_bot_groups(context)
-        if not groups:
-            await query.edit_message_text("Keine Gruppen registriert.")
-            return
-        user_data_store[user_id] = {"action": "sched_select", "selected": set()}
-        await show_sched_group_selection(query, context, user_id, groups)
+# --- Scheduled messages helper functions ---
 
-    elif data.startswith("sched_toggle_"):
-        gid = int(data.replace("sched_toggle_", ""))
-        pending = user_data_store.get(user_id, {})
-        selected = pending.get("selected", set())
-        if gid in selected:
-            selected.discard(gid)
-        else:
-            selected.add(gid)
-        pending["selected"] = selected
-        user_data_store[user_id] = pending
-        groups = await get_bot_groups(context)
-        await show_sched_group_selection(query, context, user_id, groups)
+async def show_scheduled_list(query, context, user_id):
+    """Show list of all scheduled messages."""
+    bot_data = load_data()
+    scheduled = bot_data.get("scheduled", [])
+    keyboard = []
+    
+    for i, s in enumerate(scheduled, 1):
+        status = "✅" if s.get("active") else "⏸"
+        preview = s.get("text", "")[:20]
+        label = f"{'🟢' if s.get('active') else '🔴'} {i} · {status} {s.get('interval_label', '?')} · {preview}.."
+        keyboard.append([InlineKeyboardButton(label, callback_data=f"sched_view_{s['id']}")])
+    
+    keyboard.append([InlineKeyboardButton("➕ Neue wiederholte Nachricht", callback_data="sched_new")])
+    keyboard.append([InlineKeyboardButton("🔙 Zurück", callback_data="back_main")])
+    
+    import datetime
+    now = datetime.datetime.now().strftime("%d.%m.%Y, %H:%M")
+    text = f"🔁 *Wiederholte Nachrichten*\n\n*Aktuelle Zeit:* {now}\n"
+    if not scheduled:
+        text += "\nKeine wiederholten Nachrichten eingerichtet."
+    
+    await query.edit_message_text(
+        text,
+        reply_markup=InlineKeyboardMarkup(keyboard),
+        parse_mode="Markdown",
+    )
 
-    elif data == "sched_select_all":
-        groups = await get_bot_groups(context)
-        user_data_store[user_id] = {"action": "sched_select", "selected": {g["id"] for g in groups}}
-        await show_sched_group_selection(query, context, user_id, groups)
 
-    elif data == "sched_select_none":
-        user_data_store[user_id] = {"action": "sched_select", "selected": set()}
-        groups = await get_bot_groups(context)
-        await show_sched_group_selection(query, context, user_id, groups)
+async def show_sched_group_selection(query, context, user_id, groups):
+    """Show group selection grid for scheduled messages."""
+    selected = user_data_store.get(user_id, {}).get("selected", set())
+    keyboard = []
+    row = []
+    for g in groups:
+        check = "✅" if g["id"] in selected else "⬜"
+        row.append(InlineKeyboardButton(f"{check} {g['title']}", callback_data=f"sched_toggle_{g['id']}"))
+        if len(row) == 2:
+            keyboard.append(row)
+            row = []
+    if row:
+        keyboard.append(row)
+    keyboard.append([
+        InlineKeyboardButton("☑️ Alle", callback_data="sched_select_all"),
+        InlineKeyboardButton("◻️ Keine", callback_data="sched_select_none"),
+    ])
+    keyboard.append([InlineKeyboardButton(f"✅ Weiter ({len(selected)} gewählt)", callback_data="sched_confirm_groups")])
+    keyboard.append([InlineKeyboardButton("🔙 Zurück", callback_data="menu_scheduled")])
+    await query.edit_message_text(
+        "🔁 *Wiederholte Nachricht*\nWähle die Gruppen aus:",
+        reply_markup=InlineKeyboardMarkup(keyboard),
+        parse_mode="Markdown",
+    )
 
-    elif data == "sched_confirm_groups":
-        pending = user_data_store.get(user_id, {})
-        selected = pending.get("selected", set())
-        if not selected:
-            await query.answer("⚠️ Wähle mindestens eine Gruppe!", show_alert=True)
-            return
-        user_data_store[user_id] = {"action": "sched_text", "groups": list(selected)}
-        await query.edit_message_text(
-            "📝 Sende mir jetzt die Nachricht für die wiederholte Sendung.\n\n"
-            "Tipp: Nutze die Telegram-Formatierung (Fett, Kursiv, Link, Zitat).",
-        )
-        context.user_data["state"] = WAITING_SCHEDULED_TEXT
 
-    elif data == "sched_time_confirm":
-        pending = user_data_store.get(user_id, {})
-        if not pending or pending.get("action") != "sched_set_time":
-            await query.edit_message_text("⚠️ Bitte starte nochmal.")
-            return
-        # Show interval selection
-        keyboard = [
-            [InlineKeyboardButton("⏱ Alle 30 Min", callback_data="sched_interval_30"),
-             InlineKeyboardButton("🕐 Jede Stunde", callback_data="sched_interval_60")],
-            [InlineKeyboardButton("🕑 Alle 2 Std", callback_data="sched_interval_120"),
-             InlineKeyboardButton("🕓 Alle 4 Std", callback_data="sched_interval_240")],
-            [InlineKeyboardButton("🕕 Alle 6 Std", callback_data="sched_interval_360"),
-             InlineKeyboardButton("🕛 Alle 12 Std", callback_data="sched_interval_720")],
-            [InlineKeyboardButton("📅 Alle 24 Std", callback_data="sched_interval_1440")],
-            [InlineKeyboardButton("🔙 Zurück", callback_data="menu_scheduled")],
-        ]
-        await query.edit_message_text(
-            "🔁 *Wiederholung wählen:*\nWie oft soll die Nachricht gesendet werden?",
-            reply_markup=InlineKeyboardMarkup(keyboard),
-            parse_mode="Markdown",
-        )
+async def show_scheduled_detail(query, context, user_id, sched_id):
+    """Show detail view of a scheduled message."""
+    bot_data = load_data()
+    sched = None
+    for s in bot_data.get("scheduled", []):
+        if s["id"] == sched_id:
+            sched = s
+            break
+    if not sched:
+        await query.edit_message_text("⚠️ Nachricht nicht gefunden.")
+        return
+    
+    groups = await get_bot_groups(context)
+    group_names = [g["title"] for g in groups if g["id"] in sched.get("groups", [])]
+    
+    status = "Aktiv" if sched.get("active") else "Pausiert"
+    status_emoji = "🟢" if sched.get("active") else "🔴"
+    del_prev = "✅" if sched.get("delete_previous", True) else "❌"
+    
+    import datetime
+    next_send = "—"
+    if sched.get("active") and sched.get("time"):
+        now = datetime.datetime.now()
+        h, m = map(int, sched["time"].split(":"))
+        next_dt = now.replace(hour=h, minute=m, second=0, microsecond=0)
+        if next_dt <= now:
+            next_dt += datetime.timedelta(minutes=sched.get("interval_minutes", 60))
+        next_send = next_dt.strftime("%d.%m.%Y, %H:%M")
+    
+    text = (
+        f"💡 *Status:* {status}\n"
+        f"🕐 *Zeit:* {sched.get('time', '?')}\n"
+        f"🔁 *Wiederholung:* {sched.get('interval_label', '?')}\n"
+        f"♻️ *Letzte Nachricht löschen:* {del_prev}\n"
+        f"📨 *Gruppen:* {', '.join(group_names)}\n"
+        f"📝 *Text:* {sched.get('text', '?')[:100]}\n\n"
+        f"🚀 *Nächster Versand:*\n{next_send}"
+    )
+    
+    toggle_label = "⏸ Pausieren" if sched.get("active") else "▶️ Aktivieren"
+    keyboard = [
+        [InlineKeyboardButton(f"{status_emoji} {toggle_label}", callback_data=f"sched_toggle_active_{sched_id}")],
+        [InlineKeyboardButton(f"♻️ Letzte löschen: {del_prev}", callback_data=f"sched_del_prev_{sched_id}")],
+        [InlineKeyboardButton("🗑 Löschen", callback_data=f"sched_delete_{sched_id}")],
+        [InlineKeyboardButton("🔙 Zurück", callback_data="menu_scheduled")],
+    ]
+    
+    await query.edit_message_text(
+        text,
+        reply_markup=InlineKeyboardMarkup(keyboard),
+        parse_mode="Markdown",
+    )
 
-    elif data.startswith("sched_interval_"):
-        minutes = int(data.replace("sched_interval_", ""))
-        pending = user_data_store.get(user_id, {})
-        if not pending:
-            await query.edit_message_text("⚠️ Bitte starte nochmal.")
-            return
-        
-        import time as _time, datetime
-        sched_id = str(int(_time.time() * 1000))
-        bot_data = load_data()
-        
-        interval_labels = {
-            30: "Alle 30 Min", 60: "Jede Stunde", 120: "Alle 2 Stunden",
-            240: "Alle 4 Stunden", 360: "Alle 6 Stunden", 720: "Alle 12 Stunden",
-            1440: "Alle 24 Stunden",
-        }
-        
-        new_sched = {
-            "id": sched_id,
-            "groups": pending["groups"],
-            "text": pending["text"],
-            "text_html": pending.get("text_html", pending["text"]),
-            "time": pending.get("time", datetime.datetime.now().strftime("%H:%M")),
-            "interval_minutes": minutes,
-            "interval_label": interval_labels.get(minutes, f"Alle {minutes} Min"),
-            "active": True,
-            "created_by": user_id,
-            "created_at": datetime.datetime.now().strftime("%d.%m.%Y %H:%M"),
-            "last_sent": None,
-            "last_sent_messages": [],
-            "delete_previous": True,
-        }
-        bot_data.setdefault("scheduled", []).append(new_sched)
-        save_data(bot_data)
-        
-        # Schedule the job
-        schedule_job(context, new_sched)
-        
-        groups = await get_bot_groups(context)
-        group_names = [g["title"] for g in groups if g["id"] in pending["groups"]]
-        
-        await query.edit_message_text(
-            f"✅ *Wiederholte Nachricht erstellt!*\n\n"
-            f"⏰ Zeit: {new_sched['time']}\n"
-            f"🔁 {new_sched['interval_label']}\n"
-            f"📨 Gruppen: {', '.join(group_names)}\n"
-            f"📝 Text: {pending['text'][:50]}...\n\n"
-            f"🚀 Nächster Versand: {new_sched['time']}",
-            parse_mode="Markdown",
-        )
-        user_data_store.pop(user_id, None)
-        context.user_data["state"] = None
 
-    elif data.startswith("sched_view_"):
-        sched_id = data.replace("sched_view_", "")
-        await show_scheduled_detail(query, context, user_id, sched_id)
+# --- Scheduled job execution ---
 
-    elif data.startswith("sched_toggle_active_"):
-        sched_id = data.replace("sched_toggle_active_", "")
-        bot_data = load_data()
-        for s in bot_data.get("scheduled", []):
-            if s["id"] == sched_id:
-                s["active"] = not s["active"]
-                save_data(bot_data)
-                if s["active"]:
-                    schedule_job(context, s)
-                else:
-                    remove_scheduled_job(context, sched_id)
-                break
-        await show_scheduled_detail(query, context, user_id, sched_id)
+async def execute_scheduled_message(context: ContextTypes.DEFAULT_TYPE):
+    """Execute a scheduled message job."""
+    job = context.job
+    sched_id = job.data
+    
+    bot_data = load_data()
+    sched = None
+    for s in bot_data.get("scheduled", []):
+        if s["id"] == sched_id:
+            sched = s
+            break
+    
+    if not sched or not sched.get("active"):
+        return
+    
+    import datetime
+    
+    # Delete previous messages if enabled
+    if sched.get("delete_previous") and sched.get("last_sent_messages"):
+        for entry in sched["last_sent_messages"]:
+            try:
+                await context.bot.delete_message(chat_id=entry[0], message_id=entry[1])
+            except Exception as e:
+                logger.error(f"Scheduled delete failed in {entry[0]}: {e}")
+    
+    # Send new messages
+    sent_msgs = []
+    for gid in sched.get("groups", []):
+        try:
+            msg = await context.bot.send_message(
+                chat_id=gid,
+                text=sched.get("text_html", sched.get("text", "")),
+                parse_mode="HTML",
+            )
+            sent_msgs.append([gid, msg.message_id])
+        except Exception as e:
+            logger.error(f"Scheduled send failed in {gid}: {e}")
+    
+    # Update last sent info
+    sched["last_sent"] = datetime.datetime.now().strftime("%d.%m.%Y %H:%M")
+    sched["last_sent_messages"] = sent_msgs
+    save_data(bot_data)
+    
+    logger.info(f"Scheduled message {sched_id} sent to {len(sent_msgs)} groups")
 
-    elif data.startswith("sched_delete_"):
-        sched_id = data.replace("sched_delete_", "")
-        bot_data = load_data()
-        bot_data["scheduled"] = [s for s in bot_data.get("scheduled", []) if s["id"] != sched_id]
-        save_data(bot_data)
-        remove_scheduled_job(context, sched_id)
-        await query.edit_message_text("🗑 Wiederholte Nachricht gelöscht.")
 
-    elif data.startswith("sched_del_prev_"):
-        sched_id = data.replace("sched_del_prev_", "")
-        bot_data = load_data()
-        for s in bot_data.get("scheduled", []):
-            if s["id"] == sched_id:
-                s["delete_previous"] = not s.get("delete_previous", True)
-                save_data(bot_data)
-                break
-        await show_scheduled_detail(query, context, user_id, sched_id)
+def schedule_job(context, sched):
+    """Schedule a repeating job for a scheduled message."""
+    import datetime
+    
+    sched_id = sched["id"]
+    interval = sched.get("interval_minutes", 60) * 60  # convert to seconds
+    
+    # Remove existing job if any
+    remove_scheduled_job(context, sched_id)
+    
+    # Calculate first run time
+    now = datetime.datetime.now()
+    h, m = 0, 0
+    try:
+        h, m = map(int, sched.get("time", "00:00").split(":"))
+    except Exception:
+        pass
+    
+    first_run = now.replace(hour=h, minute=m, second=0, microsecond=0)
+    if first_run <= now:
+        first_run += datetime.timedelta(minutes=sched.get("interval_minutes", 60))
+    
+    delay = (first_run - now).total_seconds()
+    if delay < 0:
+        delay = 0
+    
+    context.job_queue.run_repeating(
+        execute_scheduled_message,
+        interval=interval,
+        first=delay,
+        data=sched_id,
+        name=f"sched_{sched_id}",
+    )
+    logger.info(f"Scheduled job {sched_id} set: interval={interval}s, first in {delay:.0f}s")
+
+
+def remove_scheduled_job(context, sched_id):
+    """Remove a scheduled job."""
+    jobs = context.job_queue.get_jobs_by_name(f"sched_{sched_id}")
+    for job in jobs:
+        job.schedule_removal()
+
+
+async def post_init(application):
+    """Called after the application is initialized. Restore scheduled jobs."""
+    bot_data = load_data()
+    count = 0
+    for sched in bot_data.get("scheduled", []):
+        if sched.get("active"):
+            schedule_job(application, sched)
+            count += 1
+    logger.info(f"Restored {count} scheduled jobs")
 
 
 def main():
