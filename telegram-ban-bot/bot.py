@@ -2074,7 +2074,7 @@ async def execute_scheduled_message(context: ContextTypes.DEFAULT_TYPE):
             logger.warning(f"Scheduled message {sched_id} has no text and no media, skipping")
             return
     
-    import datetime
+        import datetime
     
     # Delete previous messages if enabled
     if sched.get("delete_previous") and sched.get("last_sent_messages"):
