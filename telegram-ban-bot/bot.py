@@ -422,12 +422,31 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not selected:
             await query.answer("⚠️ Wähle mindestens eine Gruppe!", show_alert=True)
             return
-        user_data_store[user_id] = {"action": "sched_text", "groups": list(selected)}
-        await query.edit_message_text(
-            "📝 Sende mir jetzt die Nachricht für die wiederholte Sendung.\n\n"
-            "Tipp: Nutze die Telegram-Formatierung (Fett, Kursiv, Link, Zitat).",
-        )
-        context.user_data["state"] = WAITING_SCHEDULED_TEXT
+        # Create the scheduled message immediately with defaults
+        import time as _time, datetime
+        sched_id = str(int(_time.time() * 1000))
+        bot_data = load_data()
+        new_sched = {
+            "id": sched_id,
+            "groups": list(selected),
+            "text": "",
+            "text_html": "",
+            "time": datetime.datetime.now().strftime("%H:%M"),
+            "interval_minutes": 1440,
+            "interval_label": "Alle 24 Stunden",
+            "active": False,
+            "created_by": user_id,
+            "created_at": datetime.datetime.now().strftime("%d.%m.%Y %H:%M"),
+            "last_sent": None,
+            "last_sent_messages": [],
+            "delete_previous": False,
+            "pin_message": False,
+        }
+        bot_data.setdefault("scheduled", []).append(new_sched)
+        save_data(bot_data)
+        user_data_store.pop(user_id, None)
+        context.user_data["state"] = None
+        await show_scheduled_detail(query, context, user_id, sched_id)
 
     elif data == "sched_time_confirm":
         # After text is set, show hour picker
@@ -539,6 +558,16 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         for s in bot_data.get("scheduled", []):
             if s["id"] == sched_id:
                 s["delete_previous"] = not s.get("delete_previous", True)
+                save_data(bot_data)
+                break
+        await show_scheduled_detail(query, context, user_id, sched_id)
+
+    elif data.startswith("sched_pin_"):
+        sched_id = data.replace("sched_pin_", "")
+        bot_data = load_data()
+        for s in bot_data.get("scheduled", []):
+            if s["id"] == sched_id:
+                s["pin_message"] = not s.get("pin_message", False)
                 save_data(bot_data)
                 break
         await show_scheduled_detail(query, context, user_id, sched_id)
@@ -1394,7 +1423,7 @@ async def show_sched_group_selection(query, context, user_id, groups):
 
 
 async def show_scheduled_detail(query, context, user_id, sched_id):
-    """Show detail view like Worldskandi screenshot with Text/Sehen buttons."""
+    """Show detail view matching Worldskandi screenshot exactly."""
     bot_data = load_data()
     sched = None
     for s in bot_data.get("scheduled", []):
@@ -1405,50 +1434,35 @@ async def show_scheduled_detail(query, context, user_id, sched_id):
         await query.edit_message_text("⚠️ Nachricht nicht gefunden.")
         return
     
-    status = "Aktiv" if sched.get("active") else "Pausiert"
-    del_prev = "✅" if sched.get("delete_previous", True) else "❌"
-    has_text = "✅" if sched.get("text") else "❌"
-    
-    import datetime
-    next_send = "—"
-    if sched.get("active") and sched.get("time"):
-        now = datetime.datetime.now()
-        h, m = map(int, sched["time"].split(":"))
-        next_dt = now.replace(hour=h, minute=m, second=0, microsecond=0)
-        if next_dt <= now:
-            next_dt += datetime.timedelta(minutes=sched.get("interval_minutes", 60))
-        next_send = next_dt.strftime("%d.%m.%Y, %H:%M")
+    status = "Aktiv" if sched.get("active") else "Inaktiv"
+    time_str = sched.get("time", "—")
+    interval = sched.get("interval_label", "—")
+    pin = "✅" if sched.get("pin_message") else "✖"
+    del_prev = "✅" if sched.get("delete_previous") else "✖"
     
     text = (
-        f"🕐 *Wiederholte Mitteilungen*\n\n"
-        f"💡 *Status:* {status}\n"
-        f"🕐 *Zeit:* {sched.get('time', '?')}\n"
-        f"🔁 *Wiederholung:* {sched.get('interval_label', '?')}\n"
-        f"♻️ *Letzte Nachricht löschen:* {del_prev}\n\n"
-        f"📄 Text {has_text}\n\n"
-        f"👉 Mit den Schaltflächen hier kannst Du auswählen, was Du einstellen willst.\n\n"
-        f"🚀 *Nächster Versandtermin:*\n{next_send}"
+        f"🕐 <b>Wiederholte Mitteilungen</b>\n\n"
+        f"💡 <b>Status</b>: {status}\n"
+        f"🕐 <b>Zeit</b>: {time_str}\n"
+        f"🔁 <b>Wiederholung</b>: {interval}\n"
+        f"📌 <b>Mitteilung anheften:</b>  {pin}\n"
+        f"♻️ <b>Letzte Nachricht löschen:</b>  {del_prev}"
     )
     
-    toggle_label = "⏸ Pausieren" if sched.get("active") else "▶️ Aktivieren"
-    toggle_emoji = "🟢" if sched.get("active") else "🔴"
-    
     keyboard = [
-        [InlineKeyboardButton(f"{toggle_emoji} {toggle_label}", callback_data=f"sched_toggle_active_{sched_id}")],
-        [InlineKeyboardButton("📄 Text", callback_data=f"sched_edit_text_{sched_id}"),
-         InlineKeyboardButton("👀 Sehen", callback_data=f"sched_view_text_{sched_id}")],
+        [InlineKeyboardButton("✍️ Nachricht anpassen", callback_data=f"sched_edit_text_{sched_id}")],
         [InlineKeyboardButton("🕐 Zeit", callback_data=f"sched_edit_time_{sched_id}"),
          InlineKeyboardButton("🔁 Wiederholung", callback_data=f"sched_edit_interval_{sched_id}")],
-        [InlineKeyboardButton(f"♻️ Letzte Nachricht löschen: {del_prev}", callback_data=f"sched_del_prev_{sched_id}")],
-        [InlineKeyboardButton("👀 Vollständige Vorschau", callback_data=f"sched_view_text_{sched_id}")],
-        [InlineKeyboardButton("🗑 Löschen", callback_data=f"sched_delete_{sched_id}")],
-        [InlineKeyboardButton("🔙 Zurück", callback_data="menu_scheduled")],
+        [InlineKeyboardButton(f"📌 Mitteilung anheften  {pin}", callback_data=f"sched_pin_{sched_id}")],
+        [InlineKeyboardButton(f"♻️ Letzte Nachricht löschen  {del_prev}", callback_data=f"sched_del_prev_{sched_id}")],
+        [InlineKeyboardButton("🗑 Löschen", callback_data=f"sched_delete_confirm_{sched_id}")],
+        [InlineKeyboardButton("↩️ Zurück", callback_data="menu_scheduled")],
     ]
     
     await query.edit_message_text(
         text,
         reply_markup=InlineKeyboardMarkup(keyboard),
-        parse_mode="Markdown",
+        parse_mode="HTML",
     )
 
 
