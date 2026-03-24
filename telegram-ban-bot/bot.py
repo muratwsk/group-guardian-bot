@@ -388,12 +388,26 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def register_group(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_owner(update.effective_user.id):
-        await update.message.reply_text("⛔ Kein Zugriff.")
+        await update.message.reply_text("⛔ Nur Owner können Gruppen registrieren.")
         return
 
     chat = update.effective_chat
     if chat.type not in ("group", "supergroup"):
         await update.message.reply_text("Dieser Befehl funktioniert nur in Gruppen.")
+        return
+
+    # Check if bot is admin in this group
+    try:
+        bot_member = await context.bot.get_chat_member(chat.id, (await context.bot.get_me()).id)
+        if bot_member.status not in ("administrator", "creator"):
+            await update.message.reply_text(
+                "⚠️ Der Bot muss zuerst als *Admin* in dieser Gruppe hinzugefügt werden, "
+                "bevor die Gruppe registriert werden kann.",
+                parse_mode="Markdown",
+            )
+            return
+    except Exception as e:
+        await update.message.reply_text(f"⚠️ Konnte Admin-Status nicht prüfen: {e}")
         return
 
     data = load_data()
