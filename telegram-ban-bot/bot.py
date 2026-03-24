@@ -2075,51 +2075,50 @@ async def execute_scheduled_message(context: ContextTypes.DEFAULT_TYPE):
             return
     
         import datetime
-    
-    # Delete previous messages if enabled
-    if sched.get("delete_previous") and sched.get("last_sent_messages"):
-        for entry in sched["last_sent_messages"]:
-            try:
-                await context.bot.delete_message(chat_id=entry[0], message_id=entry[1])
-            except Exception as e:
-                logger.error(f"Scheduled delete failed in {entry[0]}: {e}")
-    
-    # Send new messages
-    sent_msgs = []
-    text_html = sched.get("text_html", sched.get("text", ""))
-    media_fid = sched.get("media_file_id")
-    media_type = sched.get("media_type", "photo")
-    
-    for gid in sched.get("groups", []):
-        try:
-            if media_fid:
-                if media_type == "photo":
-                    msg = await context.bot.send_photo(chat_id=gid, photo=media_fid, caption=text_html or None, parse_mode="HTML" if text_html else None)
-                elif media_type == "video":
-                    msg = await context.bot.send_video(chat_id=gid, video=media_fid, caption=text_html or None, parse_mode="HTML" if text_html else None)
-                elif media_type == "animation":
-                    msg = await context.bot.send_animation(chat_id=gid, animation=media_fid, caption=text_html or None, parse_mode="HTML" if text_html else None)
-                elif media_type == "sticker":
-                    msg = await context.bot.send_sticker(chat_id=gid, sticker=media_fid)
-                else:
-                    msg = await context.bot.send_document(chat_id=gid, document=media_fid, caption=text_html or None, parse_mode="HTML" if text_html else None)
-            else:
-                msg = await context.bot.send_message(chat_id=gid, text=text_html, parse_mode="HTML")
-            sent_msgs.append([gid, msg.message_id])
-            # Pin if enabled
-            if sched.get("pin_message"):
+        
+        # Delete previous messages if enabled
+        if sched.get("delete_previous") and sched.get("last_sent_messages"):
+            for entry in sched["last_sent_messages"]:
                 try:
-                    await context.bot.pin_chat_message(chat_id=gid, message_id=msg.message_id, disable_notification=True)
-                except Exception:
-                    pass
-        except Exception as e:
-            logger.error(f"Scheduled send failed in {gid}: {e}")
-    
-    # Update last sent info
-    sched["last_sent"] = datetime.datetime.now().strftime("%d.%m.%Y %H:%M")
-    sched["last_sent_messages"] = sent_msgs
-    save_data(bot_data)
-    
+                    await context.bot.delete_message(chat_id=entry[0], message_id=entry[1])
+                except Exception as e:
+                    logger.error(f"Scheduled delete failed in {entry[0]}: {e}")
+        
+        # Send new messages
+        sent_msgs = []
+        text_html = sched.get("text_html", sched.get("text", ""))
+        media_fid = sched.get("media_file_id")
+        media_type = sched.get("media_type", "photo")
+        
+        for gid in sched.get("groups", []):
+            try:
+                if media_fid:
+                    if media_type == "photo":
+                        msg = await context.bot.send_photo(chat_id=gid, photo=media_fid, caption=text_html or None, parse_mode="HTML" if text_html else None)
+                    elif media_type == "video":
+                        msg = await context.bot.send_video(chat_id=gid, video=media_fid, caption=text_html or None, parse_mode="HTML" if text_html else None)
+                    elif media_type == "animation":
+                        msg = await context.bot.send_animation(chat_id=gid, animation=media_fid, caption=text_html or None, parse_mode="HTML" if text_html else None)
+                    elif media_type == "sticker":
+                        msg = await context.bot.send_sticker(chat_id=gid, sticker=media_fid)
+                    else:
+                        msg = await context.bot.send_document(chat_id=gid, document=media_fid, caption=text_html or None, parse_mode="HTML" if text_html else None)
+                else:
+                    msg = await context.bot.send_message(chat_id=gid, text=text_html, parse_mode="HTML")
+                sent_msgs.append([gid, msg.message_id])
+                if sched.get("pin_message"):
+                    try:
+                        await context.bot.pin_chat_message(chat_id=gid, message_id=msg.message_id, disable_notification=True)
+                    except Exception:
+                        pass
+            except Exception as e:
+                logger.error(f"Scheduled send failed in {gid}: {e}")
+        
+        # Update last sent info
+        sched["last_sent"] = datetime.datetime.now().strftime("%d.%m.%Y %H:%M")
+        sched["last_sent_messages"] = sent_msgs
+        save_data(bot_data)
+        
         logger.info(f"Scheduled message {sched_id} sent to {len(sent_msgs)} groups")
     except Exception as e:
         logger.error(f"execute_scheduled_message error: {e}", exc_info=True)
