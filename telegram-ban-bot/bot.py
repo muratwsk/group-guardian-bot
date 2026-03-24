@@ -229,8 +229,25 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     data = query.data
 
+    # === BACK TO MAIN MENU ===
+    if data == "back_main":
+        keyboard = [
+            [InlineKeyboardButton("🚫 BannALL", callback_data="menu_banall")],
+            [InlineKeyboardButton("📨 Messenger", callback_data="menu_messenger")],
+        ]
+        if is_owner(user_id):
+            keyboard.append([InlineKeyboardButton("⚙️ Einstellungen", callback_data="menu_settings")])
+        role = "👑 Owner" if is_owner(user_id) else "🛡️ Admin"
+        # Clear any pending state
+        user_data_store.pop(user_id, None)
+        await query.edit_message_text(
+            f"🤖 *Bot Menü* ({role})\nWähle eine Aktion:",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode="Markdown",
+        )
+
     # === MAIN MENU ===
-    if data == "menu_banall":
+    elif data == "menu_banall":
         keyboard = [
             [InlineKeyboardButton("🚫 Ban", callback_data="action_ban"),
              InlineKeyboardButton("✅ Unban", callback_data="action_unban")],
