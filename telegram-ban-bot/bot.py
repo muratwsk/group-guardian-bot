@@ -220,6 +220,10 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         keyboard.append([InlineKeyboardButton("📢 ALLE GRUPPEN", callback_data="msg_all_groups")])
         for g in groups:
             keyboard.append([InlineKeyboardButton(g["title"], callback_data=f"msg_group_{g['id']}")])
+        # Show delete old broadcasts button if any exist
+        bot_data = load_data()
+        if bot_data.get("broadcasts"):
+            keyboard.append([InlineKeyboardButton("🗑 Gesendete Nachrichten löschen", callback_data="show_broadcasts")])
         keyboard.append([InlineKeyboardButton("🔙 Zurück", callback_data="back_main")])
         await query.edit_message_text(
             "📨 *Messenger*\nWähle die Gruppe(n) für die Nachricht:",
