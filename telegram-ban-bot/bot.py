@@ -46,6 +46,14 @@ def normalize_data(data):
     data.setdefault("banned_users", {})
     data.setdefault("broadcasts", {})
     data.setdefault("scheduled", [])
+    data.setdefault("open_close", {
+        "open_sticker": None,
+        "close_sticker": None,
+        "notify_groups": [],
+        "open_text": "Hey Freunde, wir haben geöffnet! 🎉\nKommt rein und gönnt euch!",
+        "close_text": "Wir haben geschlossen. Bis zum nächsten Mal! 👋",
+        "active_open_messages": {},
+    })
     return data
 
 def load_data():
