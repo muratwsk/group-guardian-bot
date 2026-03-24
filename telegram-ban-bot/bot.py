@@ -443,12 +443,12 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "groups": list(selected),
             "text": "",
             "text_html": "",
-            "time": datetime.datetime.now().strftime("%H:%M"),
+            "time": now_de().strftime("%H:%M"),
             "interval_minutes": 1440,
             "interval_label": "Alle 24 Stunden",
             "active": False,
             "created_by": user_id,
-            "created_at": datetime.datetime.now().strftime("%d.%m.%Y %H:%M"),
+            "created_at": now_de().strftime("%d.%m.%Y %H:%M"),
             "last_sent": None,
             "last_sent_messages": [],
             "delete_previous": False,
@@ -501,12 +501,12 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "groups": pending["groups"],
             "text": pending["text"],
             "text_html": pending.get("text_html", pending["text"]),
-            "time": pending.get("time", datetime.datetime.now().strftime("%H:%M")),
+            "time": pending.get("time", now_de().strftime("%H:%M")),
             "interval_minutes": minutes,
             "interval_label": f"Alle {get_interval_label(minutes)}",
             "active": True,
             "created_by": user_id,
-            "created_at": datetime.datetime.now().strftime("%d.%m.%Y %H:%M"),
+            "created_at": now_de().strftime("%d.%m.%Y %H:%M"),
             "last_sent": None,
             "last_sent_messages": [],
             "delete_previous": True,
@@ -630,8 +630,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif data.startswith("sched_startdate_"):
         sched_id = data.replace("sched_startdate_", "")
         user_data_store[user_id] = {"action": "sched_startdate", "sched_id": sched_id}
-        import datetime
-        now = datetime.datetime.now().strftime("%d/%m/%y %H:%M")
+        now = now_de().strftime("%d/%m/%y %H:%M")
         keyboard = [[InlineKeyboardButton("❌ Abbrechen", callback_data=f"sched_view_{sched_id}")]]
         await query.edit_message_text(
             f"🕐 <b>Wiederholte Mitteilungen</b>\n\n"
@@ -647,8 +646,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif data.startswith("sched_enddate_"):
         sched_id = data.replace("sched_enddate_", "")
         user_data_store[user_id] = {"action": "sched_enddate", "sched_id": sched_id}
-        import datetime
-        now = datetime.datetime.now().strftime("%d/%m/%y %H:%M")
+        now = now_de().strftime("%d/%m/%y %H:%M")
         keyboard = [[InlineKeyboardButton("❌ Abbrechen", callback_data=f"sched_view_{sched_id}")]]
         await query.edit_message_text(
             f"🕐 <b>Wiederholte Mitteilungen</b>\n\n"
@@ -1112,7 +1110,7 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         bot_data = load_data()
         bot_data.setdefault("broadcasts", {})[broadcast_id] = {
             "messages": sent_msgs,
-            "date": datetime.datetime.now().strftime("%d.%m %H:%M"),
+            "date": now_de().strftime("%d.%m %H:%M"),
             "count": success,
             "preview": update.message.text[:50] if update.message.text else "...",
         }
@@ -1178,7 +1176,6 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("Bitte starte mit /start.")
             return
         sched_id = pending["sched_id"]
-        import datetime
         try:
             dt = datetime.datetime.strptime(update.message.text.strip(), "%d/%m/%y %H:%M")
             bot_data = load_data()
@@ -1204,7 +1201,6 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("Bitte starte mit /start.")
             return
         sched_id = pending["sched_id"]
-        import datetime
         try:
             dt = datetime.datetime.strptime(update.message.text.strip(), "%d/%m/%y %H:%M")
             bot_data = load_data()
@@ -1670,8 +1666,7 @@ async def show_scheduled_list(query, context, user_id, page=0):
     bot_data = load_data()
     scheduled = bot_data.get("scheduled", [])
     
-    import datetime
-    now = datetime.datetime.now().strftime("%d.%m.%Y, %H:%M")
+    now = now_de().strftime("%d.%m.%Y, %H:%M")
     
     text = (
         "🕐 <b>Wiederholte Mitteilungen</b>\n"
@@ -2082,7 +2077,6 @@ async def execute_scheduled_message(context: ContextTypes.DEFAULT_TYPE):
             logger.warning(f"Scheduled message {sched_id} has no text and no media, skipping")
             return
     
-        import datetime
         
         # Delete previous messages if enabled
         if sched.get("delete_previous") and sched.get("last_sent_messages"):
@@ -2123,7 +2117,7 @@ async def execute_scheduled_message(context: ContextTypes.DEFAULT_TYPE):
                 logger.error(f"Scheduled send failed in {gid}: {e}")
         
         # Update last sent info
-        sched["last_sent"] = datetime.datetime.now().strftime("%d.%m.%Y %H:%M")
+        sched["last_sent"] = now_de().strftime("%d.%m.%Y %H:%M")
         sched["last_sent_messages"] = sent_msgs
         save_data(bot_data)
         
@@ -2145,7 +2139,6 @@ def _get_job_queue(context):
 
 def schedule_job(context, sched):
     """Schedule a repeating job for a scheduled message."""
-    import datetime
     
     jq = _get_job_queue(context)
     if not jq:
@@ -2159,7 +2152,7 @@ def schedule_job(context, sched):
     remove_scheduled_job(context, sched_id)
     
     # Calculate first run time
-    now = datetime.datetime.now()
+    now = now_de()
     time_str = sched.get("time", "")
     
     if time_str and time_str != "00:00":
