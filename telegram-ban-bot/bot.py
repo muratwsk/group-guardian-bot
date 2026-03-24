@@ -585,19 +585,26 @@ async def unbanall(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # --- User tracker + auto re-ban ---
 
 async def track_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Track every user who sends a message in a group and immediately re-ban if needed."""
+    """Track group activity, remove ban-related service messages, and immediately re-ban if needed."""
     if not update.message:
         return
 
     if update.message.from_user:
         track_user(update.message.from_user)
 
+    if update.message.left_chat_member:
+        left_member = update.message.left_chat_member
+        if is_banned_in_group(update.effective_chat.id, left_member.id):
+            try:
+                await update.message.delete()
+            except Exception as e:
+                logger.error(f"Could not delete ban service message for {left_member.id} in {update.effective_chat.id}: {e}")
+
     for member in update.message.new_chat_members or []:
         track_user(member)
         if is_banned_in_group(update.effective_chat.id, member.id):
             try:
                 await context.bot.ban_chat_member(chat_id=update.effective_chat.id, user_id=member.id, revoke_messages=True)
-                # Delete the service message ("X joined the group") so no trace remains
                 try:
                     await update.message.delete()
                 except Exception:
