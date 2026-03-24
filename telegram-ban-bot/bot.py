@@ -1,9 +1,17 @@
 import atexit
+import datetime
 import json
 import logging
 import os
 import signal
 import subprocess
+from zoneinfo import ZoneInfo
+
+BERLIN_TZ = ZoneInfo("Europe/Berlin")
+
+def now_de():
+    """Return current datetime in German timezone."""
+    return datetime.datetime.now(BERLIN_TZ)
 import requests as _requests
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
