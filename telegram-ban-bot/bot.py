@@ -1306,7 +1306,7 @@ async def show_sched_group_selection(query, context, user_id, groups):
 
 
 async def show_scheduled_detail(query, context, user_id, sched_id):
-    """Show detail view of a scheduled message - like the Worldskandi screenshot."""
+    """Show detail view like Worldskandi screenshot with Text/Sehen buttons."""
     bot_data = load_data()
     sched = None
     for s in bot_data.get("scheduled", []):
@@ -1319,6 +1319,7 @@ async def show_scheduled_detail(query, context, user_id, sched_id):
     
     status = "Aktiv" if sched.get("active") else "Pausiert"
     del_prev = "✅" if sched.get("delete_previous", True) else "❌"
+    has_text = "✅" if sched.get("text") else "❌"
     
     import datetime
     next_send = "—"
@@ -1331,10 +1332,13 @@ async def show_scheduled_detail(query, context, user_id, sched_id):
         next_send = next_dt.strftime("%d.%m.%Y, %H:%M")
     
     text = (
+        f"🕐 *Wiederholte Mitteilungen*\n\n"
         f"💡 *Status:* {status}\n"
         f"🕐 *Zeit:* {sched.get('time', '?')}\n"
         f"🔁 *Wiederholung:* {sched.get('interval_label', '?')}\n"
         f"♻️ *Letzte Nachricht löschen:* {del_prev}\n\n"
+        f"📄 Text {has_text}\n\n"
+        f"👉 Mit den Schaltflächen hier kannst Du auswählen, was Du einstellen willst.\n\n"
         f"🚀 *Nächster Versandtermin:*\n{next_send}"
     )
     
@@ -1343,16 +1347,103 @@ async def show_scheduled_detail(query, context, user_id, sched_id):
     
     keyboard = [
         [InlineKeyboardButton(f"{toggle_emoji} {toggle_label}", callback_data=f"sched_toggle_active_{sched_id}")],
-        [InlineKeyboardButton("✏️ Nachricht anpassen", callback_data=f"sched_edit_text_{sched_id}")],
+        [InlineKeyboardButton("📄 Text", callback_data=f"sched_edit_text_{sched_id}"),
+         InlineKeyboardButton("👀 Sehen", callback_data=f"sched_view_text_{sched_id}")],
         [InlineKeyboardButton("🕐 Zeit", callback_data=f"sched_edit_time_{sched_id}"),
          InlineKeyboardButton("🔁 Wiederholung", callback_data=f"sched_edit_interval_{sched_id}")],
         [InlineKeyboardButton(f"♻️ Letzte Nachricht löschen: {del_prev}", callback_data=f"sched_del_prev_{sched_id}")],
+        [InlineKeyboardButton("👀 Vollständige Vorschau", callback_data=f"sched_view_text_{sched_id}")],
         [InlineKeyboardButton("🗑 Löschen", callback_data=f"sched_delete_{sched_id}")],
         [InlineKeyboardButton("🔙 Zurück", callback_data="menu_scheduled")],
     ]
     
     await query.edit_message_text(
         text,
+        reply_markup=InlineKeyboardMarkup(keyboard),
+        parse_mode="Markdown",
+    )
+
+
+async def show_hour_picker(query, context, user_id, back_callback="menu_scheduled"):
+    """Show hour picker grid 0-23 in rows of 5 like screenshot."""
+    pending = user_data_store.get(user_id, {})
+    edit_sched_id = pending.get("sched_id")
+    
+    keyboard = []
+    for row_start in range(0, 24, 5):
+        row = []
+        for h in range(row_start, min(row_start + 5, 24)):
+            if edit_sched_id:
+                cb = f"sched_edit_hour_{edit_sched_id}_{h}"
+            else:
+                cb = f"sched_hour_{h}"
+            row.append(InlineKeyboardButton(str(h), callback_data=cb))
+        keyboard.append(row)
+    keyboard.append([InlineKeyboardButton("🔙 Zurück", callback_data=back_callback)])
+    
+    await query.edit_message_text(
+        "🕐 *Wiederholte Mitteilungen*\n\n👉 Wähle die Startzeit.",
+        reply_markup=InlineKeyboardMarkup(keyboard),
+        parse_mode="Markdown",
+    )
+
+
+async def show_minute_picker(query, context, user_id, hour, back_callback="menu_scheduled", edit_sched_id=None):
+    """Show minute picker 00, 05, 10, ..., 55 in rows of 4."""
+    keyboard = []
+    minutes = [0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55]
+    for row_start in range(0, len(minutes), 4):
+        row = []
+        for m in minutes[row_start:row_start + 4]:
+            label = f"{m:02d}"
+            if edit_sched_id:
+                cb = f"sched_edit_min_{edit_sched_id}_{m}"
+            else:
+                cb = f"sched_minute_{m}"
+            row.append(InlineKeyboardButton(label, callback_data=cb))
+        keyboard.append(row)
+    keyboard.append([InlineKeyboardButton("🔙 Zurück", callback_data=back_callback)])
+    
+    await query.edit_message_text(
+        f"🕐 *Stunde: {hour}*\n\n👉 Wähle die Minute.",
+        reply_markup=InlineKeyboardMarkup(keyboard),
+        parse_mode="Markdown",
+    )
+
+
+def get_interval_label(minutes):
+    labels = {
+        1: "1 Min", 2: "2 Min", 3: "3 Min", 5: "5 Min",
+        10: "10 Min", 15: "15 Min", 20: "20 Min", 30: "30 Min",
+        60: "1 Stunde", 120: "2 Stunden", 180: "3 Stunden", 240: "4 Stunden",
+        360: "6 Stunden", 480: "8 Stunden", 720: "12 Stunden", 1440: "24 Stunden",
+    }
+    return labels.get(minutes, f"{minutes} Min")
+
+
+async def show_interval_picker(query, context, user_id, back_callback="menu_scheduled", edit_sched_id=None, current_minutes=None):
+    """Show interval picker with Stunden + Minuten grid like screenshot."""
+    prefix = f"sched_set_int_{edit_sched_id}_" if edit_sched_id else "sched_interval_"
+    
+    def btn(val, label=None):
+        check = " ✅" if current_minutes == val else ""
+        return InlineKeyboardButton(f"{label or val}{check}", callback_data=f"{prefix}{val}")
+    
+    keyboard = [
+        [InlineKeyboardButton("· Stunden ·", callback_data="noop")],
+        [btn(60, "1"), btn(120, "2"), btn(180, "3"), btn(240, "4")],
+        [btn(360, "6"), btn(480, "8"), btn(720, "12"), btn(1440, "24")],
+        [InlineKeyboardButton("· Minuten ·", callback_data="noop")],
+        [btn(1, "1"), btn(2, "2"), btn(3, "3"), btn(5, "5")],
+        [btn(10, "10"), btn(15, "15"), btn(20, "20"), btn(30, "30")],
+        [InlineKeyboardButton("🔙 Zurück", callback_data=back_callback)],
+    ]
+    
+    current_label = get_interval_label(current_minutes) if current_minutes else "—"
+    await query.edit_message_text(
+        f"🕐 *Wiederholte Mitteilungen*\n\n"
+        f"🔁 *Wiederholung:* Alle {current_label}\n\n"
+        f"👉 Wähle aus, wie oft die Nachricht wiederholt werden soll.",
         reply_markup=InlineKeyboardMarkup(keyboard),
         parse_mode="Markdown",
     )
