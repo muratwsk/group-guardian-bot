@@ -500,6 +500,58 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 break
         await show_scheduled_detail(query, context, user_id, sched_id)
 
+    elif data.startswith("sched_edit_text_"):
+        sched_id = data.replace("sched_edit_text_", "")
+        user_data_store[user_id] = {"action": "sched_edit_text", "sched_id": sched_id}
+        await query.edit_message_text(
+            "✏️ Sende mir die neue Nachricht.\n\n"
+            "Tipp: Nutze die Telegram-Formatierung (Fett, Kursiv, Link, Zitat).",
+        )
+        context.user_data["state"] = WAITING_SCHEDULED_TEXT
+
+    elif data.startswith("sched_edit_time_"):
+        sched_id = data.replace("sched_edit_time_", "")
+        user_data_store[user_id] = {"action": "sched_edit_time", "sched_id": sched_id}
+        await query.edit_message_text("🕐 Sende mir die neue Zeit im Format *HH:MM* (z.B. 14:30):", parse_mode="Markdown")
+        context.user_data["state"] = WAITING_SCHEDULED_TIME
+
+    elif data.startswith("sched_edit_interval_"):
+        sched_id = data.replace("sched_edit_interval_", "")
+        keyboard = [
+            [InlineKeyboardButton("⏱ Alle 30 Min", callback_data=f"sched_set_int_{sched_id}_30"),
+             InlineKeyboardButton("🕐 Jede Stunde", callback_data=f"sched_set_int_{sched_id}_60")],
+            [InlineKeyboardButton("🕑 Alle 2 Std", callback_data=f"sched_set_int_{sched_id}_120"),
+             InlineKeyboardButton("🕓 Alle 4 Std", callback_data=f"sched_set_int_{sched_id}_240")],
+            [InlineKeyboardButton("🕕 Alle 6 Std", callback_data=f"sched_set_int_{sched_id}_360"),
+             InlineKeyboardButton("🕛 Alle 12 Std", callback_data=f"sched_set_int_{sched_id}_720")],
+            [InlineKeyboardButton("📅 Alle 24 Std", callback_data=f"sched_set_int_{sched_id}_1440")],
+            [InlineKeyboardButton("🔙 Zurück", callback_data=f"sched_view_{sched_id}")],
+        ]
+        await query.edit_message_text(
+            "🔁 *Wiederholung ändern:*",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode="Markdown",
+        )
+
+    elif data.startswith("sched_set_int_"):
+        parts = data.replace("sched_set_int_", "").rsplit("_", 1)
+        sched_id, minutes = parts[0], int(parts[1])
+        interval_labels = {
+            30: "Alle 30 Min", 60: "Jede Stunde", 120: "Alle 2 Stunden",
+            240: "Alle 4 Stunden", 360: "Alle 6 Stunden", 720: "Alle 12 Stunden",
+            1440: "Alle 24 Stunden",
+        }
+        bot_data = load_data()
+        for s in bot_data.get("scheduled", []):
+            if s["id"] == sched_id:
+                s["interval_minutes"] = minutes
+                s["interval_label"] = interval_labels.get(minutes, f"Alle {minutes} Min")
+                save_data(bot_data)
+                if s.get("active"):
+                    schedule_job(context, s)
+                break
+        await show_scheduled_detail(query, context, user_id, sched_id)
+
     # === BAN/UNBAN ===
     elif data == "action_ban":
         groups = await get_bot_groups(context)
@@ -740,15 +792,31 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not pending:
             await update.message.reply_text("Bitte starte mit /start.")
             return
-        pending["text"] = update.message.text
-        pending["text_html"] = update.message.text_html
-        pending["action"] = "sched_set_time"
-        user_data_store[user_id] = pending
-        await update.message.reply_text(
-            "⏰ Sende mir jetzt die Startzeit im Format *HH:MM* (z.B. 14:30):",
-            parse_mode="Markdown",
-        )
-        context.user_data["state"] = WAITING_SCHEDULED_TIME
+        
+        # Check if editing existing scheduled message
+        if pending.get("action") == "sched_edit_text":
+            sched_id = pending["sched_id"]
+            bot_data = load_data()
+            for s in bot_data.get("scheduled", []):
+                if s["id"] == sched_id:
+                    s["text"] = update.message.text
+                    s["text_html"] = update.message.text_html
+                    save_data(bot_data)
+                    break
+            await update.message.reply_text("✅ Nachricht aktualisiert.")
+            context.user_data["state"] = None
+            user_data_store.pop(user_id, None)
+        else:
+            # New scheduled message flow
+            pending["text"] = update.message.text
+            pending["text_html"] = update.message.text_html
+            pending["action"] = "sched_set_time"
+            user_data_store[user_id] = pending
+            await update.message.reply_text(
+                "⏰ Sende mir jetzt die Startzeit im Format *HH:MM* (z.B. 14:30):",
+                parse_mode="Markdown",
+            )
+            context.user_data["state"] = WAITING_SCHEDULED_TIME
 
     elif state == WAITING_SCHEDULED_TIME:
         pending = user_data_store.get(user_id)
@@ -764,26 +832,44 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if h > 23 or m > 59:
             await update.message.reply_text("⚠️ Ungültige Zeit. Bitte erneut senden:")
             return
-        pending["time"] = f"{h:02d}:{m:02d}"
-        pending["action"] = "sched_set_time"
-        user_data_store[user_id] = pending
+        time_str = f"{h:02d}:{m:02d}"
         
-        keyboard = [
-            [InlineKeyboardButton("⏱ Alle 30 Min", callback_data="sched_interval_30"),
-             InlineKeyboardButton("🕐 Jede Stunde", callback_data="sched_interval_60")],
-            [InlineKeyboardButton("🕑 Alle 2 Std", callback_data="sched_interval_120"),
-             InlineKeyboardButton("🕓 Alle 4 Std", callback_data="sched_interval_240")],
-            [InlineKeyboardButton("🕕 Alle 6 Std", callback_data="sched_interval_360"),
-             InlineKeyboardButton("🕛 Alle 12 Std", callback_data="sched_interval_720")],
-            [InlineKeyboardButton("📅 Alle 24 Std", callback_data="sched_interval_1440")],
-            [InlineKeyboardButton("🔙 Zurück", callback_data="menu_scheduled")],
-        ]
-        await update.message.reply_text(
-            f"⏰ Startzeit: *{pending['time']}*\n\n🔁 Wähle jetzt die Wiederholung:",
-            reply_markup=InlineKeyboardMarkup(keyboard),
-            parse_mode="Markdown",
-        )
-        context.user_data["state"] = None
+        # Check if editing existing scheduled message
+        if pending.get("action") == "sched_edit_time":
+            sched_id = pending["sched_id"]
+            bot_data = load_data()
+            for s in bot_data.get("scheduled", []):
+                if s["id"] == sched_id:
+                    s["time"] = time_str
+                    save_data(bot_data)
+                    if s.get("active"):
+                        schedule_job(context, s)
+                    break
+            await update.message.reply_text(f"✅ Zeit auf *{time_str}* aktualisiert.", parse_mode="Markdown")
+            context.user_data["state"] = None
+            user_data_store.pop(user_id, None)
+        else:
+            # New scheduled message flow
+            pending["time"] = time_str
+            pending["action"] = "sched_set_time"
+            user_data_store[user_id] = pending
+            
+            keyboard = [
+                [InlineKeyboardButton("⏱ Alle 30 Min", callback_data="sched_interval_30"),
+                 InlineKeyboardButton("🕐 Jede Stunde", callback_data="sched_interval_60")],
+                [InlineKeyboardButton("🕑 Alle 2 Std", callback_data="sched_interval_120"),
+                 InlineKeyboardButton("🕓 Alle 4 Std", callback_data="sched_interval_240")],
+                [InlineKeyboardButton("🕕 Alle 6 Std", callback_data="sched_interval_360"),
+                 InlineKeyboardButton("🕛 Alle 12 Std", callback_data="sched_interval_720")],
+                [InlineKeyboardButton("📅 Alle 24 Std", callback_data="sched_interval_1440")],
+                [InlineKeyboardButton("🔙 Zurück", callback_data="menu_scheduled")],
+            ]
+            await update.message.reply_text(
+                f"⏰ Startzeit: *{time_str}*\n\n🔁 Wähle jetzt die Wiederholung:",
+                reply_markup=InlineKeyboardMarkup(keyboard),
+                parse_mode="Markdown",
+            )
+            context.user_data["state"] = None
 
 # --- /registergroup - run in a group to add it ---
 
@@ -1160,25 +1246,43 @@ def ensure_single_instance():
 # --- Scheduled messages helper functions ---
 
 async def show_scheduled_list(query, context, user_id):
-    """Show list of all scheduled messages."""
+    """Show list of all scheduled messages - layout like the Worldskandi bot screenshot."""
     bot_data = load_data()
     scheduled = bot_data.get("scheduled", [])
-    keyboard = []
-    
-    for i, s in enumerate(scheduled, 1):
-        status = "✅" if s.get("active") else "⏸"
-        preview = s.get("text", "")[:20]
-        label = f"{'🟢' if s.get('active') else '🔴'} {i} · {status} {s.get('interval_label', '?')} · {preview}.."
-        keyboard.append([InlineKeyboardButton(label, callback_data=f"sched_view_{s['id']}")])
-    
-    keyboard.append([InlineKeyboardButton("➕ Neue wiederholte Nachricht", callback_data="sched_new")])
-    keyboard.append([InlineKeyboardButton("🔙 Zurück", callback_data="back_main")])
     
     import datetime
     now = datetime.datetime.now().strftime("%d.%m.%Y, %H:%M")
-    text = f"🔁 *Wiederholte Nachrichten*\n\n*Aktuelle Zeit:* {now}\n"
+    text = f"*Aktuelle Zeit:* {now}\n"
+    
+    for i, s in enumerate(scheduled, 1):
+        status = "Aktiv ✅" if s.get("active") else "Pausiert ⏸"
+        preview = s.get("text", "")[:20]
+        time_str = s.get("time", "?")
+        interval = s.get("interval_label", "?")
+        
+        text += (
+            f"\n🟢 *{i}* · *{status}*\n"
+            f"  ├ Zeit: {time_str}\n"
+            f"  ├ _{interval}_\n"
+            f"  └ {preview}..\n"
+        ) if s.get("active") else (
+            f"\n🔴 *{i}* · *{status}*\n"
+            f"  ├ Zeit: {time_str}\n"
+            f"  ├ _{interval}_\n"
+            f"  └ {preview}..\n"
+        )
+    
     if not scheduled:
         text += "\nKeine wiederholten Nachrichten eingerichtet."
+    
+    # Buttons: one per scheduled message to view details
+    keyboard = []
+    for i, s in enumerate(scheduled, 1):
+        emoji = "🟢" if s.get("active") else "🔴"
+        keyboard.append([InlineKeyboardButton(f"{emoji} Nachricht {i} bearbeiten", callback_data=f"sched_view_{s['id']}")])
+    
+    keyboard.append([InlineKeyboardButton("➕ Nachricht hinzufügen", callback_data="sched_new")])
+    keyboard.append([InlineKeyboardButton("🔙 Zurück", callback_data="back_main")])
     
     await query.edit_message_text(
         text,
@@ -1214,7 +1318,7 @@ async def show_sched_group_selection(query, context, user_id, groups):
 
 
 async def show_scheduled_detail(query, context, user_id, sched_id):
-    """Show detail view of a scheduled message."""
+    """Show detail view of a scheduled message - like the Worldskandi screenshot."""
     bot_data = load_data()
     sched = None
     for s in bot_data.get("scheduled", []):
@@ -1225,11 +1329,7 @@ async def show_scheduled_detail(query, context, user_id, sched_id):
         await query.edit_message_text("⚠️ Nachricht nicht gefunden.")
         return
     
-    groups = await get_bot_groups(context)
-    group_names = [g["title"] for g in groups if g["id"] in sched.get("groups", [])]
-    
     status = "Aktiv" if sched.get("active") else "Pausiert"
-    status_emoji = "🟢" if sched.get("active") else "🔴"
     del_prev = "✅" if sched.get("delete_previous", True) else "❌"
     
     import datetime
@@ -1246,16 +1346,19 @@ async def show_scheduled_detail(query, context, user_id, sched_id):
         f"💡 *Status:* {status}\n"
         f"🕐 *Zeit:* {sched.get('time', '?')}\n"
         f"🔁 *Wiederholung:* {sched.get('interval_label', '?')}\n"
-        f"♻️ *Letzte Nachricht löschen:* {del_prev}\n"
-        f"📨 *Gruppen:* {', '.join(group_names)}\n"
-        f"📝 *Text:* {sched.get('text', '?')[:100]}\n\n"
-        f"🚀 *Nächster Versand:*\n{next_send}"
+        f"♻️ *Letzte Nachricht löschen:* {del_prev}\n\n"
+        f"🚀 *Nächster Versandtermin:*\n{next_send}"
     )
     
     toggle_label = "⏸ Pausieren" if sched.get("active") else "▶️ Aktivieren"
+    toggle_emoji = "🟢" if sched.get("active") else "🔴"
+    
     keyboard = [
-        [InlineKeyboardButton(f"{status_emoji} {toggle_label}", callback_data=f"sched_toggle_active_{sched_id}")],
-        [InlineKeyboardButton(f"♻️ Letzte löschen: {del_prev}", callback_data=f"sched_del_prev_{sched_id}")],
+        [InlineKeyboardButton(f"{toggle_emoji} {toggle_label}", callback_data=f"sched_toggle_active_{sched_id}")],
+        [InlineKeyboardButton("✏️ Nachricht anpassen", callback_data=f"sched_edit_text_{sched_id}")],
+        [InlineKeyboardButton("🕐 Zeit", callback_data=f"sched_edit_time_{sched_id}"),
+         InlineKeyboardButton("🔁 Wiederholung", callback_data=f"sched_edit_interval_{sched_id}")],
+        [InlineKeyboardButton(f"♻️ Letzte Nachricht löschen: {del_prev}", callback_data=f"sched_del_prev_{sched_id}")],
         [InlineKeyboardButton("🗑 Löschen", callback_data=f"sched_delete_{sched_id}")],
         [InlineKeyboardButton("🔙 Zurück", callback_data="menu_scheduled")],
     ]
