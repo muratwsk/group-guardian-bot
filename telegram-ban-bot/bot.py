@@ -1237,6 +1237,27 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("Bitte starte mit /start.")
             return
 
+        # Handle open/close text editing
+        if pending.get("action") == "oc_edit_open_text":
+            bot_data = load_data()
+            bot_data["open_close"]["open_text"] = update.message.text
+            save_data(bot_data)
+            context.user_data["state"] = None
+            user_data_store.pop(user_id, None)
+            keyboard = [[InlineKeyboardButton("🔙 Zurück zu Open/Close", callback_data="menu_openclose")]]
+            await update.message.reply_text("✅ Open-Text aktualisiert!", reply_markup=InlineKeyboardMarkup(keyboard))
+            return
+        
+        if pending.get("action") == "oc_edit_close_text":
+            bot_data = load_data()
+            bot_data["open_close"]["close_text"] = update.message.text
+            save_data(bot_data)
+            context.user_data["state"] = None
+            user_data_store.pop(user_id, None)
+            keyboard = [[InlineKeyboardButton("🔙 Zurück zu Open/Close", callback_data="menu_openclose")]]
+            await update.message.reply_text("✅ Close-Text aktualisiert!", reply_markup=InlineKeyboardMarkup(keyboard))
+            return
+
         groups = pending["groups"]
         success = 0
         fail = 0
