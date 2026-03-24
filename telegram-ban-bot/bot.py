@@ -1057,6 +1057,52 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         await log_action(context, f"UNBANALL (via /info): {target_name} ({target_id}) von {query.from_user.full_name}")
 
+    elif data.startswith("info_mute_"):
+        target_id = int(data.replace("info_mute_", ""))
+        groups = await get_bot_groups(context)
+        if not groups:
+            await query.edit_message_text("Keine Gruppen registriert.")
+            return
+        tracked = lookup_user(str(target_id))
+        target_name = tracked.get("name", str(target_id)) if tracked else str(target_id)
+        from telegram import ChatPermissions
+        mute_perms = ChatPermissions(can_send_messages=False, can_send_media_messages=False, can_send_other_messages=False)
+        success_count = 0
+        for g in groups:
+            try:
+                await context.bot.restrict_chat_member(chat_id=g["id"], user_id=target_id, permissions=mute_perms)
+                success_count += 1
+            except Exception as e:
+                logger.error(f"Info mute failed for {target_id} in {g['id']}: {e}")
+        await query.edit_message_text(
+            f"🔇 <code>{target_id}</code> wurde in {success_count}/{len(groups)} Gruppen gemutet ✅",
+            parse_mode="HTML",
+        )
+        await log_action(context, f"MUTE (via /info): {target_name} ({target_id}) von {query.from_user.full_name}")
+
+    elif data.startswith("info_unmute_"):
+        target_id = int(data.replace("info_unmute_", ""))
+        groups = await get_bot_groups(context)
+        if not groups:
+            await query.edit_message_text("Keine Gruppen registriert.")
+            return
+        tracked = lookup_user(str(target_id))
+        target_name = tracked.get("name", str(target_id)) if tracked else str(target_id)
+        from telegram import ChatPermissions
+        unmute_perms = ChatPermissions(can_send_messages=True, can_send_media_messages=True, can_send_other_messages=True, can_add_web_page_previews=True)
+        success_count = 0
+        for g in groups:
+            try:
+                await context.bot.restrict_chat_member(chat_id=g["id"], user_id=target_id, permissions=unmute_perms)
+                success_count += 1
+            except Exception as e:
+                logger.error(f"Info unmute failed for {target_id} in {g['id']}: {e}")
+        await query.edit_message_text(
+            f"🔊 <code>{target_id}</code> wurde in {success_count}/{len(groups)} Gruppen entmutet ✅",
+            parse_mode="HTML",
+        )
+        await log_action(context, f"UNMUTE (via /info): {target_name} ({target_id}) von {query.from_user.full_name}")
+
     # === OPEN / CLOSE MENU ===
     elif data == "menu_openclose":
         await show_openclose_menu(query, context, user_id)
