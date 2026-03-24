@@ -1302,7 +1302,74 @@ async def block_banned_join_request(update: Update, context: ContextTypes.DEFAUL
         except Exception as e:
             logger.error(f"Decline join request failed for {member.id} in {request.chat.id}: {e}")
 
-# --- Import groups from JSON file ---
+# --- Media handler (photos, videos, stickers for scheduled messages + JSON import) ---
+
+async def media_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle media uploads for scheduled messages, or JSON file imports."""
+    user_id = update.effective_user.id
+    state = context.user_data.get("state")
+    
+    # If waiting for scheduled media
+    if state == WAITING_SCHEDULED_MEDIA:
+        pending = user_data_store.get(user_id)
+        if not pending or pending.get("action") != "sched_set_media":
+            return
+        sched_id = pending["sched_id"]
+        
+        # Determine media type and file_id
+        media_file_id = None
+        media_type = None
+        msg = update.message
+        
+        if msg.photo:
+            media_file_id = msg.photo[-1].file_id  # highest resolution
+            media_type = "photo"
+        elif msg.video:
+            media_file_id = msg.video.file_id
+            media_type = "video"
+        elif msg.animation:
+            media_file_id = msg.animation.file_id
+            media_type = "animation"
+        elif msg.sticker:
+            media_file_id = msg.sticker.file_id
+            media_type = "sticker"
+        elif msg.document:
+            # Check if it's a JSON import or a media document
+            if msg.document.file_name and msg.document.file_name.endswith(".json"):
+                # Redirect to document_handler for JSON import
+                context.user_data["state"] = None
+                user_data_store.pop(user_id, None)
+                return await document_handler(update, context)
+            media_file_id = msg.document.file_id
+            media_type = "document"
+        
+        if not media_file_id:
+            await msg.reply_text("⚠️ Konnte kein Medium erkennen. Bitte sende ein Foto, Video oder Sticker.")
+            return
+        
+        # Save to scheduled message
+        bot_data = load_data()
+        for s in bot_data.get("scheduled", []):
+            if s["id"] == sched_id:
+                s["media_file_id"] = media_file_id
+                s["media_type"] = media_type
+                save_data(bot_data)
+                break
+        
+        context.user_data["state"] = None
+        user_data_store.pop(user_id, None)
+        
+        keyboard = [[InlineKeyboardButton("🔙 Zurück zur Nachricht", callback_data=f"sched_edit_text_{sched_id}")]]
+        await msg.reply_text(
+            f"✅ Medium ({media_type}) gespeichert!",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+        )
+        return
+    
+    # If it's a document and not in media state, try JSON import
+    if update.message.document:
+        return await document_handler(update, context)
+
 
 async def document_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Import groups from a JSON file sent in private chat."""
