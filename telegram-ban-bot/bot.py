@@ -298,6 +298,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             [InlineKeyboardButton("📨 Messenger", callback_data="menu_messenger")],
             [InlineKeyboardButton("🔁 Wiederholte Nachrichten", callback_data="menu_scheduled")],
             [InlineKeyboardButton("🔓 Open / Close", callback_data="menu_openclose")],
+            [InlineKeyboardButton("⚙️ Konfiguration", callback_data="menu_config")],
         ]
         if is_owner(user_id):
             keyboard.append([InlineKeyboardButton("⚙️ Einstellungen", callback_data="menu_settings")])
