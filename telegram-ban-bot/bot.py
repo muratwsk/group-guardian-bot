@@ -1011,6 +1011,52 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text("Sende mir jetzt die User-ID oder den @username zum Entbannen:")
         context.user_data["state"] = WAITING_UNBAN_INPUT
 
+    # === INFO BAN/UNBAN BUTTONS ===
+    elif data.startswith("info_ban_"):
+        target_id = int(data.replace("info_ban_", ""))
+        groups = await get_bot_groups(context)
+        if not groups:
+            await query.edit_message_text("Keine Gruppen registriert.")
+            return
+        tracked = lookup_user(str(target_id))
+        target_name = tracked.get("name", str(target_id)) if tracked else str(target_id)
+        target_username = tracked.get("username") if tracked else None
+        success_count = 0
+        for g in groups:
+            try:
+                await context.bot.ban_chat_member(chat_id=g["id"], user_id=target_id, revoke_messages=True)
+                success_count += 1
+            except Exception as e:
+                logger.error(f"Info ban failed for {target_id} in {g['id']}: {e}")
+        remember_group_ban([g["id"] for g in groups], target_id, target_name, target_username)
+        await query.edit_message_text(
+            f"🚫 <code>{target_id}</code> wurde in {success_count}/{len(groups)} Gruppen gebannt ✅",
+            parse_mode="HTML",
+        )
+        await log_action(context, f"BANALL (via /info): {target_name} ({target_id}) von {query.from_user.full_name}")
+
+    elif data.startswith("info_unban_"):
+        target_id = int(data.replace("info_unban_", ""))
+        groups = await get_bot_groups(context)
+        if not groups:
+            await query.edit_message_text("Keine Gruppen registriert.")
+            return
+        tracked = lookup_user(str(target_id))
+        target_name = tracked.get("name", str(target_id)) if tracked else str(target_id)
+        success_count = 0
+        for g in groups:
+            try:
+                await context.bot.unban_chat_member(chat_id=g["id"], user_id=target_id, only_if_banned=True)
+                success_count += 1
+            except Exception as e:
+                logger.error(f"Info unban failed for {target_id} in {g['id']}: {e}")
+        forget_group_ban([g["id"] for g in groups], target_id)
+        await query.edit_message_text(
+            f"✅ <code>{target_id}</code> wurde in {success_count}/{len(groups)} Gruppen entbannt ✅",
+            parse_mode="HTML",
+        )
+        await log_action(context, f"UNBANALL (via /info): {target_name} ({target_id}) von {query.from_user.full_name}")
+
     # === OPEN / CLOSE MENU ===
     elif data == "menu_openclose":
         await show_openclose_menu(query, context, user_id)
