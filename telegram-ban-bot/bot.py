@@ -2120,7 +2120,9 @@ async def execute_scheduled_message(context: ContextTypes.DEFAULT_TYPE):
     sched["last_sent_messages"] = sent_msgs
     save_data(bot_data)
     
-    logger.info(f"Scheduled message {sched_id} sent to {len(sent_msgs)} groups")
+        logger.info(f"Scheduled message {sched_id} sent to {len(sent_msgs)} groups")
+    except Exception as e:
+        logger.error(f"execute_scheduled_message error: {e}", exc_info=True)
 
 
 def _get_job_queue(context):
