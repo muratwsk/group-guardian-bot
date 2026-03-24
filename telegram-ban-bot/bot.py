@@ -266,20 +266,9 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             gid = int(data.replace("msg_group_", ""))
             user_data_store[user_id] = {"action": "messenger", "groups": [gid]}
-        keyboard = [
-            [
-                InlineKeyboardButton("𝗕 Fett", callback_data="fmt_bold"),
-                InlineKeyboardButton("𝘐 Kursiv", callback_data="fmt_italic"),
-            ],
-            [
-                InlineKeyboardButton("🔗 Link", callback_data="fmt_link"),
-                InlineKeyboardButton("💬 Zitat", callback_data="fmt_quote"),
-            ],
-        ]
         await query.edit_message_text(
-            "📨 Sende mir jetzt die Nachricht:\n\n"
-            "Tipp: Klicke auf einen Button um die Formatierung zu sehen.",
-            reply_markup=InlineKeyboardMarkup(keyboard),
+            "📨 Sende mir jetzt die Nachricht.\n\n"
+            "Tipp: Markiere deinen Text und nutze die Telegram-Formatierung (Fett, Kursiv, Link, Zitat usw.) – wird 1:1 übernommen.",
         )
         context.user_data["state"] = WAITING_MESSENGER_INPUT
 
