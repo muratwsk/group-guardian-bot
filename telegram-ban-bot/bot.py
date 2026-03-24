@@ -1601,7 +1601,7 @@ def main():
     except Exception:
         pass
 
-    app = Application.builder().token(token).post_init(post_init).build()
+    app = Application.builder().token(token).build()
 
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("registergroup", register_group))
@@ -1614,6 +1614,16 @@ def main():
     app.add_handler(MessageHandler(filters.ALL & (filters.ChatType.GROUP | filters.ChatType.SUPERGROUP), track_message), group=1)
     app.add_handler(ChatMemberHandler(enforce_ban_on_chat_member, ChatMemberHandler.CHAT_MEMBER), group=2)
     app.add_handler(ChatJoinRequestHandler(block_banned_join_request), group=3)
+
+    # Restore scheduled jobs
+    if app.job_queue:
+        bot_data = load_data()
+        count = 0
+        for sched in bot_data.get("scheduled", []):
+            if sched.get("active"):
+                schedule_job(app, sched)
+                count += 1
+        logger.info(f"Restored {count} scheduled jobs")
 
     print("🤖 Bot gestartet!")
     app.run_polling(drop_pending_updates=True, allowed_updates=Update.ALL_TYPES)
