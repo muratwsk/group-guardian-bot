@@ -48,6 +48,7 @@ def normalize_data(data):
     data.setdefault("banned_users", {})
     data.setdefault("broadcasts", {})
     data.setdefault("scheduled", [])
+    data.setdefault("personal_commands", {})
     data.setdefault("open_close", {
         "open_sticker": None,
         "close_sticker": None,
