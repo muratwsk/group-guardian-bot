@@ -36,6 +36,7 @@ USERS_FILE = os.path.join(os.path.dirname(__file__), "users.json")
 def normalize_data(data):
     data.setdefault("groups", [])
     data.setdefault("banned_users", {})
+    data.setdefault("broadcasts", {})
     return data
 
 def load_data():
@@ -183,8 +184,7 @@ WAITING_GROUP_SELECT_BAN, WAITING_GROUP_SELECT_UNBAN = range(5, 7)
 WAITING_MESSENGER_INPUT = 7
 
 # Store pending data
-# Also store sent broadcast messages for deletion
-sent_broadcasts = {}  # broadcast_id -> [(chat_id, message_id), ...]
+# Store pending data
 user_data_store = {}
 
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -220,6 +220,10 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         keyboard.append([InlineKeyboardButton("📢 ALLE GRUPPEN", callback_data="msg_all_groups")])
         for g in groups:
             keyboard.append([InlineKeyboardButton(g["title"], callback_data=f"msg_group_{g['id']}")])
+        # Show delete old broadcasts button if any exist
+        bot_data = load_data()
+        if bot_data.get("broadcasts"):
+            keyboard.append([InlineKeyboardButton("🗑 Gesendete Nachrichten löschen", callback_data="show_broadcasts")])
         keyboard.append([InlineKeyboardButton("🔙 Zurück", callback_data="back_main")])
         await query.edit_message_text(
             "📨 *Messenger*\nWähle die Gruppe(n) für die Nachricht:",
@@ -272,17 +276,38 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         context.user_data["state"] = WAITING_MESSENGER_INPUT
 
+    # === SHOW BROADCASTS FOR DELETION ===
+    elif data == "show_broadcasts":
+        bot_data = load_data()
+        broadcasts = bot_data.get("broadcasts", {})
+        if not broadcasts:
+            await query.edit_message_text("Keine gesendeten Nachrichten vorhanden.")
+            return
+        keyboard = []
+        for bid, info in list(broadcasts.items()):
+            label = f"🗑 {info.get('date', '?')} – {info.get('count', '?')} Gruppen"
+            keyboard.append([InlineKeyboardButton(label, callback_data=f"del_broadcast_{bid}")])
+        keyboard.append([InlineKeyboardButton("🔙 Zurück", callback_data="menu_messenger")])
+        await query.edit_message_text(
+            "🗑 *Gesendete Nachrichten:*\nWähle eine zum Löschen:",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode="Markdown",
+        )
+
     # === DELETE BROADCAST ===
     elif data.startswith("del_broadcast_"):
         broadcast_id = data.replace("del_broadcast_", "")
-        msgs = sent_broadcasts.pop(broadcast_id, [])
+        bot_data = load_data()
+        broadcasts = bot_data.get("broadcasts", {})
+        msgs = broadcasts.pop(broadcast_id, {}).get("messages", [])
+        save_data(bot_data)
         deleted = 0
-        for chat_id, msg_id in msgs:
+        for entry in msgs:
             try:
-                await context.bot.delete_message(chat_id=chat_id, message_id=msg_id)
+                await context.bot.delete_message(chat_id=entry[0], message_id=entry[1])
                 deleted += 1
             except Exception as e:
-                logger.error(f"Delete broadcast msg failed in {chat_id}: {e}")
+                logger.error(f"Delete broadcast msg failed in {entry[0]}: {e}")
         await query.edit_message_text(f"🗑 {deleted} Nachrichten gelöscht.")
 
     # === BAN/UNBAN ===
@@ -484,7 +509,7 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         groups = pending["groups"]
         success = 0
         fail = 0
-        import time
+        import time, datetime
         broadcast_id = str(int(time.time() * 1000))
         sent_msgs = []
         for gid in groups:
@@ -500,7 +525,15 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 fail += 1
                 logger.error(f"Messenger send failed in {gid}: {e}")
 
-        sent_broadcasts[broadcast_id] = sent_msgs
+        # Save broadcast persistently
+        bot_data = load_data()
+        bot_data.setdefault("broadcasts", {})[broadcast_id] = {
+            "messages": sent_msgs,
+            "date": datetime.datetime.now().strftime("%d.%m %H:%M"),
+            "count": success,
+            "preview": update.message.text[:50] if update.message.text else "...",
+        }
+        save_data(bot_data)
 
         keyboard = [[InlineKeyboardButton("🗑 Nachricht in allen Gruppen löschen", callback_data=f"del_broadcast_{broadcast_id}")]]
         await update.message.reply_text(
