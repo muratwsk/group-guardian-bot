@@ -844,7 +844,11 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     s["text_html"] = update.message.text_html
                     save_data(bot_data)
                     break
-            await update.message.reply_text("✅ Nachricht aktualisiert.")
+            keyboard = [[InlineKeyboardButton("🔙 Zurück zur Nachricht", callback_data=f"sched_view_{sched_id}")]]
+            await update.message.reply_text(
+                "✅ Nachricht aktualisiert.",
+                reply_markup=InlineKeyboardMarkup(keyboard),
+            )
             context.user_data["state"] = None
             user_data_store.pop(user_id, None)
         else:
