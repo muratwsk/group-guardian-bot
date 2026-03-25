@@ -547,7 +547,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = query.from_user.id
 
     if not is_authorized(user_id):
-        await query.edit_message_text("⛔ Kein Zugriff.")
+        await query.answer("⚠️ Du hast keine Berechtigung, diesen Vorgang auszuführen\n\n💡 Falls du denkst, berechtigt zu sein, sende /reload und versuche es erneut.", show_alert=True)
         return
 
     data = query.data
@@ -1496,9 +1496,6 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # === LINK WARN CANCEL ===
     elif data.startswith("link_warn_cancel_"):
-        if not is_admin(query.from_user.id):
-            await query.answer("⚠️ Du hast keine Berechtigung, diesen Vorgang auszuführen\n\n💡 Falls du denkst, berechtigt zu sein, sende /reload und versuche es erneut.", show_alert=True)
-            return
         payload = data.replace("link_warn_cancel_", "", 1)
         scope_chat_id_str, target_id_str = payload.rsplit("_", 1)
         scope_chat_id = int(scope_chat_id_str)
@@ -2606,9 +2603,6 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text("✅ Alle Verwarnungen gelöscht.", reply_markup=InlineKeyboardMarkup(keyboard))
 
     elif data.startswith("warn_undo_"):
-        if not is_admin(query.from_user.id):
-            await query.answer("⚠️ Du hast keine Berechtigung, diesen Vorgang auszuführen\n\n💡 Falls du denkst, berechtigt zu sein, sende /reload und versuche es erneut.", show_alert=True)
-            return
         parts = data.replace("warn_undo_", "").split("_")
         chat_id_str = parts[0]
         target_id_str = parts[1]
@@ -2652,9 +2646,6 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             pass
 
     elif data.startswith("warn_add1_"):
-        if not is_admin(query.from_user.id):
-            await query.answer("⚠️ Du hast keine Berechtigung, diesen Vorgang auszuführen\n\n💡 Falls du denkst, berechtigt zu sein, sende /reload und versuche es erneut.", show_alert=True)
-            return
         parts = data.replace("warn_add1_", "").split("_")
         chat_id_str = parts[0]
         target_id_str = parts[1]
@@ -2735,9 +2726,6 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
 
     elif data.startswith("warn_reset_"):
-        if not is_admin(query.from_user.id):
-            await query.answer("⚠️ Du hast keine Berechtigung, diesen Vorgang auszuführen\n\n💡 Falls du denkst, berechtigt zu sein, sende /reload und versuche es erneut.", show_alert=True)
-            return
         parts = data.replace("warn_reset_", "").split("_")
         chat_id_str = parts[0]
         target_id_str = parts[1]
@@ -2760,9 +2748,6 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
     elif data.startswith("warn_punish_"):
-        if not is_admin(query.from_user.id):
-            await query.answer("⚠️ Du hast keine Berechtigung, diesen Vorgang auszuführen\n\n💡 Falls du denkst, berechtigt zu sein, sende /reload und versuche es erneut.", show_alert=True)
-            return
         rest = data.replace("warn_punish_", "")
         parts = rest.split("_")
         action = parts[0]
