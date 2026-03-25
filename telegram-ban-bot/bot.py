@@ -6172,6 +6172,36 @@ async def show_members_group_selection(query, context, user_id, groups, action):
     )
 
 
+async def _render_pers_grp_menu(query, pending):
+    """Render group selection for /personal command."""
+    cmd_name = pending.get("cmd_name", "")
+    selected = pending.get("selected", set())
+    bot_data = load_data()
+    groups = bot_data.get("groups", [])
+    keyboard = []
+    row = []
+    for g in groups:
+        check = "✅" if g["id"] in selected else "⬜"
+        row.append(InlineKeyboardButton(f"{check} {g['title']}", callback_data=f"pers_grp_{g['id']}"))
+        if len(row) == 2:
+            keyboard.append(row)
+            row = []
+    if row:
+        keyboard.append(row)
+    keyboard.append([
+        InlineKeyboardButton("☑️ Alle", callback_data="pers_grp_all"),
+        InlineKeyboardButton("◻️ Keine", callback_data="pers_grp_none"),
+    ])
+    keyboard.append([InlineKeyboardButton(f"✅ Speichern ({len(selected)} gewählt)", callback_data="pers_grp_save")])
+    keyboard.append([InlineKeyboardButton("❌ Abbrechen", callback_data="pers_grp_cancel")])
+    await query.edit_message_text(
+        f"🏗 <b>/{html.escape(cmd_name)}</b> — Wähle Gruppen:\n\n"
+        f"<i>Keine Auswahl = gilt für alle Gruppen</i>",
+        reply_markup=InlineKeyboardMarkup(keyboard),
+        parse_mode="HTML",
+    )
+
+
 async def show_pcmd_group_selection(query, context, user_id, groups):
     """Show group selection grid for personal commands."""
     selected = user_data_store.get(user_id, {}).get("selected", set())
