@@ -732,7 +732,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await query.answer("⚠️ Wähle mindestens eine Gruppe!", show_alert=True)
             return
         # Create the scheduled message immediately with defaults
-        import time as _time, datetime
+        import time as _time
         sched_id = str(int(_time.time() * 1000))
         bot_data = load_data()
         new_sched = {
