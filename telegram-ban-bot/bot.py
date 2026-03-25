@@ -2632,6 +2632,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"📋 Log-Kanal: `{log_ch}`"
         )
         keyboard = [
+            [InlineKeyboardButton("👮 Admins verwalten", callback_data="settings_admins")],
             [InlineKeyboardButton("➕ Admin hinzufügen", callback_data="add_admin"),
              InlineKeyboardButton("➖ Admin entfernen", callback_data="remove_admin")],
             [InlineKeyboardButton("📋 Log-Kanal setzen", callback_data="set_log")],
@@ -2639,6 +2640,70 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             [InlineKeyboardButton("🔙 Zurück", callback_data="back_main")],
         ]
         await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
+
+    elif data == "settings_admins":
+        if not is_owner(user_id):
+            await query.answer("⛔ Nur für Owner.", show_alert=True)
+            return
+        cfg = load_config()
+        admins = cfg.get("admin_ids", [])
+        owners = cfg.get("owner_ids", [])
+        text = "👮 <b>Bot-Admins</b>\n\n"
+        text += "<b>👑 Owner:</b>\n"
+        for oid in owners:
+            tracked = lookup_user(str(oid))
+            name = tracked.get("name", str(oid)) if tracked else str(oid)
+            text += f"  • {html.escape(name)} (<code>{oid}</code>)\n"
+        text += f"\n<b>🛡️ Admins ({len(admins)}):</b>\n"
+        keyboard = []
+        if admins:
+            for aid in admins:
+                tracked = lookup_user(str(aid))
+                name = tracked.get("name", str(aid)) if tracked else str(aid)
+                text += f"  • {html.escape(name)} (<code>{aid}</code>)\n"
+                keyboard.append([InlineKeyboardButton(f"❌ {name} entfernen", callback_data=f"settings_rmadmin_{aid}")])
+        else:
+            text += "  <i>Keine Admins konfiguriert.</i>\n"
+        keyboard.append([InlineKeyboardButton("🔙 Zurück", callback_data="menu_settings")])
+        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
+
+    elif data.startswith("settings_rmadmin_"):
+        if not is_owner(user_id):
+            await query.answer("⛔ Nur für Owner.", show_alert=True)
+            return
+        aid = int(data.replace("settings_rmadmin_", ""))
+        cfg = load_config()
+        if aid in cfg.get("admin_ids", []):
+            cfg["admin_ids"].remove(aid)
+            save_config(cfg)
+            tracked = lookup_user(str(aid))
+            name = tracked.get("name", str(aid)) if tracked else str(aid)
+            await query.answer(f"✅ {name} entfernt!", show_alert=True)
+            await log_action(context, f"Admin entfernt (Menü): {name} ({aid}) von {query.from_user.full_name}")
+        else:
+            await query.answer("Nicht in der Admin-Liste.", show_alert=True)
+        # Re-render admin list
+        cfg = load_config()
+        admins = cfg.get("admin_ids", [])
+        owners = cfg.get("owner_ids", [])
+        text = "👮 <b>Bot-Admins</b>\n\n"
+        text += "<b>👑 Owner:</b>\n"
+        for oid in owners:
+            tracked = lookup_user(str(oid))
+            name = tracked.get("name", str(oid)) if tracked else str(oid)
+            text += f"  • {html.escape(name)} (<code>{oid}</code>)\n"
+        text += f"\n<b>🛡️ Admins ({len(admins)}):</b>\n"
+        keyboard = []
+        if admins:
+            for a in admins:
+                tracked = lookup_user(str(a))
+                name = tracked.get("name", str(a)) if tracked else str(a)
+                text += f"  • {html.escape(name)} (<code>{a}</code>)\n"
+                keyboard.append([InlineKeyboardButton(f"❌ {name} entfernen", callback_data=f"settings_rmadmin_{a}")])
+        else:
+            text += "  <i>Keine Admins konfiguriert.</i>\n"
+        keyboard.append([InlineKeyboardButton("🔙 Zurück", callback_data="menu_settings")])
+        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
 
     # === SPERREN MENU ===
     elif data == "menu_sperren":
