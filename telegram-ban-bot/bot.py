@@ -28,61 +28,22 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-CONFIG_FILE = os.path.join(os.path.dirname(__file__), "config.json")
-DATA_FILE = os.path.join(os.path.dirname(__file__), "data.json")
 GROUPS_FILE = os.path.join(os.path.dirname(__file__), "groups.json")
 LOCK_FILE = os.path.join(os.path.dirname(__file__), "bot.lock")
-PROTOKOLL_FILE = os.path.join(os.path.dirname(__file__), "protokoll.json")
 
+# ── SQLite-backed storage ──────────────────────────────────────────
+from db import (
+    load_config, save_config,
+    load_data as _db_load_data, save_data as _db_save_data,
+    load_users, save_users,
+    load_protokoll, save_protokoll,
+    invalidate_cache as db_invalidate_cache,
+)
 
-
-
-def _file_mtime(filepath):
-    try:
-        return os.path.getmtime(filepath)
-    except OSError:
-        return None
-
-
-CONFIG_CACHE = {"data": None, "mtime": None}
-DATA_CACHE = {"data": None, "mtime": None}
-USERS_CACHE = {"data": None, "mtime": None}
 ADMIN_STATUS_CACHE = {}
 ADMIN_CACHE_TTL_SEC = 30
 USER_TRACK_LAST_SAVE = {}
 USER_TRACK_SAVE_INTERVAL_SEC = 20
-
-
-def _load_cached_json(filepath, default, cache_bucket, normalizer=None):
-    mtime = _file_mtime(filepath)
-    if cache_bucket["data"] is not None and cache_bucket["mtime"] == mtime:
-        return cache_bucket["data"]
-    data = _safe_load_json(filepath, default)
-    if normalizer:
-        data = normalizer(data)
-    cache_bucket["data"] = data
-    cache_bucket["mtime"] = mtime
-    return data
-
-
-def _save_cached_json(filepath, data, cache_bucket, normalizer=None):
-    if normalizer:
-        data = normalizer(data)
-    _safe_save_json(filepath, data)
-    cache_bucket["data"] = data
-    cache_bucket["mtime"] = _file_mtime(filepath)
-    return data
-
-
-def load_config():
-    return _load_cached_json(CONFIG_FILE, {}, CONFIG_CACHE)
-
-
-def save_config(cfg):
-    _save_cached_json(CONFIG_FILE, cfg, CONFIG_CACHE)
-
-
-USERS_FILE = os.path.join(os.path.dirname(__file__), "users.json")
 
 
 def normalize_data(data):
@@ -108,7 +69,7 @@ def normalize_data(data):
         "admin_prefixes": [],
         "user_prefixes": [],
     })
-    data.setdefault("auto_approve", {})  # per-group: { "group_id": true/false }
+    data.setdefault("auto_approve", {})
     data.setdefault("antispam_links", {
         "punishment": "aus",
         "delete": True,
@@ -123,8 +84,16 @@ def normalize_data(data):
         "bots": False,
     })
     data.setdefault("freed_users", [])
-    data.setdefault("protokoll_channels", {})  # { "channel_id": { "name": "...", "groups": ["all"] or [group_id, ...] } }
+    data.setdefault("protokoll_channels", {})
     return data
+
+
+def load_data():
+    return normalize_data(_db_load_data())
+
+
+def save_data(data):
+    _db_save_data(normalize_data(data))
 
 
 def is_freed(user_id: int) -> bool:
@@ -133,78 +102,8 @@ def is_freed(user_id: int) -> bool:
     return user_id in bot_data.get("freed_users", [])
 
 
-def _safe_load_json(filepath, default):
-    """Load JSON with automatic backup recovery if file is empty/corrupt."""
-    bak = filepath + ".bak"
-    if not os.path.exists(filepath):
-        # Try backup
-        if os.path.exists(bak):
-            logger.warning(f"{filepath} missing, restoring from backup")
-            try:
-                with open(bak, "r") as f:
-                    return json.load(f)
-            except Exception:
-                pass
-        return default
-    try:
-        with open(filepath, "r") as f:
-            content = f.read()
-        if not content.strip():
-            raise ValueError("File is empty")
-        result = json.loads(content)
-        return result
-    except Exception as e:
-        logger.error(f"{filepath} corrupt ({e}), trying backup...")
-        if os.path.exists(bak):
-            try:
-                with open(bak, "r") as f:
-                    result = json.load(f)
-                logger.info(f"Restored {filepath} from backup successfully!")
-                # Repair the main file
-                _safe_save_json(filepath, result)
-                return result
-            except Exception as e2:
-                logger.error(f"Backup {bak} also corrupt: {e2}")
-        logger.error(f"No valid backup for {filepath}, using default")
-        return default
-
-
-def _safe_save_json(filepath, data):
-    """Atomic save: write to temp file, then rename. Also keeps .bak."""
-    bak = filepath + ".bak"
-    tmp = filepath + ".tmp"
-    try:
-        # Write to temp file first
-        with open(tmp, "w") as f:
-            json.dump(data, f, indent=2)
-            f.flush()
-            os.fsync(f.fileno())
-        # Backup current file before replacing
-        if os.path.exists(filepath):
-            try:
-                import shutil
-                shutil.copy2(filepath, bak)
-            except Exception:
-                pass
-        # Atomic rename
-        os.replace(tmp, filepath)
-    except OSError as e:
-        logger.error(f"CRITICAL: Could not save {filepath}: {e}")
-        # Don't delete tmp if rename failed
-        raise
-
-
-def load_data():
-    default = {"groups": [], "banned_users": {}}
-    return _load_cached_json(DATA_FILE, default, DATA_CACHE, normalize_data)
-
-
-def save_data(data):
-    _save_cached_json(DATA_FILE, data, DATA_CACHE, normalize_data)
-
-
 def sync_groups_to_file():
-    """Sync registered groups from data.json back to groups.json."""
+    """Sync registered groups from data back to groups.json."""
     data = load_data()
     groups = data.get("groups", [])
     groups_map = {g["title"]: g["id"] for g in groups}
@@ -217,7 +116,7 @@ def sync_groups_to_file():
 
 
 def import_groups_from_file():
-    """Import groups from groups.json into data.json on startup."""
+    """Import groups from groups.json into SQLite on startup."""
     if not os.path.exists(GROUPS_FILE):
         return
     with open(GROUPS_FILE, "r") as f:
@@ -235,7 +134,6 @@ def import_groups_from_file():
     if added > 0:
         save_data(data)
         logger.info(f"Imported {added} groups from groups.json")
-    # Sync back so groups.json has all registered groups
     sync_groups_to_file()
 
 
