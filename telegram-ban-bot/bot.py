@@ -37,15 +37,53 @@ PROTOKOLL_FILE = os.path.join(os.path.dirname(__file__), "protokoll.json")
 
 
 
+def _file_mtime(filepath):
+    try:
+        return os.path.getmtime(filepath)
+    except OSError:
+        return None
+
+
+CONFIG_CACHE = {"data": None, "mtime": None}
+DATA_CACHE = {"data": None, "mtime": None}
+USERS_CACHE = {"data": None, "mtime": None}
+ADMIN_STATUS_CACHE = {}
+ADMIN_CACHE_TTL_SEC = 30
+USER_TRACK_LAST_SAVE = {}
+USER_TRACK_SAVE_INTERVAL_SEC = 20
+
+
+def _load_cached_json(filepath, default, cache_bucket, normalizer=None):
+    mtime = _file_mtime(filepath)
+    if cache_bucket["data"] is not None and cache_bucket["mtime"] == mtime:
+        return cache_bucket["data"]
+    data = _safe_load_json(filepath, default)
+    if normalizer:
+        data = normalizer(data)
+    cache_bucket["data"] = data
+    cache_bucket["mtime"] = mtime
+    return data
+
+
+def _save_cached_json(filepath, data, cache_bucket, normalizer=None):
+    if normalizer:
+        data = normalizer(data)
+    _safe_save_json(filepath, data)
+    cache_bucket["data"] = data
+    cache_bucket["mtime"] = _file_mtime(filepath)
+    return data
+
+
 def load_config():
-    with open(CONFIG_FILE, "r") as f:
-        return json.load(f)
+    return _load_cached_json(CONFIG_FILE, {}, CONFIG_CACHE)
+
 
 def save_config(cfg):
-    with open(CONFIG_FILE, "w") as f:
-        json.dump(cfg, f, indent=2)
+    _save_cached_json(CONFIG_FILE, cfg, CONFIG_CACHE)
+
 
 USERS_FILE = os.path.join(os.path.dirname(__file__), "users.json")
+
 
 def normalize_data(data):
     data.setdefault("groups", [])
@@ -88,10 +126,12 @@ def normalize_data(data):
     data.setdefault("protokoll_channels", {})  # { "channel_id": { "name": "...", "groups": ["all"] or [group_id, ...] } }
     return data
 
+
 def is_freed(user_id: int) -> bool:
     """Check if a user has the 'Befreiter' role (exempt from all restrictions)."""
     bot_data = load_data()
     return user_id in bot_data.get("freed_users", [])
+
 
 def _safe_load_json(filepath, default):
     """Load JSON with automatic backup recovery if file is empty/corrupt."""
@@ -128,6 +168,7 @@ def _safe_load_json(filepath, default):
         logger.error(f"No valid backup for {filepath}, using default")
         return default
 
+
 def _safe_save_json(filepath, data):
     """Atomic save: write to temp file, then rename. Also keeps .bak."""
     bak = filepath + ".bak"
@@ -152,12 +193,15 @@ def _safe_save_json(filepath, data):
         # Don't delete tmp if rename failed
         raise
 
+
 def load_data():
     default = {"groups": [], "banned_users": {}}
-    return normalize_data(_safe_load_json(DATA_FILE, default))
+    return _load_cached_json(DATA_FILE, default, DATA_CACHE, normalize_data)
+
 
 def save_data(data):
-    _safe_save_json(DATA_FILE, data)
+    _save_cached_json(DATA_FILE, data, DATA_CACHE, normalize_data)
+
 
 def sync_groups_to_file():
     """Sync registered groups from data.json back to groups.json."""
@@ -170,6 +214,7 @@ def sync_groups_to_file():
         f.flush()
         os.fsync(f.fileno())
     os.replace(tmp, GROUPS_FILE)
+
 
 def import_groups_from_file():
     """Import groups from groups.json into data.json on startup."""
@@ -193,8 +238,10 @@ def import_groups_from_file():
     # Sync back so groups.json has all registered groups
     sync_groups_to_file()
 
+
 # Auto-import on module load
 import_groups_from_file()
+
 
 def remember_group_ban(group_ids, user_id, name=None, username=None):
     data = load_data()
@@ -211,6 +258,7 @@ def remember_group_ban(group_ids, user_id, name=None, username=None):
 
     save_data(data)
 
+
 def forget_group_ban(group_ids, user_id):
     data = load_data()
     banned_users = data.setdefault("banned_users", {})
@@ -220,6 +268,7 @@ def forget_group_ban(group_ids, user_id):
         group_bans.pop(str(user_id), None)
 
     save_data(data)
+
 
 def is_banned_in_group(group_id, user_id):
     data = load_data()
@@ -257,20 +306,28 @@ def get_tracked_banned_user_ids(group_id: int) -> list[int]:
             continue
     return result
 
+
 def load_users():
-    return _safe_load_json(USERS_FILE, {})
+    return _load_cached_json(USERS_FILE, {}, USERS_CACHE)
+
 
 def save_users(users):
-    _safe_save_json(USERS_FILE, users)
+    _save_cached_json(USERS_FILE, users, USERS_CACHE)
+
 
 def track_user(user, group_id=None):
     """Track a user's username → ID mapping, per-group message count, and first seen date."""
     if not user or user.is_bot:
         return
+
     users = load_users()
     now_str = now_de().strftime("%d.%m.%Y %H:%M")
+    changed = False
+    should_persist = False
+    group_save_key = f"{user.id}:{group_id or 'global'}"
 
     def _update_entry(key):
+        nonlocal changed, should_persist
         existing = users.get(key, {})
         entry = {
             "id": user.id,
@@ -279,17 +336,41 @@ def track_user(user, group_id=None):
             "first_seen": existing.get("first_seen", now_str),
             "group_stats": existing.get("group_stats", {}),
         }
+
         if group_id:
             gkey = str(group_id)
             gs = entry["group_stats"].get(gkey, {"msg_count": 0, "first_seen": now_str})
             gs["msg_count"] = gs.get("msg_count", 0) + 1
             entry["group_stats"][gkey] = gs
+            changed = True
+            if gs["msg_count"] == 1:
+                should_persist = True
+
+        if (
+            existing.get("id") != entry["id"]
+            or existing.get("name") != entry["name"]
+            or existing.get("username") != entry["username"]
+            or existing.get("first_seen") != entry["first_seen"]
+        ):
+            changed = True
+            should_persist = True
+
         users[key] = entry
 
     if user.username:
         _update_entry(user.username.lower())
     _update_entry(str(user.id))
-    save_users(users)
+
+    if not changed:
+        return
+
+    USERS_CACHE["data"] = users
+    now_ts = datetime.datetime.now().timestamp()
+    last_save = USER_TRACK_LAST_SAVE.get(group_save_key, 0)
+    if should_persist or (now_ts - last_save) >= USER_TRACK_SAVE_INTERVAL_SEC:
+        save_users(users)
+        USER_TRACK_LAST_SAVE[group_save_key] = now_ts
+
 
 def lookup_user(identifier: str):
     """Lookup user by username or ID from tracked users."""
@@ -297,17 +378,21 @@ def lookup_user(identifier: str):
     key = identifier.lower().lstrip("@")
     return users.get(key)
 
+
 def is_owner(user_id: int) -> bool:
     cfg = load_config()
     return user_id in cfg.get("owner_ids", [])
+
 
 def is_admin(user_id: int) -> bool:
     cfg = load_config()
     return user_id in cfg.get("admin_ids", []) or is_owner(user_id)
 
+
 def is_authorized(user_id: int) -> bool:
     """Check if user is owner or admin (can use ban/unban)."""
     return is_admin(user_id)
+
 
 async def is_group_authorized(context, user_id: int, chat=None) -> bool:
     """Check if user is config-admin OR a Telegram admin in the given chat."""
@@ -317,25 +402,47 @@ async def is_group_authorized(context, user_id: int, chat=None) -> bool:
         return await is_chat_admin(context, chat.id, user_id)
     return False
 
+
 async def is_chat_admin(context, chat_id: int, user_id: int) -> bool:
-    """Check if user is admin or creator in a specific chat."""
+    """Check if user is admin or creator in a specific chat, with short TTL cache."""
+    cache_key = f"{chat_id}:{user_id}"
+    now_ts = datetime.datetime.now().timestamp()
+    cached = ADMIN_STATUS_CACHE.get(cache_key)
+    if cached and (now_ts - cached["ts"]) < ADMIN_CACHE_TTL_SEC:
+        return cached["value"]
+
     try:
         member = await context.bot.get_chat_member(chat_id=chat_id, user_id=user_id)
-        return member.status in ("administrator", "creator")
+        value = member.status in ("administrator", "creator")
     except Exception:
-        return False
+        value = False
+
+    ADMIN_STATUS_CACHE[cache_key] = {"value": value, "ts": now_ts}
+    return value
+
+
+async def _send_logs_async(context: ContextTypes.DEFAULT_TYPE, targets: set[int], text: str):
+    async def _send_log(chat_id: int):
+        try:
+            await asyncio.wait_for(
+                context.bot.send_message(chat_id=chat_id, text=f"📋 {text}"),
+                timeout=1.5,
+            )
+        except Exception as e:
+            logger.error(f"Log channel {chat_id} error: {e}")
+
+    await asyncio.gather(*[_send_log(chat_id) for chat_id in targets], return_exceptions=True)
+
 
 async def log_action(context: ContextTypes.DEFAULT_TYPE, text: str, group_id: int = None, group_name: str = None):
-    """Log action to the global log channel AND any matching protokoll channels."""
+    """Log action to the global log channel AND any matching protokoll channels without blocking handlers."""
     cfg = load_config()
     targets = set()
 
-    # Global log channel (from settings)
     channel = cfg.get("log_channel_id")
     if channel:
         targets.add(int(channel))
 
-    # Per-group protokoll channels
     bot_data = load_data()
     proto_channels = bot_data.get("protokoll_channels", {})
     for ch_id_str, ch_cfg in proto_channels.items():
@@ -348,17 +455,8 @@ async def log_action(context: ContextTypes.DEFAULT_TYPE, text: str, group_id: in
         if should_send:
             targets.add(int(ch_id_str))
 
-    async def _send_log(chat_id: int):
-        try:
-            await asyncio.wait_for(
-                context.bot.send_message(chat_id=chat_id, text=f"📋 {text}"),
-                timeout=4,
-            )
-        except Exception as e:
-            logger.error(f"Log channel {chat_id} error: {e}")
-
     if targets:
-        await asyncio.gather(*[_send_log(chat_id) for chat_id in targets], return_exceptions=True)
+        asyncio.create_task(_send_logs_async(context, targets, text))
 
 
 async def render_protokoll_channel_config(query, ch_id: str):
@@ -6606,7 +6704,7 @@ def main():
     except Exception:
         pass
 
-    app = Application.builder().token(token).build()
+    app = Application.builder().token(token).concurrent_updates(True).build()
 
     app.add_handler(CommandHandler("reload", reload_command))
     app.add_handler(CommandHandler("start", start))
