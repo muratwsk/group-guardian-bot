@@ -4024,7 +4024,7 @@ async def ban_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode="HTML",
             reply_markup=keyboard,
         )
-        await log_action(context, f"🚫 Ban: {target_name} [{target_id}] in {chat.title} von {update.effective_user.first_name}" + (f" | Grund: {reason}" if reason else ""))
+        await log_action(context, f"🚫 Ban: {target_name} [{target_id}] in {chat.title} von {update.effective_user.first_name}" + (f" | Grund: {reason}" if reason else ""), group_id=chat.id, group_name=chat.title)
     except Exception as e:
         await update.message.reply_text(f"❌ Ban fehlgeschlagen: {e}")
 
