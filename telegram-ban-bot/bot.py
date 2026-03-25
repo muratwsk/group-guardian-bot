@@ -1434,6 +1434,31 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except Exception as e:
             await query.answer(f"❌ Unmute fehlgeschlagen: {e}", show_alert=True)
 
+    # === LINK WARN CANCEL ===
+    elif data.startswith("link_warn_cancel_"):
+        payload = data.replace("link_warn_cancel_", "", 1)
+        scope_chat_id_str, target_id_str = payload.rsplit("_", 1)
+        scope_chat_id = int(scope_chat_id_str)
+        target_id = int(target_id_str)
+        bot_data = load_data()
+        warnings = bot_data.get("warnings", {})
+        key = f"{scope_chat_id}_{target_id}"
+        warn_entry = warnings.get(key)
+        if warn_entry and warn_entry.get("count", 0) > 0:
+            warn_entry["count"] -= 1
+            if warn_entry["count"] <= 0:
+                warnings.pop(key, None)
+            save_data(bot_data)
+        tracked = lookup_user(str(target_id))
+        target_name = tracked.get("name", str(target_id)) if tracked else str(target_id)
+        target_username = tracked.get("username") if tracked else None
+        uname = f"@{target_username} " if target_username else ""
+        await query.edit_message_text(
+            f"↩️ Link-Verwarnung für {uname}[<code>{target_id}</code>] wurde zurückgenommen.",
+            parse_mode="HTML",
+        )
+        await log_action(context, f"LINK-WARN CANCEL: {target_name} ({target_id}) in {scope_chat_id} von {query.from_user.full_name}")
+
     # === OPEN / CLOSE MENU ===
     elif data == "menu_openclose":
         await show_openclose_menu(query, context, user_id)
