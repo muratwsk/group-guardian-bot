@@ -2549,24 +2549,30 @@ async def warn_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         punishment = wc.get("punishment", "aus")
         if punishment and punishment != "aus":
             # Auto-execute configured punishment
-            result_text = ""
+            action_label = ""
+            result_text = f"{uname} [{target_id}] wurde verwarnt zum {current_count}. Mal (von {max_warns})."
             try:
                 if punishment == "ban":
                     await context.bot.ban_chat_member(chat_id=chat.id, user_id=target_id, revoke_messages=True)
                     remember_group_ban([chat.id], target_id, target_name, target_username)
-                    result_text = f"🚫 {uname} [{target_id}] wurde nach {max_warns} Verwarnungen automatisch gebannt."
+                    action_label = "• <b>Aktion:</b> Gebannt 🚫"
                 elif punishment == "kick":
                     await context.bot.ban_chat_member(chat_id=chat.id, user_id=target_id)
                     await context.bot.unban_chat_member(chat_id=chat.id, user_id=target_id)
-                    result_text = f"❗ {uname} [{target_id}] wurde nach {max_warns} Verwarnungen automatisch gekickt."
+                    action_label = "• <b>Aktion:</b> Gekickt ❗"
                 elif punishment == "mute":
+                    mute_hours = wc.get("mute_duration_hours", 5)
+                    until_date = now_de() + datetime.timedelta(hours=mute_hours)
                     await context.bot.restrict_chat_member(
                         chat_id=chat.id, user_id=target_id,
                         permissions=ChatPermissions.no_permissions(),
+                        until_date=until_date,
                     )
-                    result_text = f"📛 {uname} [{target_id}] wurde nach {max_warns} Verwarnungen automatisch gemutet."
+                    until_str = until_date.strftime("%d.%m.%y um %H:%M")
+                    action_label = f"• <b>Aktion:</b> Stummgeschaltet 🤫\n• <b>Bis:</b> {until_str}"
             except Exception as e:
-                result_text = f"⚠️ Fehler bei automatischer Bestrafung: {e}"
+                action_label = f"• ⚠️ Fehler: {e}"
+            result_text += f"\n{action_label}"
             if reason:
                 result_text += f"\n<b>Grund:</b> {html.escape(reason)}"
             # Reset warns after punishment
