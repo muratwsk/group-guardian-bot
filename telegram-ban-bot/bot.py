@@ -1812,10 +1812,11 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await show_members_group_selection(query, context, user_id, groups, action)
 
     elif data.startswith("memgrp_toggle_"):
-        parts = data.replace("memgrp_toggle_", "").rsplit("_", 1)
-        gid = int(parts[0])
-        action = parts[1]
+        payload = data.replace("memgrp_toggle_", "")
+        # gid is everything before last _mass_unban or _mass_unmute
         pending = user_data_store.get(user_id, {})
+        action = pending.get("action", "mass_unban")
+        gid = int(payload.replace(f"_{action}", ""))
         selected = pending.get("selected", set())
         if gid in selected:
             selected.discard(gid)
@@ -1827,15 +1828,13 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await show_members_group_selection(query, context, user_id, groups, action)
 
     elif data.startswith("memgrp_all_") or data.startswith("memgrp_none_"):
-        action = data.split("_")[-1]
-        if "mass" not in action:
-            action = "mass_" + action
+        action = user_data_store.get(user_id, {}).get("action", "mass_unban")
         groups = await get_bot_groups(context)
         if data.startswith("memgrp_all_"):
             user_data_store[user_id]["selected"] = {g["id"] for g in groups}
         else:
             user_data_store[user_id]["selected"] = set()
-        await show_members_group_selection(query, context, user_id, groups, user_data_store[user_id]["action"])
+        await show_members_group_selection(query, context, user_id, groups, action)
 
     elif data.startswith("memgrp_confirm_"):
         action = user_data_store.get(user_id, {}).get("action", "")
