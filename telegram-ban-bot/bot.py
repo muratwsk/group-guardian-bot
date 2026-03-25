@@ -78,15 +78,71 @@ def normalize_data(data):
     })
     return data
 
+def _safe_load_json(filepath, default):
+    """Load JSON with automatic backup recovery if file is empty/corrupt."""
+    bak = filepath + ".bak"
+    if not os.path.exists(filepath):
+        # Try backup
+        if os.path.exists(bak):
+            logger.warning(f"{filepath} missing, restoring from backup")
+            try:
+                with open(bak, "r") as f:
+                    return json.load(f)
+            except Exception:
+                pass
+        return default
+    try:
+        with open(filepath, "r") as f:
+            content = f.read()
+        if not content.strip():
+            raise ValueError("File is empty")
+        result = json.loads(content)
+        return result
+    except Exception as e:
+        logger.error(f"{filepath} corrupt ({e}), trying backup...")
+        if os.path.exists(bak):
+            try:
+                with open(bak, "r") as f:
+                    result = json.load(f)
+                logger.info(f"Restored {filepath} from backup successfully!")
+                # Repair the main file
+                _safe_save_json(filepath, result)
+                return result
+            except Exception as e2:
+                logger.error(f"Backup {bak} also corrupt: {e2}")
+        logger.error(f"No valid backup for {filepath}, using default")
+        return default
+
+def _safe_save_json(filepath, data):
+    """Atomic save: write to temp file, then rename. Also keeps .bak."""
+    bak = filepath + ".bak"
+    tmp = filepath + ".tmp"
+    try:
+        # Write to temp file first
+        with open(tmp, "w") as f:
+            json.dump(data, f, indent=2)
+            f.flush()
+            os.fsync(f.fileno())
+        # Backup current file before replacing
+        if os.path.exists(filepath):
+            try:
+                import shutil
+                shutil.copy2(filepath, bak)
+            except Exception:
+                pass
+        # Atomic rename
+        os.replace(tmp, filepath)
+    except OSError as e:
+        logger.error(f"CRITICAL: Could not save {filepath}: {e}")
+        # Don't delete tmp if rename failed
+        raise
+
 def load_data():
-    if not os.path.exists(DATA_FILE):
-        return normalize_data({"groups": [], "banned_users": {}})
-    with open(DATA_FILE, "r") as f:
-        return normalize_data(json.load(f))
+    default = {"groups": [], "banned_users": {}}
+    return normalize_data(_safe_load_json(DATA_FILE, default))
 
 def save_data(data):
-    with open(DATA_FILE, "w") as f:
-        json.dump(data, f, indent=2)
+    _safe_save_json(DATA_FILE, data)
 
 def import_groups_from_file():
     """Import groups from groups.json into data.json on startup."""
@@ -160,14 +216,10 @@ async def ban_user_in_groups(context: ContextTypes.DEFAULT_TYPE, groups: list, t
     return successful_groups, failed_groups
 
 def load_users():
-    if not os.path.exists(USERS_FILE):
-        return {}
-    with open(USERS_FILE, "r") as f:
-        return json.load(f)
+    return _safe_load_json(USERS_FILE, {})
 
 def save_users(users):
-    with open(USERS_FILE, "w") as f:
-        json.dump(users, f, indent=2)
+    _safe_save_json(USERS_FILE, users)
 
 def track_user(user, group_id=None):
     """Track a user's username → ID mapping, per-group message count, and first seen date."""
