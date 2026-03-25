@@ -278,6 +278,53 @@ WAITING_PCMD_TEXT = 17
 WAITING_PCMD_GROUPS = 18
 WAITING_WARN_MUTE_DUR = 19
 
+import re as _re
+
+def parse_duration_text(text):
+    """Parse duration strings like '1h 30m', '2 days 3 hours', '1M 2d 12h 4m 34s'."""
+    text = text.strip().lower()
+    total_seconds = 0
+    # Pattern: number followed by unit
+    patterns = [
+        (r'(\d+)\s*months?', 30 * 86400),
+        (r'(\d+)\s*M(?!\w)', 30 * 86400),
+        (r'(\d+)\s*days?', 86400),
+        (r'(\d+)\s*d(?!\w)', 86400),
+        (r'(\d+)\s*hours?', 3600),
+        (r'(\d+)\s*h(?!\w)', 3600),
+        (r'(\d+)\s*minutes?', 60),
+        (r'(\d+)\s*mins?', 60),
+        (r'(\d+)\s*m(?!\w|o|i)', 60),
+        (r'(\d+)\s*seconds?', 1),
+        (r'(\d+)\s*secs?', 1),
+        (r'(\d+)\s*s(?!\w)', 1),
+    ]
+    for pattern, multiplier in patterns:
+        for match in _re.finditer(pattern, text):
+            total_seconds += int(match.group(1)) * multiplier
+    return total_seconds
+
+def format_duration_human(seconds):
+    """Format seconds into human readable German string."""
+    if seconds <= 0:
+        return "Inaktiv"
+    parts = []
+    days = seconds // 86400
+    if days > 0:
+        parts.append(f"{days} Tag{'e' if days != 1 else ''}")
+        seconds %= 86400
+    hours = seconds // 3600
+    if hours > 0:
+        parts.append(f"{hours} Stunde{'n' if hours != 1 else ''}")
+        seconds %= 3600
+    minutes = seconds // 60
+    if minutes > 0:
+        parts.append(f"{minutes} Minute{'n' if minutes != 1 else ''}")
+        seconds %= 60
+    if seconds > 0:
+        parts.append(f"{seconds} Sekunde{'n' if seconds != 1 else ''}")
+    return " ".join(parts) if parts else "Inaktiv"
+
 # Store pending data
 user_data_store = {}
 
