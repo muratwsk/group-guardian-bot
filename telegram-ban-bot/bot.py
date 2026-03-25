@@ -1681,6 +1681,188 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ]
         await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
 
+    # === FORBIDDEN WORDS MENU ===
+    elif data == "menu_badwords":
+        bot_data = load_data()
+        bw = bot_data.get("badwords_config", {"punishment": "aus", "delete": True})
+        punishment = bw.get("punishment", "aus")
+        delete_msg = bw.get("delete", True)
+        word_list = bot_data.get("badwords", [])
+        punishment_labels = {"aus": "Aus", "warn": "Warn", "kick": "Kick", "mute": "Mute", "ban": "Ban"}
+        p_label = punishment_labels.get(punishment, punishment)
+        del_label = "Ja ✅" if delete_msg else "Nein"
+        keyboard = [
+            [InlineKeyboardButton("❌ Aus", callback_data="bw_set_aus"),
+             InlineKeyboardButton("❗ Warn", callback_data="bw_set_warn"),
+             InlineKeyboardButton("❗ Kick", callback_data="bw_set_kick")],
+            [InlineKeyboardButton("🤫 Mute", callback_data="bw_set_mute"),
+             InlineKeyboardButton("🚫 Ban", callback_data="bw_set_ban")],
+            [InlineKeyboardButton(f"🗑 Nachrichten Löschen {'✅' if delete_msg else '❌'}", callback_data="bw_toggle_delete")],
+            [InlineKeyboardButton("➕ Hinzufügen", callback_data="bw_add"),
+             InlineKeyboardButton("➖ Entfernen", callback_data="bw_remove")],
+            [InlineKeyboardButton("🔤 Liste", callback_data="bw_list")],
+            [InlineKeyboardButton(f"🔢 Verbotene Worte 🆕", callback_data="bw_list") if word_list else InlineKeyboardButton("🔢 Keine Worte", callback_data="noop")],
+            [InlineKeyboardButton("🔙 Zurück", callback_data="back_main")],
+        ]
+        await query.edit_message_text(
+            f"🔤 <b>Verbotene Worte</b>\n"
+            f"In diesem Menü kann man eine Bestrafung für diejenigen festlegen, "
+            f"die jene Worte verwenden, die man verbieten möchte\n\n"
+            f"<b>Bestrafung:</b> {p_label}\n"
+            f"<b>Löschen:</b> {del_label}",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode="HTML",
+        )
+
+    elif data.startswith("bw_set_"):
+        punishment_val = data.replace("bw_set_", "")
+        bot_data = load_data()
+        bot_data.setdefault("badwords_config", {})["punishment"] = punishment_val
+        save_data(bot_data)
+        await query.answer(f"Bestrafung auf {punishment_val} gesetzt ✅")
+        # Re-render menu
+        bw = bot_data.get("badwords_config", {"punishment": "aus", "delete": True})
+        delete_msg = bw.get("delete", True)
+        word_list = bot_data.get("badwords", [])
+        punishment_labels = {"aus": "Aus", "warn": "Warn", "kick": "Kick", "mute": "Mute", "ban": "Ban"}
+        p_label = punishment_labels.get(punishment_val, punishment_val)
+        del_label = "Ja ✅" if delete_msg else "Nein"
+        keyboard = [
+            [InlineKeyboardButton("❌ Aus", callback_data="bw_set_aus"),
+             InlineKeyboardButton("❗ Warn", callback_data="bw_set_warn"),
+             InlineKeyboardButton("❗ Kick", callback_data="bw_set_kick")],
+            [InlineKeyboardButton("🤫 Mute", callback_data="bw_set_mute"),
+             InlineKeyboardButton("🚫 Ban", callback_data="bw_set_ban")],
+            [InlineKeyboardButton(f"🗑 Nachrichten Löschen {'✅' if delete_msg else '❌'}", callback_data="bw_toggle_delete")],
+            [InlineKeyboardButton("➕ Hinzufügen", callback_data="bw_add"),
+             InlineKeyboardButton("➖ Entfernen", callback_data="bw_remove")],
+            [InlineKeyboardButton("🔤 Liste", callback_data="bw_list")],
+            [InlineKeyboardButton(f"🔢 {len(word_list)} Verbotene Worte", callback_data="bw_list")],
+            [InlineKeyboardButton("🔙 Zurück", callback_data="back_main")],
+        ]
+        await query.edit_message_text(
+            f"🔤 <b>Verbotene Worte</b>\n"
+            f"In diesem Menü kann man eine Bestrafung für diejenigen festlegen, "
+            f"die jene Worte verwenden, die man verbieten möchte\n\n"
+            f"<b>Bestrafung:</b> {p_label}\n"
+            f"<b>Löschen:</b> {del_label}",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode="HTML",
+        )
+
+    elif data == "bw_toggle_delete":
+        bot_data = load_data()
+        bw = bot_data.setdefault("badwords_config", {})
+        bw["delete"] = not bw.get("delete", True)
+        save_data(bot_data)
+        await query.answer(f"Löschen {'aktiviert' if bw['delete'] else 'deaktiviert'} ✅")
+        # Trigger re-render
+        punishment = bw.get("punishment", "aus")
+        delete_msg = bw.get("delete", True)
+        word_list = bot_data.get("badwords", [])
+        punishment_labels = {"aus": "Aus", "warn": "Warn", "kick": "Kick", "mute": "Mute", "ban": "Ban"}
+        p_label = punishment_labels.get(punishment, punishment)
+        del_label = "Ja ✅" if delete_msg else "Nein"
+        keyboard = [
+            [InlineKeyboardButton("❌ Aus", callback_data="bw_set_aus"),
+             InlineKeyboardButton("❗ Warn", callback_data="bw_set_warn"),
+             InlineKeyboardButton("❗ Kick", callback_data="bw_set_kick")],
+            [InlineKeyboardButton("🤫 Mute", callback_data="bw_set_mute"),
+             InlineKeyboardButton("🚫 Ban", callback_data="bw_set_ban")],
+            [InlineKeyboardButton(f"🗑 Nachrichten Löschen {'✅' if delete_msg else '❌'}", callback_data="bw_toggle_delete")],
+            [InlineKeyboardButton("➕ Hinzufügen", callback_data="bw_add"),
+             InlineKeyboardButton("➖ Entfernen", callback_data="bw_remove")],
+            [InlineKeyboardButton("🔤 Liste", callback_data="bw_list")],
+            [InlineKeyboardButton(f"🔢 {len(word_list)} Verbotene Worte", callback_data="bw_list")],
+            [InlineKeyboardButton("🔙 Zurück", callback_data="back_main")],
+        ]
+        await query.edit_message_text(
+            f"🔤 <b>Verbotene Worte</b>\n"
+            f"In diesem Menü kann man eine Bestrafung für diejenigen festlegen, "
+            f"die jene Worte verwenden, die man verbieten möchte\n\n"
+            f"<b>Bestrafung:</b> {p_label}\n"
+            f"<b>Löschen:</b> {del_label}",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode="HTML",
+        )
+
+    elif data == "bw_add":
+        keyboard = [[InlineKeyboardButton("❌ Abbrechen", callback_data="menu_badwords")]]
+        await query.edit_message_text(
+            "➕ Sende jetzt das verbotene Wort (oder mehrere, getrennt durch Komma):",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+        )
+        context.user_data["state"] = WAITING_BADWORD_ADD
+
+    elif data == "bw_remove":
+        bot_data = load_data()
+        word_list = bot_data.get("badwords", [])
+        if not word_list:
+            await query.answer("Keine Worte vorhanden.", show_alert=True)
+            return
+        keyboard = []
+        for i, word in enumerate(word_list):
+            keyboard.append([InlineKeyboardButton(f"❌ {word}", callback_data=f"bw_del_{i}")])
+        keyboard.append([InlineKeyboardButton("🔙 Zurück", callback_data="menu_badwords")])
+        await query.edit_message_text(
+            "➖ Wähle ein Wort zum Entfernen:",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+        )
+
+    elif data.startswith("bw_del_"):
+        idx = int(data.replace("bw_del_", ""))
+        bot_data = load_data()
+        word_list = bot_data.get("badwords", [])
+        if 0 <= idx < len(word_list):
+            removed = word_list.pop(idx)
+            save_data(bot_data)
+            await query.answer(f"'{removed}' entfernt ✅")
+        # Back to menu
+        bw = bot_data.get("badwords_config", {"punishment": "aus", "delete": True})
+        punishment = bw.get("punishment", "aus")
+        delete_msg = bw.get("delete", True)
+        punishment_labels = {"aus": "Aus", "warn": "Warn", "kick": "Kick", "mute": "Mute", "ban": "Ban"}
+        p_label = punishment_labels.get(punishment, punishment)
+        del_label = "Ja ✅" if delete_msg else "Nein"
+        keyboard = [
+            [InlineKeyboardButton("❌ Aus", callback_data="bw_set_aus"),
+             InlineKeyboardButton("❗ Warn", callback_data="bw_set_warn"),
+             InlineKeyboardButton("❗ Kick", callback_data="bw_set_kick")],
+            [InlineKeyboardButton("🤫 Mute", callback_data="bw_set_mute"),
+             InlineKeyboardButton("🚫 Ban", callback_data="bw_set_ban")],
+            [InlineKeyboardButton(f"🗑 Nachrichten Löschen {'✅' if delete_msg else '❌'}", callback_data="bw_toggle_delete")],
+            [InlineKeyboardButton("➕ Hinzufügen", callback_data="bw_add"),
+             InlineKeyboardButton("➖ Entfernen", callback_data="bw_remove")],
+            [InlineKeyboardButton("🔤 Liste", callback_data="bw_list")],
+            [InlineKeyboardButton(f"🔢 {len(word_list)} Verbotene Worte", callback_data="bw_list")],
+            [InlineKeyboardButton("🔙 Zurück", callback_data="back_main")],
+        ]
+        await query.edit_message_text(
+            f"🔤 <b>Verbotene Worte</b>\n\n"
+            f"<b>Bestrafung:</b> {p_label}\n"
+            f"<b>Löschen:</b> {del_label}",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode="HTML",
+        )
+
+    elif data == "bw_list":
+        bot_data = load_data()
+        word_list = bot_data.get("badwords", [])
+        keyboard = [[InlineKeyboardButton("🔙 Zurück", callback_data="menu_badwords")]]
+        if not word_list:
+            await query.edit_message_text(
+                "🔤 <b>Keine verbotenen Worte eingetragen.</b>",
+                reply_markup=InlineKeyboardMarkup(keyboard),
+                parse_mode="HTML",
+            )
+        else:
+            words_text = "\n".join(f"• <code>{html.escape(w)}</code>" for w in word_list)
+            await query.edit_message_text(
+                f"🔤 <b>Verbotene Worte ({len(word_list)}):</b>\n\n{words_text}",
+                reply_markup=InlineKeyboardMarkup(keyboard),
+                parse_mode="HTML",
+            )
+
     # === WARN CONFIG MENU ===
     elif data == "menu_warns":
         bot_data = load_data()
