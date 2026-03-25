@@ -524,35 +524,20 @@ async def get_bot_groups(context: ContextTypes.DEFAULT_TYPE) -> list:
 # --- /reload ---
 
 async def reload_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Reload config and sync admin list from all registered Telegram groups."""
+    """Reload config — clears caches but does NOT import group admins as bot admins."""
     user_id = update.effective_user.id
     chat = update.effective_chat
-    # Allow config-admins or Telegram group admins
     if not is_authorized(user_id):
         if not (chat and chat.type in ("group", "supergroup") and await is_chat_admin(context, chat.id, user_id)):
             return
 
-    cfg = load_config()
-    data = load_data()
-    groups = data.get("groups", [])
+    # Clear caches so fresh data is loaded
+    CONFIG_CACHE["data"] = None
+    DATA_CACHE["data"] = None
+    USERS_CACHE["data"] = None
+    ADMIN_STATUS_CACHE.clear()
 
-    all_admins = set(cfg.get("admin_ids", []))
-    for g in groups:
-        try:
-            members = await context.bot.get_chat_administrators(g["id"])
-            for m in members:
-                if not m.user.is_bot:
-                    all_admins.add(m.user.id)
-        except Exception as e:
-            logger.error(f"Failed to fetch admins for {g.get('title', g['id'])}: {e}")
-
-    cfg["admin_ids"] = list(all_admins)
-    save_config(cfg)
-
-    await update.message.reply_text(
-        "✅ Bot neu gestartet\n"
-        "✅ Admin Liste aktualisiert"
-    )
+    await update.message.reply_text("✅ Bot-Konfiguration neu geladen.")
 
 # --- /start ---
 
