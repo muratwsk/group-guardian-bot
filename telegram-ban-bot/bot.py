@@ -298,6 +298,19 @@ async def get_info_group_state(context: ContextTypes.DEFAULT_TYPE, chat_id: int 
     return state
 
 
+async def get_info_banall_groups(context: ContextTypes.DEFAULT_TYPE, scope_chat_id: int | None):
+    """Return registered groups plus the current /info group if it is missing."""
+    groups = await get_bot_groups(context)
+    if scope_chat_id and not any(g["id"] == scope_chat_id for g in groups):
+        try:
+            chat = await context.bot.get_chat(scope_chat_id)
+            if chat.type in ("group", "supergroup"):
+                groups.append({"id": chat.id, "title": chat.title or str(chat.id)})
+        except Exception:
+            groups.append({"id": scope_chat_id, "title": str(scope_chat_id)})
+    return groups
+
+
 def build_info_keyboard(scope_chat_id: int | None, target_id: int, is_muted: bool, is_banned_local: bool, is_banned_all: bool):
     keyboard = []
     if scope_chat_id:
@@ -1088,14 +1101,14 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # IMPORTANT: banall/unbanall must be checked BEFORE ban/unban (prefix overlap)
     elif data.startswith("info_banall_"):
         target_id = int(data.replace("info_banall_", "", 1))
-        groups = await get_bot_groups(context)
+        scope_chat_id = query.message.chat.id if query.message and query.message.chat else None
+        groups = await get_info_banall_groups(context, scope_chat_id)
         if not groups:
             await query.edit_message_text("Keine Gruppen registriert.")
             return
         tracked = lookup_user(str(target_id))
         target_name = tracked.get("name", str(target_id)) if tracked else str(target_id)
         target_username = tracked.get("username") if tracked else None
-        scope_chat_id = query.message.chat.id if query.message and query.message.chat else None
 
         successful_groups, failed_groups = await ban_user_in_groups(context, groups, target_id)
         if successful_groups:
@@ -1130,14 +1143,14 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     elif data.startswith("info_unbanall_"):
         target_id = int(data.replace("info_unbanall_", "", 1))
-        groups = await get_bot_groups(context)
+        scope_chat_id = query.message.chat.id if query.message and query.message.chat else None
+        groups = await get_info_banall_groups(context, scope_chat_id)
         if not groups:
             await query.edit_message_text("Keine Gruppen registriert.")
             return
         tracked = lookup_user(str(target_id))
         target_name = tracked.get("name", str(target_id)) if tracked else str(target_id)
         target_username = tracked.get("username") if tracked else None
-        scope_chat_id = query.message.chat.id if query.message and query.message.chat else None
 
         for g in groups:
             try:
@@ -1161,7 +1174,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         scope_chat_id_str, target_id_str = payload.rsplit("_", 1)
         scope_chat_id = int(scope_chat_id_str)
         target_id = int(target_id_str)
-        groups = await get_bot_groups(context)
+        groups = await get_info_banall_groups(context, scope_chat_id)
         tracked = lookup_user(str(target_id))
         target_name = tracked.get("name", str(target_id)) if tracked else str(target_id)
         target_username = tracked.get("username") if tracked else None
@@ -1184,7 +1197,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         scope_chat_id_str, target_id_str = payload.rsplit("_", 1)
         scope_chat_id = int(scope_chat_id_str)
         target_id = int(target_id_str)
-        groups = await get_bot_groups(context)
+        groups = await get_info_banall_groups(context, scope_chat_id)
         tracked = lookup_user(str(target_id))
         target_name = tracked.get("name", str(target_id)) if tracked else str(target_id)
         target_username = tracked.get("username") if tracked else None
@@ -1208,7 +1221,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         scope_chat_id_str, target_id_str = payload.rsplit("_", 1)
         scope_chat_id = int(scope_chat_id_str)
         target_id = int(target_id_str)
-        groups = await get_bot_groups(context)
+        groups = await get_info_banall_groups(context, scope_chat_id)
         tracked = lookup_user(str(target_id))
         target_name = tracked.get("name", str(target_id)) if tracked else str(target_id)
         target_username = tracked.get("username") if tracked else None
@@ -1235,7 +1248,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         scope_chat_id_str, target_id_str = payload.rsplit("_", 1)
         scope_chat_id = int(scope_chat_id_str)
         target_id = int(target_id_str)
-        groups = await get_bot_groups(context)
+        groups = await get_info_banall_groups(context, scope_chat_id)
         tracked = lookup_user(str(target_id))
         target_name = tracked.get("name", str(target_id)) if tracked else str(target_id)
         target_username = tracked.get("username") if tracked else None
@@ -1985,12 +1998,10 @@ async def info_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         has_photo = False
         full_name = target_name
 
-    bot_data = load_data()
-    groups = bot_data.get("groups", [])
+    groups = await get_info_banall_groups(context, scope_chat_id)
     banned_in = sum(1 for g in groups if is_banned_in_group(g["id"], target_id))
     is_banned_all = bool(groups) and banned_in == len(groups)
 
-    scope_chat_id = get_info_scope_chat_id(update)
     group_state = await get_info_group_state(context, scope_chat_id, target_id)
     is_muted = group_state["is_muted"]
     is_banned_local = group_state["is_banned_local"]
