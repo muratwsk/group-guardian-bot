@@ -2019,6 +2019,62 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         context.user_data["state"] = WAITING_PCMD_NAME
 
+    # === /personal GROUP SELECTION (from group chat) ===
+    elif data.startswith("pers_grp_") and data not in ("pers_grp_all", "pers_grp_none", "pers_grp_save", "pers_grp_cancel"):
+        gid = int(data.replace("pers_grp_", ""))
+        pending = user_data_store.get(user_id, {})
+        selected = pending.get("selected", set())
+        if gid in selected:
+            selected.discard(gid)
+        else:
+            selected.add(gid)
+        pending["selected"] = selected
+        user_data_store[user_id] = pending
+        await _render_pers_grp_menu(query, pending)
+
+    elif data == "pers_grp_all":
+        pending = user_data_store.get(user_id, {})
+        bot_data = load_data()
+        pending["selected"] = {g["id"] for g in bot_data.get("groups", [])}
+        user_data_store[user_id] = pending
+        await _render_pers_grp_menu(query, pending)
+
+    elif data == "pers_grp_none":
+        pending = user_data_store.get(user_id, {})
+        pending["selected"] = set()
+        user_data_store[user_id] = pending
+        await _render_pers_grp_menu(query, pending)
+
+    elif data == "pers_grp_save":
+        pending = user_data_store.get(user_id, {})
+        cmd_name = pending.get("cmd_name", "")
+        cmd_data = pending.get("cmd_data", {})
+        selected = pending.get("selected", set())
+        cmd_data["groups"] = list(selected)
+
+        bot_data = load_data()
+        cmds = bot_data.setdefault("personal_commands", {})
+        existing = cmds.get(cmd_name, [])
+        if not isinstance(existing, list):
+            existing = [existing]
+        existing.append(cmd_data)
+        cmds[cmd_name] = existing
+        save_data(bot_data)
+        user_data_store.pop(user_id, None)
+
+        grp_text = f"{len(selected)} Gruppen" if selected else "alle Gruppen"
+        keyboard = [[InlineKeyboardButton("🔙 Menü", callback_data="pcmd_menu")]]
+        await query.edit_message_text(
+            f"✅ Befehl /<b>{html.escape(cmd_name)}</b> gespeichert für {grp_text}!",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode="HTML",
+        )
+        await log_action(context, f"PERSONAL CMD: /{cmd_name} erstellt von {query.from_user.full_name} für {grp_text}")
+
+    elif data == "pers_grp_cancel":
+        user_data_store.pop(user_id, None)
+        await query.edit_message_text("❌ Abgebrochen.")
+
     elif data == "pcmd_remove":
         bot_data = load_data()
         cmds = bot_data.get("personal_commands", {})
@@ -4820,17 +4876,38 @@ async def personal_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("⚠️ Die Nachricht hat keinen speicherbaren Inhalt.")
         return
 
-    bot_data = load_data()
-    cmds = bot_data.setdefault("personal_commands", {})
-    existing = cmds.get(cmd_name, [])
-    if not isinstance(existing, list):
-        existing = [existing]
-    existing.append(cmd_data)
-    cmds[cmd_name] = existing
-    save_data(bot_data)
+    # Store pending data and show group selection
+    user_data_store[user_id] = {
+        "action": "personal_grp_select",
+        "cmd_name": cmd_name,
+        "cmd_data": cmd_data,
+        "selected": set(),
+    }
 
-    await update.message.reply_text(f"✅ Befehl /{cmd_name} gespeichert für alle Gruppen!")
-    await log_action(context, f"PERSONAL CMD: /{cmd_name} erstellt von {update.effective_user.full_name}")
+    bot_data = load_data()
+    groups = bot_data.get("groups", [])
+    keyboard = []
+    row = []
+    for g in groups:
+        row.append(InlineKeyboardButton(f"⬜ {g['title']}", callback_data=f"pers_grp_{g['id']}"))
+        if len(row) == 2:
+            keyboard.append(row)
+            row = []
+    if row:
+        keyboard.append(row)
+    keyboard.append([
+        InlineKeyboardButton("☑️ Alle", callback_data="pers_grp_all"),
+        InlineKeyboardButton("◻️ Keine", callback_data="pers_grp_none"),
+    ])
+    keyboard.append([InlineKeyboardButton("✅ Speichern", callback_data="pers_grp_save")])
+    keyboard.append([InlineKeyboardButton("❌ Abbrechen", callback_data="pers_grp_cancel")])
+
+    await update.message.reply_text(
+        f"🏗 <b>/{html.escape(cmd_name)}</b> — Wähle Gruppen:\n\n"
+        f"<i>Keine Auswahl = gilt für alle Gruppen</i>",
+        reply_markup=InlineKeyboardMarkup(keyboard),
+        parse_mode="HTML",
+    )
 
 
 async def unpersonal_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -4892,8 +4969,18 @@ async def handle_custom_command(update: Update, context: ContextTypes.DEFAULT_TY
     if not isinstance(entries, list):
         entries = [entries]
 
-    # Befehle gelten für alle Gruppen – nimm den ersten Eintrag
-    cmd_data = entries[0] if entries else None
+    # Befehle: erst gruppenspezifisch, dann Fallback auf global (leere groups)
+    cmd_data = None
+    for e in entries:
+        grps = e.get("groups", [])
+        if grps and chat_id in grps:
+            cmd_data = e
+            break
+    if cmd_data is None:
+        for e in entries:
+            if not e.get("groups", []):
+                cmd_data = e
+                break
     if cmd_data is None:
         return
 
@@ -6090,6 +6177,36 @@ async def show_members_group_selection(query, context, user_id, groups, action):
     keyboard.append([InlineKeyboardButton("🔙 Zurück", callback_data="menu_members")])
     await query.edit_message_text(
         f"{action_emoji} <b>All {action_label}</b>\nWähle die Gruppen:",
+        reply_markup=InlineKeyboardMarkup(keyboard),
+        parse_mode="HTML",
+    )
+
+
+async def _render_pers_grp_menu(query, pending):
+    """Render group selection for /personal command."""
+    cmd_name = pending.get("cmd_name", "")
+    selected = pending.get("selected", set())
+    bot_data = load_data()
+    groups = bot_data.get("groups", [])
+    keyboard = []
+    row = []
+    for g in groups:
+        check = "✅" if g["id"] in selected else "⬜"
+        row.append(InlineKeyboardButton(f"{check} {g['title']}", callback_data=f"pers_grp_{g['id']}"))
+        if len(row) == 2:
+            keyboard.append(row)
+            row = []
+    if row:
+        keyboard.append(row)
+    keyboard.append([
+        InlineKeyboardButton("☑️ Alle", callback_data="pers_grp_all"),
+        InlineKeyboardButton("◻️ Keine", callback_data="pers_grp_none"),
+    ])
+    keyboard.append([InlineKeyboardButton(f"✅ Speichern ({len(selected)} gewählt)", callback_data="pers_grp_save")])
+    keyboard.append([InlineKeyboardButton("❌ Abbrechen", callback_data="pers_grp_cancel")])
+    await query.edit_message_text(
+        f"🏗 <b>/{html.escape(cmd_name)}</b> — Wähle Gruppen:\n\n"
+        f"<i>Keine Auswahl = gilt für alle Gruppen</i>",
         reply_markup=InlineKeyboardMarkup(keyboard),
         parse_mode="HTML",
     )
