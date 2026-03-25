@@ -261,6 +261,7 @@ WAITING_SCHED_TIMESPAN = 13
 WAITING_OPEN_STICKER = 14
 WAITING_PCMD_NAME = 16
 WAITING_PCMD_TEXT = 17
+WAITING_PCMD_GROUPS = 18
 
 # Store pending data
 user_data_store = {}
@@ -1376,7 +1377,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif data == "pcmd_menu":
         bot_data = load_data()
         cmds = bot_data.get("personal_commands", {})
-        cmd_count = len(cmds)
+        cmd_count = sum(len(entries) if isinstance(entries, list) else 1 for entries in cmds.values())
         keyboard = [
             [InlineKeyboardButton("» 🏗 Persönliche Befehle «", callback_data="noop")],
             [InlineKeyboardButton("🔤 Liste", callback_data="pcmd_list")],
@@ -1407,21 +1408,67 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             return
         text = "📋 <b>Persönliche Befehle</b>\n\n"
-        for name, info in cmds.items():
-            preview = html.escape((info.get("text") or "")[:40])
-            has_media = " 🖼" if info.get("media_file_id") else ""
-            text += f"• /<b>{html.escape(name)}</b> — {preview}{has_media}\n"
+        groups_list = bot_data.get("groups", [])
+        gid_to_name = {g["id"]: g["title"] for g in groups_list}
+        for name, entries in cmds.items():
+            if not isinstance(entries, list):
+                entries = [entries]
+            for i, info in enumerate(entries):
+                preview = html.escape((info.get("text") or "")[:30])
+                has_media = " 🖼" if info.get("media_file_id") else ""
+                cmd_groups = info.get("groups", [])
+                if cmd_groups:
+                    gnames = ", ".join(gid_to_name.get(gid, str(gid)) for gid in cmd_groups[:3])
+                    if len(cmd_groups) > 3:
+                        gnames += f" +{len(cmd_groups)-3}"
+                    grp_label = f" [{gnames}]"
+                else:
+                    grp_label = " [Alle]"
+                text += f"• /<b>{html.escape(name)}</b>{grp_label} — {preview}{has_media}\n"
         keyboard = [[InlineKeyboardButton("🔙 Zurück", callback_data="pcmd_menu")]]
         await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
 
     elif data == "pcmd_add":
-        user_data_store[user_id] = {"action": "pcmd_add"}
+        groups = await get_bot_groups(context)
+        user_data_store[user_id] = {"action": "pcmd_add", "selected": set()}
+        await show_pcmd_group_selection(query, context, user_id, groups)
+
+    elif data.startswith("pcmd_grp_toggle_"):
+        gid = int(data.replace("pcmd_grp_toggle_", ""))
+        pending = user_data_store.get(user_id, {})
+        selected = pending.get("selected", set())
+        if gid in selected:
+            selected.discard(gid)
+        else:
+            selected.add(gid)
+        pending["selected"] = selected
+        user_data_store[user_id] = pending
+        groups = await get_bot_groups(context)
+        await show_pcmd_group_selection(query, context, user_id, groups)
+
+    elif data == "pcmd_grp_all":
+        groups = await get_bot_groups(context)
+        user_data_store[user_id]["selected"] = {g["id"] for g in groups}
+        await show_pcmd_group_selection(query, context, user_id, groups)
+
+    elif data == "pcmd_grp_none":
+        user_data_store[user_id]["selected"] = set()
+        groups = await get_bot_groups(context)
+        await show_pcmd_group_selection(query, context, user_id, groups)
+
+    elif data == "pcmd_grp_confirm":
+        pending = user_data_store.get(user_id, {})
+        selected = pending.get("selected", set())
+        if not selected:
+            await query.answer("⚠️ Wähle mindestens eine Gruppe!", show_alert=True)
+            return
+        pending["groups"] = list(selected)
+        user_data_store[user_id] = pending
         keyboard = [[InlineKeyboardButton("❌ Abbrechen", callback_data="pcmd_menu")]]
         await query.edit_message_text(
             "➕ <b>Befehl hinzufügen</b>\n\n"
             "Sende mir den Namen für den neuen Befehl (ohne /).\n"
-            "Beispiel: <code>hele</code>\n\n"
-            "<i>Danach wird der Befehl /hele verfügbar.</i>",
+            "Beispiel: <code>hele</code>",
             reply_markup=InlineKeyboardMarkup(keyboard),
             parse_mode="HTML",
         )
@@ -1433,9 +1480,20 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not cmds:
             await query.answer("Keine Befehle vorhanden.", show_alert=True)
             return
+        groups_list = bot_data.get("groups", [])
+        gid_to_name = {g["id"]: g["title"] for g in groups_list}
         keyboard = []
-        for name in cmds:
-            keyboard.append([InlineKeyboardButton(f"🗑 /{name}", callback_data=f"pcmd_del_{name}")])
+        for name, entries in cmds.items():
+            if not isinstance(entries, list):
+                entries = [entries]
+            for i, info in enumerate(entries):
+                cmd_groups = info.get("groups", [])
+                if cmd_groups:
+                    gnames = ", ".join(gid_to_name.get(gid, str(gid)) for gid in cmd_groups[:2])
+                    label = f"🗑 /{name} [{gnames}]"
+                else:
+                    label = f"🗑 /{name} [Alle]"
+                keyboard.append([InlineKeyboardButton(label, callback_data=f"pcmd_del_{name}_{i}")])
         keyboard.append([InlineKeyboardButton("🔙 Zurück", callback_data="pcmd_menu")])
         await query.edit_message_text(
             "➖ <b>Befehl entfernen</b>\n\nWähle den Befehl zum Löschen:",
@@ -1443,11 +1501,25 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode="HTML",
         )
 
-    elif data.startswith("pcmd_del_"):
-        cmd_name = data.replace("pcmd_del_", "")
+    elif data.startswith("pcmd_del_") and data != "pcmd_del_":
+        parts = data.replace("pcmd_del_", "").rsplit("_", 1)
+        if len(parts) == 2:
+            cmd_name, idx_str = parts
+            idx = int(idx_str)
+        else:
+            cmd_name = parts[0]
+            idx = 0
         bot_data = load_data()
         cmds = bot_data.get("personal_commands", {})
-        cmds.pop(cmd_name, None)
+        entries = cmds.get(cmd_name, [])
+        if not isinstance(entries, list):
+            entries = [entries]
+        if 0 <= idx < len(entries):
+            entries.pop(idx)
+        if not entries:
+            cmds.pop(cmd_name, None)
+        else:
+            cmds[cmd_name] = entries
         save_data(bot_data)
         keyboard = [[InlineKeyboardButton("🔙 Zurück", callback_data="pcmd_menu")]]
         await query.edit_message_text(
@@ -1817,8 +1889,8 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         keyboard = [[InlineKeyboardButton("❌ Abbrechen", callback_data="pcmd_menu")]]
         await update.message.reply_text(
             f"✅ Befehlname: /<b>{html.escape(cmd_name)}</b>\n\n"
-            f"Sende mir jetzt die Antwort-Nachricht für diesen Befehl.\n"
-            f"<i>Formatierung wird übernommen.</i>",
+            f"Sende mir jetzt die Antwort-Nachricht.\n"
+            f"<i>Formatierung wird übernommen. Medien (Fotos, Videos, Sticker) auch.</i>",
             reply_markup=InlineKeyboardMarkup(keyboard),
             parse_mode="HTML",
         )
@@ -1830,20 +1902,29 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("Bitte starte mit /start.")
             return
         cmd_name = pending["cmd_name"]
+        cmd_groups = pending.get("groups", [])
         bot_data = load_data()
-        bot_data.setdefault("personal_commands", {})[cmd_name] = {
+        new_entry = {
             "text": update.message.text or "",
             "text_html": update.message.text_html or update.message.text or "",
             "created_by": user_id,
             "created_at": now_de().strftime("%d.%m.%Y %H:%M"),
+            "groups": cmd_groups,
         }
+        cmds = bot_data.setdefault("personal_commands", {})
+        existing = cmds.get(cmd_name, [])
+        if not isinstance(existing, list):
+            existing = [existing]
+        existing.append(new_entry)
+        cmds[cmd_name] = existing
         save_data(bot_data)
         context.user_data["state"] = None
         user_data_store.pop(user_id, None)
+        grp_count = len(cmd_groups)
+        grp_text = f" für {grp_count} Gruppen" if cmd_groups else " (alle Gruppen)"
         keyboard = [[InlineKeyboardButton("🔙 Zurück zu Befehle", callback_data="pcmd_menu")]]
         await update.message.reply_text(
-            f"✅ Befehl /<b>{html.escape(cmd_name)}</b> gespeichert!\n\n"
-            f"Nutze jetzt /{html.escape(cmd_name)} in einer Gruppe.",
+            f"✅ Befehl /<b>{html.escape(cmd_name)}</b> gespeichert{grp_text}!",
             reply_markup=InlineKeyboardMarkup(keyboard),
             parse_mode="HTML",
         )
@@ -2161,6 +2242,7 @@ async def personal_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     cmd_data = {
         "created_by": user_id,
         "created_at": now_de().strftime("%d.%m.%Y %H:%M"),
+        "groups": [update.effective_chat.id] if update.effective_chat and update.effective_chat.type in ("group", "supergroup") else [],
     }
 
     if reply.text:
@@ -2192,10 +2274,16 @@ async def personal_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     bot_data = load_data()
-    bot_data.setdefault("personal_commands", {})[cmd_name] = cmd_data
+    cmds = bot_data.setdefault("personal_commands", {})
+    existing = cmds.get(cmd_name, [])
+    if not isinstance(existing, list):
+        existing = [existing]
+    existing.append(cmd_data)
+    cmds[cmd_name] = existing
     save_data(bot_data)
 
-    await update.message.reply_text(f"✅ Befehl /{cmd_name} gespeichert!")
+    grp_label = update.effective_chat.title if update.effective_chat and update.effective_chat.type in ("group", "supergroup") else "alle Gruppen"
+    await update.message.reply_text(f"✅ Befehl /{cmd_name} gespeichert für [{grp_label}]!")
     await log_action(context, f"PERSONAL CMD: /{cmd_name} erstellt von {update.effective_user.full_name}")
 
 
@@ -2217,7 +2305,19 @@ async def unpersonal_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
         await update.message.reply_text(f"⚠️ Befehl /{cmd_name} nicht gefunden.")
         return
 
-    cmds.pop(cmd_name)
+    chat_id = update.effective_chat.id if update.effective_chat else None
+    entries = cmds.get(cmd_name, [])
+    if not isinstance(entries, list):
+        entries = [entries]
+    # Remove entry matching this group, or all if in DM
+    if chat_id and any(chat_id in e.get("groups", []) for e in entries):
+        entries = [e for e in entries if chat_id not in e.get("groups", [])]
+    else:
+        entries = []
+    if entries:
+        cmds[cmd_name] = entries
+    else:
+        cmds.pop(cmd_name, None)
     save_data(bot_data)
     await update.message.reply_text(f"✅ Befehl /{cmd_name} gelöscht!")
     await log_action(context, f"UNPERSONAL CMD: /{cmd_name} gelöscht von {update.effective_user.full_name}")
@@ -2241,11 +2341,29 @@ async def handle_custom_command(update: Update, context: ContextTypes.DEFAULT_TY
     if cmd not in cmds:
         return
 
-    cmd_data = cmds[cmd]
+    chat_id = update.effective_chat.id
+    entries = cmds[cmd]
+    if not isinstance(entries, list):
+        entries = [entries]
+
+    # Find matching entry: first check group-specific, then fallback to global (empty groups)
+    cmd_data = None
+    for e in entries:
+        grps = e.get("groups", [])
+        if grps and chat_id in grps:
+            cmd_data = e
+            break
+    if cmd_data is None:
+        for e in entries:
+            if not e.get("groups", []):
+                cmd_data = e
+                break
+    if cmd_data is None:
+        return
+
     text_html = cmd_data.get("text_html", cmd_data.get("text", ""))
     media_fid = cmd_data.get("media_file_id")
     media_type = cmd_data.get("media_type", "photo")
-    chat_id = update.effective_chat.id
 
     try:
         if media_fid:
