@@ -888,6 +888,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "created_by": user_id,
             "created_at": now_de().strftime("%d.%m.%Y %H:%M"),
             "last_sent": None,
+            "next_run_at": (now_de() + datetime.timedelta(minutes=minutes)).strftime("%d.%m.%Y %H:%M"),
             "last_sent_messages": [],
             "delete_previous": True,
         }
@@ -962,6 +963,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         for s in bot_data.get("scheduled", []):
             if s["id"] == sched_id:
                 s["active"] = not s["active"]
+                if s["active"]:
+                    s["next_run_at"] = (now_de() + datetime.timedelta(minutes=s.get("interval_minutes", 60))).strftime("%d.%m.%Y %H:%M")
                 save_data(bot_data)
                 if s["active"]:
                     schedule_job(context, s)
@@ -1155,6 +1158,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         for s in bot_data.get("scheduled", []):
             if s["id"] == sched_id:
                 s["time"] = time_str
+                if s.get("active"):
+                    s["next_run_at"] = (now_de() + datetime.timedelta(minutes=s.get("interval_minutes", 60))).strftime("%d.%m.%Y %H:%M")
                 save_data(bot_data)
                 if s.get("active"):
                     schedule_job(context, s)
@@ -1245,8 +1250,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if s["id"] == sched_id:
                 s["interval_minutes"] = minutes
                 s["interval_label"] = f"Alle {get_interval_label(minutes)}"
-                # Reset last_sent so next fire = now + new interval
-                s["last_sent"] = now_de().strftime("%d.%m.%Y %H:%M")
+                s["next_run_at"] = (now_de() + datetime.timedelta(minutes=minutes)).strftime("%d.%m.%Y %H:%M")
                 save_data(bot_data)
                 if s.get("active"):
                     schedule_job(context, s)
@@ -5498,8 +5502,10 @@ async def show_scheduled_detail(query, context, user_id, sched_id):
                 job = jobs[0]
                 if job.next_t:
                     next_fire_str = job.next_t.astimezone(BERLIN_TZ).strftime("%d.%m.%Y %H:%M")
+        if next_fire_str == "—" and sched.get("next_run_at"):
+            next_fire_str = sched.get("next_run_at")
     
-    last_sent = sched.get("last_sent", "—")
+    last_sent = sched.get("last_sent") or "None"
     
     text = (
         f"🕐 <b>Wiederholte Mitteilungen</b>\n\n"
@@ -5849,6 +5855,7 @@ async def execute_scheduled_message(context: ContextTypes.DEFAULT_TYPE):
         
         # Update last sent info
         sched["last_sent"] = now_de().strftime("%d.%m.%Y %H:%M")
+        sched["next_run_at"] = (now_de() + datetime.timedelta(minutes=sched.get("interval_minutes", 60))).strftime("%d.%m.%Y %H:%M")
         sched["last_sent_messages"] = sent_msgs
         save_data(bot_data)
         
@@ -5888,23 +5895,34 @@ def schedule_job(context, sched):
     now = now_de()
     time_str = sched.get("time", "")
     last_sent_str = sched.get("last_sent")
-    
-    # Priority 1: If we have a last_sent timestamp, calculate next run from there
-    if last_sent_str:
+    next_run_at_str = sched.get("next_run_at")
+    delay = None
+
+    # Priority 1: Explicit next-run anchor (used after create/edit/activate like Group Help)
+    if next_run_at_str:
+        try:
+            next_run = datetime.datetime.strptime(next_run_at_str, "%d.%m.%Y %H:%M").replace(tzinfo=BERLIN_TZ)
+            while next_run <= now:
+                next_run += interval_td
+            delay = (next_run - now).total_seconds()
+            logger.info(f"Scheduled {sched_id}: next_run_at={next_run_at_str}, next run in {delay:.0f}s")
+        except Exception as e:
+            logger.error(f"Error parsing next_run_at for {sched_id}: {e}")
+
+    # Priority 2: If we have a real last_sent timestamp, calculate next run from there
+    if delay is None and last_sent_str:
         try:
             last_sent_dt = datetime.datetime.strptime(last_sent_str, "%d.%m.%Y %H:%M").replace(tzinfo=BERLIN_TZ)
             next_run = last_sent_dt + interval_td
-            # If next_run is in the past (e.g. bot was down), find the next valid time
             while next_run <= now:
                 next_run += interval_td
             delay = (next_run - now).total_seconds()
             logger.info(f"Scheduled {sched_id}: last_sent={last_sent_str}, next run in {delay:.0f}s")
         except Exception as e:
             logger.error(f"Error parsing last_sent for {sched_id}: {e}")
-            last_sent_str = None  # Fall through to time-based calculation
-    
-    # Priority 2: Use configured start time
-    if not last_sent_str and time_str and time_str != "00:00":
+
+    # Priority 3: Legacy fallback to configured start time
+    if delay is None and time_str and time_str != "00:00":
         try:
             h, m = map(int, time_str.split(":"))
         except Exception:
@@ -5913,15 +5931,14 @@ def schedule_job(context, sched):
         while first_run <= now:
             first_run += interval_td
         delay = (first_run - now).total_seconds()
-    elif not last_sent_str:
-        # No time set and no last_sent – start immediately
-        delay = 0
-        logger.info(f"No start time or last_sent for {sched_id}, starting immediately")
+    elif delay is None:
+        delay = max(1, interval)
+        logger.info(f"No start time, next_run_at or last_sent for {sched_id}, starting after one interval")
     
     jq.run_repeating(
         execute_scheduled_message,
         interval=interval,
-        first=delay,
+        first=max(1, int(delay)),
         data=sched_id,
         name=f"sched_{sched_id}",
     )
