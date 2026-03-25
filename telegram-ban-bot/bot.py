@@ -1936,18 +1936,16 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         if "unban" in action:
             for gid in selected:
-                # Try fast Pyrogram scan first
-                banned_ids = await get_banned_members_pyrogram(gid)
-
-                if banned_ids is None:
-                    # Fallback: use local tracking only
-                    logger.warning(f"Pyrogram unavailable, using tracked bans for {gid}")
-                    banned_ids = get_tracked_banned_user_ids(gid)
+                banned_ids = get_tracked_banned_user_ids(gid)
 
                 group_obj = next((g for g in (await get_bot_groups(context)) if g["id"] == gid), None)
                 group_title = group_obj["title"] if group_obj else str(gid)
 
-                logger.info(f"Mass unban: {len(banned_ids)} banned users in {group_title}")
+                logger.info(f"Mass unban: {len(banned_ids)} tracked banned users in {group_title}")
+
+                if not banned_ids:
+                    skipped_count += 1
+                    continue
 
                 try:
                     await query.edit_message_text(
@@ -1964,6 +1962,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     except Exception as e:
                         logger.error(f"Mass unban failed for {uid} in {gid}: {e}")
                         error_count += 1
+                    await asyncio.sleep(0.3)  # Rate-Limit Schutz
 
                 # Clear tracked bans for this group
                 bot_data = load_data()
