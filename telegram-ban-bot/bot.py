@@ -3002,8 +3002,10 @@ async def mute_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     args = list(context.args) if context.args else []
-    # If resolved from reply, strip leading @mention from args (it's not part of the reason)
-    if update.message.reply_to_message and args and args[0].startswith("@"):
+    # Strip the first arg if it was used to resolve the target (@username or numeric ID)
+    if args and not update.message.reply_to_message:
+        args = args[1:]  # first arg was the target
+    elif args and update.message.reply_to_message and (args[0].startswith("@") or args[0].isdigit()):
         args = args[1:]
     reason = " ".join(args) if args else None
 
@@ -3095,7 +3097,9 @@ async def kick_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     args = list(context.args) if context.args else []
-    if update.message.reply_to_message and args and args[0].startswith("@"):
+    if args and not update.message.reply_to_message:
+        args = args[1:]
+    elif args and update.message.reply_to_message and (args[0].startswith("@") or args[0].isdigit()):
         args = args[1:]
     reason = " ".join(args) if args else None
 
@@ -3139,7 +3143,9 @@ async def warn_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     args = list(context.args) if context.args else []
-    if update.message.reply_to_message and args and args[0].startswith("@"):
+    if args and not update.message.reply_to_message:
+        args = args[1:]
+    elif args and update.message.reply_to_message and (args[0].startswith("@") or args[0].isdigit()):
         args = args[1:]
     reason = " ".join(args) if args else None
 
