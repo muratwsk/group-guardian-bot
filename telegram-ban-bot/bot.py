@@ -2786,7 +2786,7 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         groups = pending["groups"]
         success = 0
         fail = 0
-        import time, datetime
+        import time
         broadcast_id = str(int(time.time() * 1000))
         sent_msgs = []
         for gid in groups:
