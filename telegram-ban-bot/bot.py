@@ -325,48 +325,34 @@ async def is_chat_admin(context, chat_id: int, user_id: int) -> bool:
     except Exception:
         return False
 
-def load_protokoll():
-    return _safe_load_json(PROTOKOLL_FILE, {"global": [], "groups": {}})
-
-def save_protokoll(proto):
-    _safe_save_json(PROTOKOLL_FILE, proto)
-
-def add_protokoll_entry(text: str, group_id: int = None, group_name: str = None):
-    """Add an entry to the protokoll log."""
-    proto = load_protokoll()
-    entry = {
-        "time": now_de().strftime("%d.%m.%Y %H:%M:%S"),
-        "text": text,
-    }
-    # Always add to global
-    proto["global"].append(entry)
-    # Keep max 500 global entries
-    if len(proto["global"]) > 500:
-        proto["global"] = proto["global"][-500:]
-    # Add to specific group if provided
-    if group_id:
-        gkey = str(group_id)
-        if gkey not in proto["groups"]:
-            proto["groups"][gkey] = {"name": group_name or gkey, "entries": []}
-        if group_name:
-            proto["groups"][gkey]["name"] = group_name
-        proto["groups"][gkey]["entries"].append(entry)
-        # Keep max 200 per group
-        if len(proto["groups"][gkey]["entries"]) > 200:
-            proto["groups"][gkey]["entries"] = proto["groups"][gkey]["entries"][-200:]
-    save_protokoll(proto)
-
 async def log_action(context: ContextTypes.DEFAULT_TYPE, text: str, group_id: int = None, group_name: str = None):
-    # Save to protokoll file
-    add_protokoll_entry(text, group_id=group_id, group_name=group_name)
-    # Send to log channel
+    """Log action to the global log channel AND any matching protokoll channels."""
     cfg = load_config()
+    # Global log channel (from settings)
     channel = cfg.get("log_channel_id")
     if channel:
         try:
             await context.bot.send_message(chat_id=channel, text=f"📋 {text}")
         except Exception as e:
             logger.error(f"Log channel error: {e}")
+
+    # Per-group protokoll channels
+    bot_data = load_data()
+    proto_channels = bot_data.get("protokoll_channels", {})
+    for ch_id_str, ch_cfg in proto_channels.items():
+        ch_groups = ch_cfg.get("groups", [])
+        # Send if channel covers "all" or this specific group
+        should_send = False
+        if "all" in ch_groups:
+            should_send = True
+        elif group_id and str(group_id) in [str(g) for g in ch_groups]:
+            should_send = True
+        if should_send:
+            try:
+                await context.bot.send_message(chat_id=int(ch_id_str), text=f"📋 {text}")
+            except Exception as e:
+                logger.error(f"Protokoll channel {ch_id_str} error: {e}")
+
 
 # --- Get bot's groups ---
 
