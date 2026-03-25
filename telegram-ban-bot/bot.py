@@ -3287,6 +3287,7 @@ async def unregister_group(update: Update, context: ContextTypes.DEFAULT_TYPE):
     groups = data.get("groups", [])
     data["groups"] = [g for g in groups if g["id"] != chat.id]
     save_data(data)
+    sync_groups_to_file()
     await update.message.reply_text(f"✅ Gruppe entfernt: *{chat.title}*", parse_mode="Markdown")
 
 # --- Helper: resolve target user from reply or argument ---
