@@ -36,7 +36,36 @@ DATA_FILE = os.path.join(os.path.dirname(__file__), "data.json")
 GROUPS_FILE = os.path.join(os.path.dirname(__file__), "groups.json")
 LOCK_FILE = os.path.join(os.path.dirname(__file__), "bot.lock")
 
-# --- Config helpers ---
+# --- Pyrogram helper for fast banned-member scan ---
+
+async def get_banned_members_pyrogram(chat_id: int) -> list[int]:
+    """Use Pyrogram (MTProto) to quickly fetch all banned user IDs from a chat."""
+    cfg = load_config()
+    api_id = cfg.get("api_id")
+    api_hash = cfg.get("api_hash")
+    bot_token = cfg.get("bot_token")
+    if not api_id or not api_hash:
+        logger.warning("Pyrogram: api_id/api_hash not configured, falling back to slow scan")
+        return None  # Signal: fallback needed
+
+    banned_ids = []
+    session_path = os.path.join(os.path.dirname(__file__), "pyrogram_bot_session")
+    async with PyroClient(
+        name=session_path,
+        api_id=api_id,
+        api_hash=api_hash,
+        bot_token=bot_token,
+        no_updates=True,
+    ) as pyro_app:
+        try:
+            async for member in pyro_app.get_chat_members(chat_id, filter=pyro_enums.ChatMembersFilter.BANNED):
+                banned_ids.append(member.user.id)
+        except Exception as e:
+            logger.error(f"Pyrogram get_banned_members failed for {chat_id}: {e}")
+            return None
+    return banned_ids
+
+
 
 def load_config():
     with open(CONFIG_FILE, "r") as f:
