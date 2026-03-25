@@ -3154,15 +3154,12 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         import time
         broadcast_id = str(int(time.time() * 1000))
         sent_msgs = []
+        msg = update.message
+
         for gid in groups:
             try:
-                msg = await context.bot.send_message(
-                    chat_id=gid,
-                    text=update.message.text_html,
-                    parse_mode="HTML",
-                    disable_web_page_preview=True,
-                )
-                sent_msgs.append((gid, msg.message_id))
+                sent = await msg.copy(chat_id=gid)
+                sent_msgs.append((gid, sent.message_id))
                 success += 1
             except Exception as e:
                 fail += 1
@@ -3170,11 +3167,12 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         # Save broadcast persistently
         bot_data = load_data()
+        preview_text = (msg.text_html or msg.text or "")
         bot_data.setdefault("broadcasts", {})[broadcast_id] = {
             "messages": sent_msgs,
             "date": now_de().strftime("%d.%m %H:%M"),
             "count": success,
-            "preview": update.message.text[:50] if update.message.text else "...",
+            "preview": preview_text[:50] if preview_text else "...",
         }
         save_data(bot_data)
 
@@ -3184,7 +3182,7 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             + (f"\n❌ {fail} Fehler" if fail else ""),
             reply_markup=InlineKeyboardMarkup(keyboard),
         )
-        text_preview = (update.message.text_html or update.message.text or "")[:100]
+        text_preview = preview_text[:100]
         await log_action(context, f"MESSENGER: {update.effective_user.full_name} ({user_id}) → {success} Gruppen\nText: {text_preview}")
         context.user_data["state"] = None
         user_data_store.pop(user_id, None)
