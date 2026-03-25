@@ -4229,11 +4229,45 @@ async def track_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                             warn_entry["name"] = user_name
                             warnings[key] = warn_entry
                             save_data(bot_data)
-                            await context.bot.send_message(
-                                chat_id=chat_id,
-                                text=f"⚠️ {html.escape(user_name)} wurde verwarnt ({warn_entry['count']}/{max_w}) — Verbotenes Wort: <code>{html.escape(matched)}</code>",
-                                parse_mode="HTML",
-                            )
+                            # Check if warn limit reached
+                            if warn_entry["count"] >= max_w:
+                                warn_punishment = wc.get("punishment", "mute")
+                                action_label_bw = ""
+                                try:
+                                    if warn_punishment == "ban":
+                                        await context.bot.ban_chat_member(chat_id=chat_id, user_id=user_id_bw, revoke_messages=True)
+                                        remember_group_ban([chat_id], user_id_bw, user_name, sender.username)
+                                        action_label_bw = "• <b>Aktion:</b> Gebannt 🚫"
+                                    elif warn_punishment == "kick":
+                                        await context.bot.ban_chat_member(chat_id=chat_id, user_id=user_id_bw)
+                                        await context.bot.unban_chat_member(chat_id=chat_id, user_id=user_id_bw)
+                                        action_label_bw = "• <b>Aktion:</b> Gekickt ❗"
+                                    elif warn_punishment == "mute":
+                                        mute_secs = wc.get("mute_duration_seconds", wc.get("mute_duration_hours", 5) * 3600)
+                                        until_date = now_de() + datetime.timedelta(seconds=mute_secs)
+                                        await context.bot.restrict_chat_member(
+                                            chat_id=chat_id, user_id=user_id_bw,
+                                            permissions=ChatPermissions.no_permissions(),
+                                            until_date=until_date,
+                                        )
+                                        until_str = until_date.strftime("%d.%m.%y um %H:%M")
+                                        action_label_bw = f"• <b>Aktion:</b> Stummgeschaltet 🤫\n• <b>Bis:</b> {until_str}"
+                                except Exception as e:
+                                    action_label_bw = f"• ⚠️ Fehler: {e}"
+                                warnings.pop(key, None)
+                                save_data(bot_data)
+                                await context.bot.send_message(
+                                    chat_id=chat_id,
+                                    text=f"⚠️ {html.escape(user_name)} wurde verwarnt ({max_w}/{max_w}) — Verbotenes Wort: <code>{html.escape(matched)}</code>\n{action_label_bw}",
+                                    parse_mode="HTML",
+                                )
+                                await log_action(context, f"BADWORD-WARN AUTO-PUNISH ({warn_punishment}): {user_name} ({user_id_bw}) in {chat_id} — {max_w}/{max_w}")
+                            else:
+                                await context.bot.send_message(
+                                    chat_id=chat_id,
+                                    text=f"⚠️ {html.escape(user_name)} wurde verwarnt ({warn_entry['count']}/{max_w}) — Verbotenes Wort: <code>{html.escape(matched)}</code>",
+                                    parse_mode="HTML",
+                                )
                         elif bw_punishment == "mute":
                             await context.bot.restrict_chat_member(
                                 chat_id=chat_id, user_id=user_id_bw,
