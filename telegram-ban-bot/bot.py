@@ -1955,6 +1955,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         text = "📋 <b>Persönliche Befehle</b>\n\n"
         groups_list = bot_data.get("groups", [])
         gid_to_name = {g["id"]: g["title"] for g in groups_list}
+        keyboard = []
         for name, entries in cmds.items():
             if not isinstance(entries, list):
                 entries = [entries]
@@ -1970,7 +1971,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 else:
                     grp_label = " [Alle]"
                 text += f"• /<b>{html.escape(name)}</b>{grp_label} — {preview}{has_media}\n"
-        keyboard = [[InlineKeyboardButton("🔙 Zurück", callback_data="pcmd_menu")]]
+                keyboard.append([InlineKeyboardButton(f"✏️ /{name} Gruppen ändern", callback_data=f"pcmd_editgrp_{name}_{i}")])
+        keyboard.append([InlineKeyboardButton("🔙 Zurück", callback_data="pcmd_menu")])
         await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
 
     elif data == "pcmd_add":
