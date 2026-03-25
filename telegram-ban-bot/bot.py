@@ -1711,51 +1711,26 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif data == "warn_mute_dur_menu":
         bot_data = load_data()
         wc = bot_data.get("warn_config", {})
-        current_h = wc.get("mute_duration_hours", 5)
-        hours_options = [1, 2, 3, 5, 6, 8, 12, 24, 48]
-        rows = []
-        row = []
-        for h in hours_options:
-            label = f"{h}h ✅" if h == current_h else f"{h}h"
-            row.append(InlineKeyboardButton(label, callback_data=f"warn_mute_dur_set_{h}"))
-            if len(row) == 3:
-                rows.append(row)
-                row = []
-        if row:
-            rows.append(row)
-        rows.append([InlineKeyboardButton("🔙 Zurück", callback_data="menu_warns")])
+        current_secs = wc.get("mute_duration_seconds", 0)
+        if current_secs > 0:
+            current_label = format_duration_human(current_secs)
+        else:
+            current_label = "Inaktiv"
+        keyboard = [
+            [InlineKeyboardButton("❌ Abbrechen", callback_data="menu_warns")],
+        ]
         await query.edit_message_text(
-            f"📛 🕐 <b>Dauer der Schreibsperre nach Warn-Limit</b>\n\n"
-            f"Aktuell: <b>{current_h} Stunden</b>",
-            reply_markup=InlineKeyboardMarkup(rows),
+            f"Sende jetzt die eingestellte Bestrafungsdauer (Mute)\n\n"
+            f"<b>Minimum:</b> 30 Sekunden\n"
+            f"<b>Maximum:</b> 365 Tage\n\n"
+            f"<b>Korrektes Eingabe-Format:</b>\n"
+            f"<code>1 month 1 day 2 days 1 hour 3 hours 1 minute 4 minutes 1 second 1 30seconds</code>\n"
+            f"<b>oder</b> <code>3M 2d 12h 4m 34s</code>\n\n"
+            f"<b>Aktuelle Dauer:</b> {current_label}",
+            reply_markup=InlineKeyboardMarkup(keyboard),
             parse_mode="HTML",
         )
-
-    elif data.startswith("warn_mute_dur_set_"):
-        hours = int(data.replace("warn_mute_dur_set_", ""))
-        bot_data = load_data()
-        bot_data.setdefault("warn_config", {})["mute_duration_hours"] = hours
-        save_data(bot_data)
-        await query.answer(f"Mute-Dauer auf {hours}h gesetzt ✅")
-        # Re-render duration menu
-        hours_options = [1, 2, 3, 5, 6, 8, 12, 24, 48]
-        rows = []
-        row = []
-        for h in hours_options:
-            label = f"{h}h ✅" if h == hours else f"{h}h"
-            row.append(InlineKeyboardButton(label, callback_data=f"warn_mute_dur_set_{h}"))
-            if len(row) == 3:
-                rows.append(row)
-                row = []
-        if row:
-            rows.append(row)
-        rows.append([InlineKeyboardButton("🔙 Zurück", callback_data="menu_warns")])
-        await query.edit_message_text(
-            f"📛 🕐 <b>Dauer der Schreibsperre nach Warn-Limit</b>\n\n"
-            f"Aktuell: <b>{hours} Stunden</b>",
-            reply_markup=InlineKeyboardMarkup(rows),
-            parse_mode="HTML",
-        )
+        context.user_data["state"] = WAITING_WARN_MUTE_DUR
 
     elif data == "warn_list":
         bot_data = load_data()
