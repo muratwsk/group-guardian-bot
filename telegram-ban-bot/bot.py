@@ -201,6 +201,14 @@ def is_authorized(user_id: int) -> bool:
     """Check if user is owner or admin (can use ban/unban)."""
     return is_admin(user_id)
 
+async def is_chat_admin(context, chat_id: int, user_id: int) -> bool:
+    """Check if user is admin or creator in a specific chat."""
+    try:
+        member = await context.bot.get_chat_member(chat_id=chat_id, user_id=user_id)
+        return member.status in ("administrator", "creator")
+    except Exception:
+        return False
+
 async def log_action(context: ContextTypes.DEFAULT_TYPE, text: str):
     cfg = load_config()
     channel = cfg.get("log_channel_id")
