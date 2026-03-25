@@ -1917,29 +1917,15 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         error_count = 0
 
         if "unban" in action:
-            # Get banned users from each group and unban them
             for gid in selected:
                 try:
-                    # Get list of banned users (kicked members)
-                    banned = []
-                    try:
-                        async for member in context.bot.get_chat_administrators(gid):
-                            pass  # just to verify bot has access
-                    except Exception:
-                        pass
-                    # Use getChatMember won't work for listing, so we use our tracked data
                     bot_data = load_data()
                     banned_ids = set()
-                    for grp_data in bot_data.get("groups", []):
-                        if str(grp_data.get("id")) == str(gid):
-                            banned_ids = set(grp_data.get("banned_users", []))
-                            break
-                    # Also check global banned data
-                    for uid_str, udata in bot_data.get("users", {}).items():
-                        bans = udata.get("banned_in", [])
-                        if gid in bans or str(gid) in [str(b) for b in bans]:
-                            banned_ids.add(int(uid_str))
-                    
+                    # Look up in banned_users tracking
+                    group_bans = bot_data.get("banned_users", {}).get(str(gid), {})
+                    for uid_str, uinfo in group_bans.items():
+                        banned_ids.add(int(uid_str))
+
                     for uid in banned_ids:
                         try:
                             await context.bot.unban_chat_member(chat_id=gid, user_id=uid, only_if_banned=True)
@@ -1948,7 +1934,9 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                             logger.error(f"Mass unban failed for {uid} in {gid}: {e}")
                             error_count += 1
                     # Clear tracked bans for this group
-                    forget_group_ban([gid], list(banned_ids))
+                    if banned_ids:
+                        for uid in banned_ids:
+                            forget_group_ban([gid], uid)
                 except Exception as e:
                     logger.error(f"Mass unban error in group {gid}: {e}")
                     error_count += 1
