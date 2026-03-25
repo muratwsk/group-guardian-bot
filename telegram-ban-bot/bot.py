@@ -789,7 +789,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await query.edit_message_text("⚠️ Bitte starte nochmal.")
             return
         
-        import time as _time, datetime
+        import time as _time
         sched_id = str(int(_time.time() * 1000))
         bot_data = load_data()
         
