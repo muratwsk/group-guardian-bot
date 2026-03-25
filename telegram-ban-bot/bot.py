@@ -732,7 +732,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await query.answer("⚠️ Wähle mindestens eine Gruppe!", show_alert=True)
             return
         # Create the scheduled message immediately with defaults
-        import time as _time, datetime
+        import time as _time
         sched_id = str(int(_time.time() * 1000))
         bot_data = load_data()
         new_sched = {
@@ -789,7 +789,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await query.edit_message_text("⚠️ Bitte starte nochmal.")
             return
         
-        import time as _time, datetime
+        import time as _time
         sched_id = str(int(_time.time() * 1000))
         bot_data = load_data()
         
@@ -2786,7 +2786,7 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         groups = pending["groups"]
         success = 0
         fail = 0
-        import time, datetime
+        import time
         broadcast_id = str(int(time.time() * 1000))
         sent_msgs = []
         for gid in groups:
