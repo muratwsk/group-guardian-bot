@@ -76,7 +76,13 @@ def normalize_data(data):
         "users": False,
         "bots": False,
     })
+    data.setdefault("freed_users", [])
     return data
+
+def is_freed(user_id: int) -> bool:
+    """Check if a user has the 'Befreiter' role (exempt from all restrictions)."""
+    bot_data = load_data()
+    return user_id in bot_data.get("freed_users", [])
 
 def _safe_load_json(filepath, default):
     """Load JSON with automatic backup recovery if file is empty/corrupt."""
