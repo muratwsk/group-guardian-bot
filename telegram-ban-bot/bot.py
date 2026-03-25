@@ -1464,6 +1464,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await log_action(
             context,
             f"BANALL (via /info): {target_name} ({target_id}) von {query.from_user.full_name} — {len(successful_groups)} OK, {len(failed_groups)} Fehler",
+            group_id=scope_chat_id, group_name=str(scope_chat_id),
         )
 
     elif data.startswith("info_unbanall_"):
