@@ -1920,11 +1920,10 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             for gid in selected:
                 try:
                     bot_data = load_data()
-                    banned_ids = set()
-                    # Look up in banned_users tracking
-                    group_bans = bot_data.get("banned_users", {}).get(str(gid), {})
-                    for uid_str, uinfo in group_bans.items():
-                        banned_ids.add(int(uid_str))
+                    # Collect ALL banned IDs first before modifying anything
+                    group_bans = dict(bot_data.get("banned_users", {}).get(str(gid), {}))
+                    banned_ids = [int(uid_str) for uid_str in group_bans.keys()]
+                    logger.info(f"Mass unban: found {len(banned_ids)} banned users in {gid}")
 
                     for uid in banned_ids:
                         try:
@@ -1933,10 +1932,14 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         except Exception as e:
                             logger.error(f"Mass unban failed for {uid} in {gid}: {e}")
                             error_count += 1
-                    # Clear tracked bans for this group
+
+                    # Clear ALL tracked bans for this group at once
                     if banned_ids:
-                        for uid in banned_ids:
-                            forget_group_ban([gid], uid)
+                        bot_data = load_data()
+                        group_key = str(gid)
+                        if group_key in bot_data.get("banned_users", {}):
+                            bot_data["banned_users"][group_key] = {}
+                            save_data(bot_data)
                 except Exception as e:
                     logger.error(f"Mass unban error in group {gid}: {e}")
                     error_count += 1
