@@ -2484,7 +2484,7 @@ async def warn_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # Admins/Creators dürfen nicht verwarnt werden
     if await is_chat_admin(context, chat.id, target_id):
-        await update.message.reply_text("⚠️ Administratoren können nicht verwarnt werden.")
+        await update.message.reply_text("⛔ Dieser User ist ein Administrator — Warn, Mute und Ban sind nicht möglich.")
         return
 
     reason = " ".join(context.args) if context.args else None
