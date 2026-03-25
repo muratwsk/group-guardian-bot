@@ -5852,6 +5852,7 @@ def main():
 
     app = Application.builder().token(token).build()
 
+    app.add_handler(CommandHandler("reload", reload_command))
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("registergroup", register_group))
     app.add_handler(CommandHandler("unregistergroup", unregister_group))
