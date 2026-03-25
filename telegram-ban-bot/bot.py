@@ -4731,8 +4731,7 @@ async def personal_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     cmds[cmd_name] = existing
     save_data(bot_data)
 
-    grp_label = update.effective_chat.title if update.effective_chat and update.effective_chat.type in ("group", "supergroup") else "alle Gruppen"
-    await update.message.reply_text(f"✅ Befehl /{cmd_name} gespeichert für [{grp_label}]!")
+    await update.message.reply_text(f"✅ Befehl /{cmd_name} gespeichert für alle Gruppen!")
     await log_action(context, f"PERSONAL CMD: /{cmd_name} erstellt von {update.effective_user.full_name}")
 
 
