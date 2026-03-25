@@ -1158,6 +1158,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         for s in bot_data.get("scheduled", []):
             if s["id"] == sched_id:
                 s["time"] = time_str
+                if s.get("active"):
+                    s["next_run_at"] = (now_de() + datetime.timedelta(minutes=s.get("interval_minutes", 60))).strftime("%d.%m.%Y %H:%M")
                 save_data(bot_data)
                 if s.get("active"):
                     schedule_job(context, s)
