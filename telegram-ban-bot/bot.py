@@ -133,21 +133,30 @@ def save_users(users):
         json.dump(users, f, indent=2)
 
 def track_user(user):
-    """Track a user's username → ID mapping."""
+    """Track a user's username → ID mapping, message count, and first seen date."""
     if not user or user.is_bot:
         return
     users = load_users()
+    now_str = now_de().strftime("%d.%m.%Y %H:%M")
     if user.username:
-        users[user.username.lower()] = {
+        key = user.username.lower()
+        existing = users.get(key, {})
+        users[key] = {
             "id": user.id,
             "name": user.full_name,
             "username": user.username,
+            "msg_count": existing.get("msg_count", 0) + 1,
+            "first_seen": existing.get("first_seen", now_str),
         }
     # Also store by ID for reverse lookup
-    users[str(user.id)] = {
+    id_key = str(user.id)
+    existing_id = users.get(id_key, {})
+    users[id_key] = {
         "id": user.id,
         "name": user.full_name,
         "username": user.username,
+        "msg_count": existing_id.get("msg_count", 0) + 1,
+        "first_seen": existing_id.get("first_seen", now_str),
     }
     save_users(users)
 
