@@ -2840,6 +2840,47 @@ async def info_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode="HTML",
     )
 
+# --- /kick ---
+
+async def kick_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Kick a user from the group (they can rejoin). Usage: /kick [reason] (reply to a message)."""
+    user_id = update.effective_user.id
+    if not is_authorized(user_id):
+        return
+
+    chat = update.effective_chat
+    if not chat or chat.type not in ("group", "supergroup"):
+        await update.message.reply_text("⚠️ Dieser Befehl funktioniert nur in Gruppen.")
+        return
+
+    target_id, target_name = await resolve_target(update, context)
+    if target_id is None:
+        return
+
+    # Admin-Schutz
+    if await is_chat_admin(context, chat.id, target_id):
+        await update.message.reply_text("⛔ Dieser User ist ein Administrator — Kick ist nicht möglich.")
+        return
+
+    reason = " ".join(context.args) if context.args else None
+    if update.message.reply_to_message and context.args:
+        reason = " ".join(context.args)
+
+    try:
+        # Ban and immediately unban = kick (user can rejoin)
+        await context.bot.ban_chat_member(chat_id=chat.id, user_id=target_id)
+        await context.bot.unban_chat_member(chat_id=chat.id, user_id=target_id, only_if_banned=True)
+
+        reason_text = f"\n📝 <b>Grund:</b> {html.escape(reason)}" if reason else ""
+        await update.message.reply_text(
+            f"👢 <b>{html.escape(target_name)}</b> wurde gekickt!{reason_text}\n\n"
+            f"ℹ️ Der User kann der Gruppe wieder beitreten.",
+            parse_mode="HTML",
+        )
+        await log_action(context, f"👢 Kick: {target_name} [{target_id}] aus {chat.title} von {update.effective_user.first_name}" + (f" | Grund: {reason}" if reason else ""))
+    except Exception as e:
+        await update.message.reply_text(f"❌ Kick fehlgeschlagen: {e}")
+
 # --- /banall ---
 
 # --- /warn ---
