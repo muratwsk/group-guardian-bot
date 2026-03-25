@@ -1998,6 +1998,7 @@ async def info_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         has_photo = False
         full_name = target_name
 
+    scope_chat_id = get_info_scope_chat_id(update)
     groups = await get_info_banall_groups(context, scope_chat_id)
     banned_in = sum(1 for g in groups if is_banned_in_group(g["id"], target_id))
     is_banned_all = bool(groups) and banned_in == len(groups)
