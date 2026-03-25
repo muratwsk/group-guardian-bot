@@ -235,6 +235,19 @@ async def ban_user_in_groups(context: ContextTypes.DEFAULT_TYPE, groups: list, t
 
     return successful_groups, failed_groups
 
+
+def get_tracked_banned_user_ids(group_id: int) -> list[int]:
+    """Return all tracked banned user IDs for one group."""
+    data = load_data()
+    group_bans = data.get("banned_users", {}).get(str(group_id), {})
+    result = []
+    for uid_str in group_bans.keys():
+        try:
+            result.append(int(uid_str))
+        except (TypeError, ValueError):
+            continue
+    return result
+
 def load_users():
     return _safe_load_json(USERS_FILE, {})
 
@@ -1919,11 +1932,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if "unban" in action:
             for gid in selected:
                 try:
-                    bot_data = load_data()
-                    # Collect ALL banned IDs first before modifying anything
-                    group_bans = dict(bot_data.get("banned_users", {}).get(str(gid), {}))
-                    banned_ids = [int(uid_str) for uid_str in group_bans.keys()]
-                    logger.info(f"Mass unban: found {len(banned_ids)} banned users in {gid}")
+                    banned_ids = get_tracked_banned_user_ids(gid)
+                    logger.info(f"Mass unban: found {len(banned_ids)} tracked banned users in {gid}")
 
                     for uid in banned_ids:
                         try:
@@ -1933,13 +1943,10 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                             logger.error(f"Mass unban failed for {uid} in {gid}: {e}")
                             error_count += 1
 
-                    # Clear ALL tracked bans for this group at once
                     if banned_ids:
                         bot_data = load_data()
-                        group_key = str(gid)
-                        if group_key in bot_data.get("banned_users", {}):
-                            bot_data["banned_users"][group_key] = {}
-                            save_data(bot_data)
+                        bot_data.setdefault("banned_users", {})[str(gid)] = {}
+                        save_data(bot_data)
                 except Exception as e:
                     logger.error(f"Mass unban error in group {gid}: {e}")
                     error_count += 1
@@ -4282,6 +4289,7 @@ async def track_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                             )
                         elif lc_punishment == "ban":
                             await context.bot.ban_chat_member(chat_id=chat_id_as, user_id=user_id_as, revoke_messages=True)
+                            remember_group_ban([chat_id_as], user_id_as, user_name_as, update.message.from_user.username)
                             await context.bot.send_message(
                                 chat_id=chat_id_as,
                                 text=f"{uname_as}[<code>{user_id_as}</code>] hat ohne Genehmigung einen 🔗 Link gesendet.\n<b>Aktion:</b> Gebannt 🚫",
@@ -4417,6 +4425,7 @@ async def track_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                             )
                         elif bw_punishment == "ban":
                             await context.bot.ban_chat_member(chat_id=chat_id, user_id=user_id_bw, revoke_messages=True)
+                            remember_group_ban([chat_id], user_id_bw, user_name, sender.username)
                             await context.bot.send_message(
                                 chat_id=chat_id,
                                 text=f"🚫 {html.escape(user_name)} wurde gebannt — Verbotenes Wort: <code>{html.escape(matched)}</code>",
