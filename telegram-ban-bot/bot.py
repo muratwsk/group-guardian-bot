@@ -216,14 +216,10 @@ async def ban_user_in_groups(context: ContextTypes.DEFAULT_TYPE, groups: list, t
     return successful_groups, failed_groups
 
 def load_users():
-    if not os.path.exists(USERS_FILE):
-        return {}
-    with open(USERS_FILE, "r") as f:
-        return json.load(f)
+    return _safe_load_json(USERS_FILE, {})
 
 def save_users(users):
-    with open(USERS_FILE, "w") as f:
-        json.dump(users, f, indent=2)
+    _safe_save_json(USERS_FILE, users)
 
 def track_user(user, group_id=None):
     """Track a user's username → ID mapping, per-group message count, and first seen date."""
