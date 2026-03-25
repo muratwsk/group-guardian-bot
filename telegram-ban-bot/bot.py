@@ -547,7 +547,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = query.from_user.id
 
     if not is_authorized(user_id):
-        await query.edit_message_text("⛔ Kein Zugriff.")
+        await query.answer("⚠️ Du hast keine Berechtigung, diesen Vorgang auszuführen\n\n💡 Falls du denkst, berechtigt zu sein, sende /reload und versuche es erneut.", show_alert=True)
         return
 
     data = query.data
