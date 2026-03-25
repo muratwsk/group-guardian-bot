@@ -2546,7 +2546,7 @@ async def warn_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # Check if max warns reached
     if current_count >= max_warns:
-        punishment = warn_config.get("punishment", "aus")
+        punishment = wc.get("punishment", "aus")
         if punishment and punishment != "aus":
             # Auto-execute configured punishment
             result_text = ""
