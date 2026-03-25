@@ -1739,9 +1739,9 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text(
             f"🏗 <b>Persönliche Befehle</b>\n\n"
             f"Gespeicherte Befehle: {cmd_count}\n\n"
-            f"<i>Nutze /befehl &lt;Name&gt; als Antwort auf eine Nachricht in einer Gruppe, "
+            f"<i>Nutze /personal &lt;Name&gt; als Antwort auf eine Nachricht in einer Gruppe, "
             f"um einen Befehl zu erstellen.\n"
-            f"Lösche mit /unbefehl &lt;Name&gt;</i>",
+            f"Lösche mit /unpersonal &lt;Name&gt;</i>",
             reply_markup=InlineKeyboardMarkup(keyboard),
             parse_mode="HTML",
         )
@@ -4176,9 +4176,9 @@ async def personal_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if not context.args:
         await update.message.reply_text(
-            "⚠️ Nutzung: /befehl <Name>\n"
+            "⚠️ Nutzung: /personal <Name>\n"
             "Antwort auf eine Nachricht, die als Befehl gespeichert werden soll.\n\n"
-            "Beispiel: Antworte auf eine Nachricht und schreibe /befehl hele",
+            "Beispiel: Antworte auf eine Nachricht und schreibe /personal hele",
         )
         return
 
@@ -4249,7 +4249,7 @@ async def unpersonal_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
         return
 
     if not context.args:
-        await update.message.reply_text("⚠️ Nutzung: /unbefehl <Name>\nBeispiel: /unpersonal hele")
+        await update.message.reply_text("⚠️ Nutzung: /unpersonal <Name>\nBeispiel: /unpersonal hele")
         return
 
     cmd_name = context.args[0].lower().lstrip("/")
@@ -5994,8 +5994,8 @@ def main():
     app.add_handler(CommandHandler("info", info_command))
     app.add_handler(CommandHandler("banall", banall))
     app.add_handler(CommandHandler("unbanall", unbanall))
-    app.add_handler(CommandHandler("befehl", personal_command))
-    app.add_handler(CommandHandler("unbefehl", unpersonal_command))
+    app.add_handler(CommandHandler("personal", personal_command))
+    app.add_handler(CommandHandler("unpersonal", unpersonal_command))
     app.add_handler(CommandHandler("mute", mute_command))
     app.add_handler(CommandHandler("unmute", unmute_command))
     app.add_handler(CommandHandler("kick", kick_command))
