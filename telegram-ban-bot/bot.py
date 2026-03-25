@@ -2019,6 +2019,62 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         context.user_data["state"] = WAITING_PCMD_NAME
 
+    # === /personal GROUP SELECTION (from group chat) ===
+    elif data.startswith("pers_grp_") and data not in ("pers_grp_all", "pers_grp_none", "pers_grp_save", "pers_grp_cancel"):
+        gid = int(data.replace("pers_grp_", ""))
+        pending = user_data_store.get(user_id, {})
+        selected = pending.get("selected", set())
+        if gid in selected:
+            selected.discard(gid)
+        else:
+            selected.add(gid)
+        pending["selected"] = selected
+        user_data_store[user_id] = pending
+        await _render_pers_grp_menu(query, pending)
+
+    elif data == "pers_grp_all":
+        pending = user_data_store.get(user_id, {})
+        bot_data = load_data()
+        pending["selected"] = {g["id"] for g in bot_data.get("groups", [])}
+        user_data_store[user_id] = pending
+        await _render_pers_grp_menu(query, pending)
+
+    elif data == "pers_grp_none":
+        pending = user_data_store.get(user_id, {})
+        pending["selected"] = set()
+        user_data_store[user_id] = pending
+        await _render_pers_grp_menu(query, pending)
+
+    elif data == "pers_grp_save":
+        pending = user_data_store.get(user_id, {})
+        cmd_name = pending.get("cmd_name", "")
+        cmd_data = pending.get("cmd_data", {})
+        selected = pending.get("selected", set())
+        cmd_data["groups"] = list(selected)
+
+        bot_data = load_data()
+        cmds = bot_data.setdefault("personal_commands", {})
+        existing = cmds.get(cmd_name, [])
+        if not isinstance(existing, list):
+            existing = [existing]
+        existing.append(cmd_data)
+        cmds[cmd_name] = existing
+        save_data(bot_data)
+        user_data_store.pop(user_id, None)
+
+        grp_text = f"{len(selected)} Gruppen" if selected else "alle Gruppen"
+        keyboard = [[InlineKeyboardButton("🔙 Menü", callback_data="pcmd_menu")]]
+        await query.edit_message_text(
+            f"✅ Befehl /<b>{html.escape(cmd_name)}</b> gespeichert für {grp_text}!",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode="HTML",
+        )
+        await log_action(context, f"PERSONAL CMD: /{cmd_name} erstellt von {query.from_user.full_name} für {grp_text}")
+
+    elif data == "pers_grp_cancel":
+        user_data_store.pop(user_id, None)
+        await query.edit_message_text("❌ Abgebrochen.")
+
     elif data == "pcmd_remove":
         bot_data = load_data()
         cmds = bot_data.get("personal_commands", {})
