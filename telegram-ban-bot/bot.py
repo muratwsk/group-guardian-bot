@@ -1254,7 +1254,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         # Admin-Schutz
         if await is_chat_admin(context, scope_chat_id, target_id):
-            await query.answer("⚠️ Administratoren können nicht gemutet werden.", show_alert=True)
+            await query.answer("⛔ Dieser User ist ein Administrator und kann nicht gemutet werden.", show_alert=True)
             return
 
         await context.bot.restrict_chat_member(
