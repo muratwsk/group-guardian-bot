@@ -150,6 +150,18 @@ def load_data():
 def save_data(data):
     _safe_save_json(DATA_FILE, data)
 
+def sync_groups_to_file():
+    """Sync registered groups from data.json back to groups.json."""
+    data = load_data()
+    groups = data.get("groups", [])
+    groups_map = {g["title"]: g["id"] for g in groups}
+    tmp = GROUPS_FILE + ".tmp"
+    with open(tmp, "w") as f:
+        json.dump(groups_map, f, indent=4, ensure_ascii=False)
+        f.flush()
+        os.fsync(f.fileno())
+    os.replace(tmp, GROUPS_FILE)
+
 def import_groups_from_file():
     """Import groups from groups.json into data.json on startup."""
     if not os.path.exists(GROUPS_FILE):
@@ -169,6 +181,8 @@ def import_groups_from_file():
     if added > 0:
         save_data(data)
         logger.info(f"Imported {added} groups from groups.json")
+    # Sync back so groups.json has all registered groups
+    sync_groups_to_file()
 
 # Auto-import on module load
 import_groups_from_file()
@@ -3253,6 +3267,7 @@ async def register_group(update: Update, context: ContextTypes.DEFAULT_TYPE):
     groups.append({"id": chat.id, "title": chat.title})
     data["groups"] = groups
     save_data(data)
+    sync_groups_to_file()
     await update.message.reply_text(f"✅ Gruppe registriert: *{chat.title}*", parse_mode="Markdown")
     await log_action(context, f"Gruppe registriert: {chat.title} ({chat.id})")
 
@@ -3272,6 +3287,7 @@ async def unregister_group(update: Update, context: ContextTypes.DEFAULT_TYPE):
     groups = data.get("groups", [])
     data["groups"] = [g for g in groups if g["id"] != chat.id]
     save_data(data)
+    sync_groups_to_file()
     await update.message.reply_text(f"✅ Gruppe entfernt: *{chat.title}*", parse_mode="Markdown")
 
 # --- Helper: resolve target user from reply or argument ---
