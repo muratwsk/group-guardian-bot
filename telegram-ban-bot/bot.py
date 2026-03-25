@@ -1496,9 +1496,6 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # === LINK WARN CANCEL ===
     elif data.startswith("link_warn_cancel_"):
-        if not is_admin(query.from_user.id):
-            await query.answer("⚠️ Du hast keine Berechtigung, diesen Vorgang auszuführen\n\n💡 Falls du denkst, berechtigt zu sein, sende /reload und versuche es erneut.", show_alert=True)
-            return
         payload = data.replace("link_warn_cancel_", "", 1)
         scope_chat_id_str, target_id_str = payload.rsplit("_", 1)
         scope_chat_id = int(scope_chat_id_str)
