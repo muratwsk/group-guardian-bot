@@ -4088,6 +4088,56 @@ async def unfree_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await log_action(context, f"🔒 UNFREE: {target_name} [{target_id}] von {update.effective_user.first_name}")
 
 
+async def multidel_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Delete all messages from the replied-to message up to the /multidel command message."""
+    user_id = update.effective_user.id
+    if not await is_group_authorized(context, user_id, update.effective_chat):
+        await update.message.reply_text("⛔ Kein Zugriff.")
+        return
+
+    if update.effective_chat.type not in ("group", "supergroup"):
+        await update.message.reply_text("❌ Dieser Befehl funktioniert nur in Gruppen.")
+        return
+
+    if not update.message.reply_to_message:
+        await update.message.reply_text("❌ Antworte auf eine Nachricht, um alle Nachrichten ab dort bis hierher zu löschen.")
+        return
+
+    start_msg_id = update.message.reply_to_message.message_id
+    end_msg_id = update.message.message_id
+    chat_id = update.effective_chat.id
+
+    deleted = 0
+    failed = 0
+    # Delete in batches (Telegram allows deleting messages by ID)
+    msg_ids = list(range(start_msg_id, end_msg_id + 1))
+
+    # Telegram delete_messages supports max 100 per call
+    for i in range(0, len(msg_ids), 100):
+        batch = msg_ids[i:i + 100]
+        try:
+            result = await context.bot.delete_messages(chat_id=chat_id, message_ids=batch)
+            if result:
+                deleted += len(batch)
+            else:
+                failed += len(batch)
+        except Exception:
+            failed += len(batch)
+
+    confirm = await update.effective_chat.send_message(
+        f"🗑 <b>Multidel abgeschlossen</b>\n"
+        f"✅ {deleted} Nachrichten gelöscht\n"
+        f"❌ {failed} fehlgeschlagen",
+        parse_mode="HTML"
+    )
+    # Auto-delete confirmation after 5 seconds
+    await asyncio.sleep(5)
+    try:
+        await confirm.delete()
+    except Exception:
+        pass
+
+
 async def banall(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_authorized(update.effective_user.id):
         await update.message.reply_text("⛔ Kein Zugriff.")
@@ -6007,6 +6057,7 @@ def main():
     app.add_handler(CommandHandler("unfree", unfree_command))
     app.add_handler(CommandHandler("open", handle_open_command))
     app.add_handler(CommandHandler("close", handle_close_command))
+    app.add_handler(CommandHandler("multidel", multidel_command))
     app.add_handler(CallbackQueryHandler(button_handler))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & filters.ChatType.PRIVATE, text_handler))
     app.add_handler(MessageHandler((filters.PHOTO | filters.VIDEO | filters.Sticker.ALL | filters.ANIMATION | filters.Document.ALL) & filters.ChatType.PRIVATE, media_handler))
