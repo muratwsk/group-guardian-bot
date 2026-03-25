@@ -205,12 +205,8 @@ def get_tracked_banned_user_ids(group_id: int) -> list[int]:
     return result
 
 
-def load_users():
-    return _load_cached_json(USERS_FILE, {}, USERS_CACHE)
 
 
-def save_users(users):
-    _save_cached_json(USERS_FILE, users, USERS_CACHE)
 
 
 def track_user(user, group_id=None):
