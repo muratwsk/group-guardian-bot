@@ -2205,69 +2205,154 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # === PROTOKOLL ===
     elif data == "menu_protokoll":
-        proto = load_protokoll()
-        groups_proto = proto.get("groups", {})
-        keyboard = []
-        # Show per-group buttons
         bot_data = load_data()
-        for g in bot_data.get("groups", []):
-            gkey = str(g["id"])
-            count = len(groups_proto.get(gkey, {}).get("entries", []))
-            keyboard.append([InlineKeyboardButton(f"📋 {g['title']} ({count})", callback_data=f"proto_group_{g['id']}")])
-        global_count = len(proto.get("global", []))
-        keyboard.append([InlineKeyboardButton(f"📋 Alle Gruppen ({global_count})", callback_data="proto_global")])
-        keyboard.append([InlineKeyboardButton("🗑 Protokoll löschen", callback_data="proto_clear")])
+        proto_channels = bot_data.get("protokoll_channels", {})
+        bot_me = await context.bot.get_me()
+        bot_username = bot_me.username
+
+        text = (
+            f"🔍 *Protokoll-Kanal*\n"
+            f"Hier kann ein Kanal konfiguriert werden, in dem alle Log- bzw. Protokolldaten gespeichert werden.\n\n"
+            f"Um dies einzustellen, musst Du der Gründer/Inhaber des Protokollkanals sein und "
+            f"@{bot_username} muss Admin des Kanals sein.\n"
+            f"_Der Kanal kann sowohl öffentlich als auch privat sein._"
+        )
+
+        if proto_channels:
+            text += "\n\n*Aktive Protokoll-Kanäle:*"
+            for ch_id, ch_cfg in proto_channels.items():
+                ch_name = ch_cfg.get("name", ch_id)
+                ch_groups = ch_cfg.get("groups", [])
+                if "all" in ch_groups:
+                    scope = "Alle Gruppen"
+                else:
+                    names = []
+                    for gid in ch_groups:
+                        found = next((g["title"] for g in bot_data.get("groups", []) if str(g["id"]) == str(gid)), str(gid))
+                        names.append(found)
+                    scope = ", ".join(names) if names else "Keine Gruppen"
+                text += f"\n• `{ch_name}` → {scope}"
+
+        keyboard = [
+            [InlineKeyboardButton("➕ Protokoll-Kanal hinzufügen", callback_data="proto_add")],
+        ]
+        if proto_channels:
+            keyboard.append([InlineKeyboardButton("🎯 Was soll protokolliert werden?", callback_data="proto_what")])
+            keyboard.append([InlineKeyboardButton("🔄 Protokoll-Kanal wechseln", callback_data="proto_add")])
+            keyboard.append([InlineKeyboardButton("🗑 Protokoll-Kanal entfernen", callback_data="proto_remove_menu")])
         keyboard.append([InlineKeyboardButton("🔙 Zurück", callback_data="back_main")])
+        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
+
+    elif data == "proto_add":
+        context.user_data["state"] = WAITING_PROTO_CHANNEL
+        keyboard = [[InlineKeyboardButton("🔙 Abbrechen", callback_data="menu_protokoll")]]
         await query.edit_message_text(
-            "📋 *Protokoll*\nWähle eine Gruppe oder zeige alle:",
+            "📋 *Protokoll-Kanal hinzufügen*\n\n"
+            "Sende mir die *Kanal-ID* (z.B. `-1001234567890`) oder leite eine Nachricht aus dem Kanal weiter.\n\n"
+            "💡 Die Kanal-ID findest du z.B. über @userinfobot.",
             reply_markup=InlineKeyboardMarkup(keyboard),
             parse_mode="Markdown",
         )
 
-    elif data.startswith("proto_group_"):
-        gid = data.replace("proto_group_", "")
-        proto = load_protokoll()
-        group_data = proto.get("groups", {}).get(gid, {})
-        entries = group_data.get("entries", [])
-        group_name = group_data.get("name", gid)
-        if not entries:
-            text = f"📋 *Protokoll – {group_name}*\n\nKeine Einträge vorhanden."
-        else:
-            # Show last 20 entries
-            lines = []
-            for e in entries[-20:]:
-                lines.append(f"• `{e['time']}` – {e['text']}")
-            text = f"📋 *Protokoll – {group_name}*\n_Letzte {min(20, len(entries))} von {len(entries)} Einträgen:_\n\n" + "\n".join(lines)
-        # Truncate if too long for Telegram
-        if len(text) > 4000:
-            text = text[:3997] + "..."
-        keyboard = [[InlineKeyboardButton("🔙 Zurück", callback_data="menu_protokoll")]]
-        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
+    elif data == "proto_remove_menu":
+        bot_data = load_data()
+        proto_channels = bot_data.get("protokoll_channels", {})
+        keyboard = []
+        for ch_id, ch_cfg in proto_channels.items():
+            ch_name = ch_cfg.get("name", ch_id)
+            keyboard.append([InlineKeyboardButton(f"🗑 {ch_name}", callback_data=f"proto_rm_{ch_id}")])
+        keyboard.append([InlineKeyboardButton("🔙 Zurück", callback_data="menu_protokoll")])
+        await query.edit_message_text(
+            "🗑 *Protokoll-Kanal entfernen*\nWähle den Kanal:",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode="Markdown",
+        )
 
-    elif data == "proto_global":
-        proto = load_protokoll()
-        entries = proto.get("global", [])
-        if not entries:
-            text = "📋 *Protokoll – Alle Gruppen*\n\nKeine Einträge vorhanden."
-        else:
-            lines = []
-            for e in entries[-20:]:
-                lines.append(f"• `{e['time']}` – {e['text']}")
-            text = f"📋 *Protokoll – Alle Gruppen*\n_Letzte {min(20, len(entries))} von {len(entries)} Einträgen:_\n\n" + "\n".join(lines)
-        if len(text) > 4000:
-            text = text[:3997] + "..."
+    elif data.startswith("proto_rm_"):
+        ch_id = data.replace("proto_rm_", "")
+        bot_data = load_data()
+        removed = bot_data.get("protokoll_channels", {}).pop(ch_id, None)
+        save_data(bot_data)
+        name = removed.get("name", ch_id) if removed else ch_id
+        await query.answer(f"✅ {name} entfernt!", show_alert=True)
         keyboard = [[InlineKeyboardButton("🔙 Zurück", callback_data="menu_protokoll")]]
-        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
+        await query.edit_message_text(f"✅ Protokoll-Kanal `{name}` entfernt.", reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
 
-    elif data == "proto_clear":
-        if not is_owner(user_id):
-            await query.answer("⛔ Nur Owner können das Protokoll löschen.", show_alert=True)
+    elif data == "proto_what":
+        bot_data = load_data()
+        proto_channels = bot_data.get("protokoll_channels", {})
+        keyboard = []
+        for ch_id, ch_cfg in proto_channels.items():
+            ch_name = ch_cfg.get("name", ch_id)
+            keyboard.append([InlineKeyboardButton(f"🎯 {ch_name}", callback_data=f"proto_cfg_{ch_id}")])
+        keyboard.append([InlineKeyboardButton("🔙 Zurück", callback_data="menu_protokoll")])
+        await query.edit_message_text(
+            "🎯 *Was soll protokolliert werden?*\nWähle einen Kanal zum Konfigurieren:",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode="Markdown",
+        )
+
+    elif data.startswith("proto_cfg_"):
+        ch_id = data.replace("proto_cfg_", "")
+        bot_data = load_data()
+        ch_cfg = bot_data.get("protokoll_channels", {}).get(ch_id, {})
+        ch_groups = ch_cfg.get("groups", [])
+        ch_name = ch_cfg.get("name", ch_id)
+        groups = bot_data.get("groups", [])
+
+        keyboard = []
+        all_check = "✅" if "all" in ch_groups else "⬜"
+        keyboard.append([InlineKeyboardButton(f"{all_check} Alle Gruppen", callback_data=f"proto_tga_{ch_id}")])
+        for g in groups:
+            check = "✅" if str(g["id"]) in [str(x) for x in ch_groups] else "⬜"
+            keyboard.append([InlineKeyboardButton(f"{check} {g['title']}", callback_data=f"proto_tgg_{g['id']}_{ch_id}")])
+        keyboard.append([InlineKeyboardButton("🔙 Zurück", callback_data="proto_what")])
+        await query.edit_message_text(
+            f"🎯 *Protokoll: {ch_name}*\nWähle welche Gruppen protokolliert werden:",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode="Markdown",
+        )
+
+    elif data.startswith("proto_tga_"):
+        ch_id = data.replace("proto_tga_", "")
+        bot_data = load_data()
+        ch_cfg = bot_data.get("protokoll_channels", {}).get(ch_id, {})
+        ch_groups = ch_cfg.get("groups", [])
+        if "all" in ch_groups:
+            ch_groups.remove("all")
+        else:
+            ch_groups = ["all"]
+        ch_cfg["groups"] = ch_groups
+        bot_data["protokoll_channels"][ch_id] = ch_cfg
+        save_data(bot_data)
+        await query.answer("✅ Aktualisiert")
+        query.data = f"proto_cfg_{ch_id}"
+        await button_handler(update, context)
+
+    elif data.startswith("proto_tgg_"):
+        # proto_tgg_{group_id}_{channel_id}
+        rest = data.replace("proto_tgg_", "")
+        # group IDs are negative, so split from the right
+        parts = rest.rsplit("_", 1)
+        if len(parts) != 2:
             return
-        save_protokoll({"global": [], "groups": {}})
-        await query.answer("✅ Protokoll gelöscht!", show_alert=True)
-        # Return to protokoll menu
-        keyboard = [[InlineKeyboardButton("🔙 Zurück", callback_data="back_main")]]
-        await query.edit_message_text("📋 *Protokoll*\n\n✅ Alle Einträge gelöscht.", reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
+        gid_str, ch_id = parts
+        bot_data = load_data()
+        ch_cfg = bot_data.get("protokoll_channels", {}).get(ch_id, {})
+        ch_groups = ch_cfg.get("groups", [])
+        if "all" in ch_groups:
+            ch_groups.remove("all")
+        if gid_str in [str(x) for x in ch_groups]:
+            ch_groups = [x for x in ch_groups if str(x) != gid_str]
+        else:
+            ch_groups.append(gid_str)
+        ch_cfg["groups"] = ch_groups
+        bot_data["protokoll_channels"][ch_id] = ch_cfg
+        save_data(bot_data)
+        await query.answer("✅ Aktualisiert")
+        query.data = f"proto_cfg_{ch_id}"
+        await button_handler(update, context)
+
 
     # === SETTINGS ===
     elif data == "menu_settings":
