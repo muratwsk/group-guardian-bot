@@ -1615,7 +1615,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
              InlineKeyboardButton("❗ Kick", callback_data="warn_set_kick")],
             [InlineKeyboardButton("📛 Mute", callback_data="warn_set_mute"),
              InlineKeyboardButton("🚫 Ban", callback_data="warn_set_ban")],
-            [InlineKeyboardButton("📛 🕐 Dauer der Schreibsperre", callback_data="noop")],
+            [InlineKeyboardButton("📛 🕐 Dauer der Schreibsperre", callback_data="warn_mute_dur_menu")],
         ]
         # Max warns row
         warn_row = []
@@ -1656,7 +1656,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
              InlineKeyboardButton("❗ Kick", callback_data="warn_set_kick")],
             [InlineKeyboardButton("📛 Mute", callback_data="warn_set_mute"),
              InlineKeyboardButton("🚫 Ban", callback_data="warn_set_ban")],
-            [InlineKeyboardButton("📛 🕐 Dauer der Schreibsperre", callback_data="noop")],
+            [InlineKeyboardButton("📛 🕐 Dauer der Schreibsperre", callback_data="warn_mute_dur_menu")],
         ]
         warn_row = []
         for n in range(2, 7):
@@ -1690,7 +1690,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
              InlineKeyboardButton("❗ Kick", callback_data="warn_set_kick")],
             [InlineKeyboardButton("📛 Mute", callback_data="warn_set_mute"),
              InlineKeyboardButton("🚫 Ban", callback_data="warn_set_ban")],
-            [InlineKeyboardButton("📛 🕐 Dauer der Schreibsperre", callback_data="noop")],
+            [InlineKeyboardButton("📛 🕐 Dauer der Schreibsperre", callback_data="warn_mute_dur_menu")],
         ]
         warn_row = []
         for n in range(2, 7):
@@ -1704,6 +1704,55 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"<b>Erlaubte Verwarnungen:</b> {max_w}\n"
             f"<b>Verwarnte Nutzer:</b> {warned_count}",
             reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode="HTML",
+        )
+
+    elif data == "warn_mute_dur_menu":
+        bot_data = load_data()
+        wc = bot_data.get("warn_config", {})
+        current_h = wc.get("mute_duration_hours", 5)
+        hours_options = [1, 2, 3, 5, 6, 8, 12, 24, 48]
+        rows = []
+        row = []
+        for h in hours_options:
+            label = f"{h}h ✅" if h == current_h else f"{h}h"
+            row.append(InlineKeyboardButton(label, callback_data=f"warn_mute_dur_set_{h}"))
+            if len(row) == 3:
+                rows.append(row)
+                row = []
+        if row:
+            rows.append(row)
+        rows.append([InlineKeyboardButton("🔙 Zurück", callback_data="menu_warns")])
+        await query.edit_message_text(
+            f"📛 🕐 <b>Dauer der Schreibsperre nach Warn-Limit</b>\n\n"
+            f"Aktuell: <b>{current_h} Stunden</b>",
+            reply_markup=InlineKeyboardMarkup(rows),
+            parse_mode="HTML",
+        )
+
+    elif data.startswith("warn_mute_dur_set_"):
+        hours = int(data.replace("warn_mute_dur_set_", ""))
+        bot_data = load_data()
+        bot_data.setdefault("warn_config", {})["mute_duration_hours"] = hours
+        save_data(bot_data)
+        await query.answer(f"Mute-Dauer auf {hours}h gesetzt ✅")
+        # Re-render duration menu
+        hours_options = [1, 2, 3, 5, 6, 8, 12, 24, 48]
+        rows = []
+        row = []
+        for h in hours_options:
+            label = f"{h}h ✅" if h == hours else f"{h}h"
+            row.append(InlineKeyboardButton(label, callback_data=f"warn_mute_dur_set_{h}"))
+            if len(row) == 3:
+                rows.append(row)
+                row = []
+        if row:
+            rows.append(row)
+        rows.append([InlineKeyboardButton("🔙 Zurück", callback_data="menu_warns")])
+        await query.edit_message_text(
+            f"📛 🕐 <b>Dauer der Schreibsperre nach Warn-Limit</b>\n\n"
+            f"Aktuell: <b>{hours} Stunden</b>",
+            reply_markup=InlineKeyboardMarkup(rows),
             parse_mode="HTML",
         )
 
@@ -1818,33 +1867,36 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if current_count >= max_w:
             punishment = wc.get("punishment", "aus")
             if punishment and punishment != "aus":
-                # Auto-execute configured punishment
                 chat_id_val = int(chat_id_str)
-                result_text = ""
+                action_label = ""
+                result_text = f"{uname} [{target_id}] wurde verwarnt zum {current_count}. Mal (von {max_w})."
                 try:
                     if punishment == "ban":
                         await context.bot.ban_chat_member(chat_id=chat_id_val, user_id=target_id, revoke_messages=True)
                         remember_group_ban([chat_id_val], target_id, t_name, t_username)
-                        result_text = f"🚫 {uname} [{target_id}] wurde nach {max_w} Verwarnungen automatisch gebannt."
+                        action_label = "• <b>Aktion:</b> Gebannt 🚫"
                     elif punishment == "kick":
                         await context.bot.ban_chat_member(chat_id=chat_id_val, user_id=target_id)
                         await context.bot.unban_chat_member(chat_id=chat_id_val, user_id=target_id)
-                        result_text = f"❗ {uname} [{target_id}] wurde nach {max_w} Verwarnungen automatisch gekickt."
+                        action_label = "• <b>Aktion:</b> Gekickt ❗"
                     elif punishment == "mute":
+                        mute_hours = wc.get("mute_duration_hours", 5)
+                        until_date = now_de() + datetime.timedelta(hours=mute_hours)
                         await context.bot.restrict_chat_member(
                             chat_id=chat_id_val, user_id=target_id,
                             permissions=ChatPermissions.no_permissions(),
+                            until_date=until_date,
                         )
-                        result_text = f"📛 {uname} [{target_id}] wurde nach {max_w} Verwarnungen automatisch gemutet."
+                        until_str = until_date.strftime("%d.%m.%y um %H:%M")
+                        action_label = f"• <b>Aktion:</b> Stummgeschaltet 🤫\n• <b>Bis:</b> {until_str}"
                 except Exception as e:
-                    result_text = f"⚠️ Fehler: {e}"
-                # Reset warns
+                    action_label = f"• ⚠️ Fehler: {e}"
+                result_text += f"\n{action_label}"
                 warnings.pop(f"{chat_id_str}_{target_id_str}", None)
                 save_data(bot_data)
-                await query.edit_message_text(result_text)
+                await query.edit_message_text(result_text, parse_mode="HTML")
                 await log_action(context, f"WARN AUTO-PUNISH ({punishment}): {t_name} ({target_id}) von {query.from_user.full_name}")
             else:
-                # No punishment configured — show choice
                 keyboard = [
                     [InlineKeyboardButton("🚫 Ban", callback_data=f"warn_punish_ban_{chat_id_str}_{target_id_str}"),
                      InlineKeyboardButton("❗ Kick", callback_data=f"warn_punish_kick_{chat_id_str}_{target_id_str}"),
@@ -2549,24 +2601,30 @@ async def warn_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         punishment = wc.get("punishment", "aus")
         if punishment and punishment != "aus":
             # Auto-execute configured punishment
-            result_text = ""
+            action_label = ""
+            result_text = f"{uname} [{target_id}] wurde verwarnt zum {current_count}. Mal (von {max_warns})."
             try:
                 if punishment == "ban":
                     await context.bot.ban_chat_member(chat_id=chat.id, user_id=target_id, revoke_messages=True)
                     remember_group_ban([chat.id], target_id, target_name, target_username)
-                    result_text = f"🚫 {uname} [{target_id}] wurde nach {max_warns} Verwarnungen automatisch gebannt."
+                    action_label = "• <b>Aktion:</b> Gebannt 🚫"
                 elif punishment == "kick":
                     await context.bot.ban_chat_member(chat_id=chat.id, user_id=target_id)
                     await context.bot.unban_chat_member(chat_id=chat.id, user_id=target_id)
-                    result_text = f"❗ {uname} [{target_id}] wurde nach {max_warns} Verwarnungen automatisch gekickt."
+                    action_label = "• <b>Aktion:</b> Gekickt ❗"
                 elif punishment == "mute":
+                    mute_hours = wc.get("mute_duration_hours", 5)
+                    until_date = now_de() + datetime.timedelta(hours=mute_hours)
                     await context.bot.restrict_chat_member(
                         chat_id=chat.id, user_id=target_id,
                         permissions=ChatPermissions.no_permissions(),
+                        until_date=until_date,
                     )
-                    result_text = f"📛 {uname} [{target_id}] wurde nach {max_warns} Verwarnungen automatisch gemutet."
+                    until_str = until_date.strftime("%d.%m.%y um %H:%M")
+                    action_label = f"• <b>Aktion:</b> Stummgeschaltet 🤫\n• <b>Bis:</b> {until_str}"
             except Exception as e:
-                result_text = f"⚠️ Fehler bei automatischer Bestrafung: {e}"
+                action_label = f"• ⚠️ Fehler: {e}"
+            result_text += f"\n{action_label}"
             if reason:
                 result_text += f"\n<b>Grund:</b> {html.escape(reason)}"
             # Reset warns after punishment
