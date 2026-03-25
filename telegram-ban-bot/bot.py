@@ -1396,6 +1396,32 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         await log_action(context, f"UNMUTE (via /info): {target_name} ({target_id}) in {scope_chat_id} von {query.from_user.full_name}")
 
+    # === CMD UNMUTE BUTTON ===
+    elif data.startswith("cmd_unmute_"):
+        payload = data.replace("cmd_unmute_", "", 1)
+        scope_chat_id_str, target_id_str = payload.rsplit("_", 1)
+        scope_chat_id = int(scope_chat_id_str)
+        target_id = int(target_id_str)
+        tracked = lookup_user(str(target_id))
+        target_name = tracked.get("name", str(target_id)) if tracked else str(target_id)
+        target_username = tracked.get("username") if tracked else None
+
+        try:
+            chat_obj = await context.bot.get_chat(scope_chat_id)
+            await context.bot.restrict_chat_member(
+                chat_id=scope_chat_id,
+                user_id=target_id,
+                permissions=chat_obj.permissions or ChatPermissions.all_permissions(),
+            )
+            uname = f"@{target_username} " if target_username else ""
+            await query.edit_message_text(
+                f"{uname}[<code>{target_id}</code>] wurde ✅ entmutet.",
+                parse_mode="HTML",
+            )
+            await log_action(context, f"✅ Unmute (Button): {target_name} ({target_id}) in {scope_chat_id} von {query.from_user.full_name}")
+        except Exception as e:
+            await query.answer(f"❌ Unmute fehlgeschlagen: {e}", show_alert=True)
+
     # === OPEN / CLOSE MENU ===
     elif data == "menu_openclose":
         await show_openclose_menu(query, context, user_id)
@@ -2952,6 +2978,97 @@ async def info_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=build_info_keyboard(scope_chat_id, target_id, is_muted, is_banned_local, is_banned_all),
         parse_mode="HTML",
     )
+
+# --- /mute ---
+
+async def mute_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Mute a user in the group. Usage: /mute [reason] (reply to a message)."""
+    user_id = update.effective_user.id
+    if not is_authorized(user_id):
+        return
+
+    chat = update.effective_chat
+    if not chat or chat.type not in ("group", "supergroup"):
+        await update.message.reply_text("⚠️ Dieser Befehl funktioniert nur in Gruppen.")
+        return
+
+    target_id, target_name = await resolve_target(update, context)
+    if target_id is None:
+        return
+
+    # Admin-Schutz
+    if await is_chat_admin(context, chat.id, target_id):
+        await update.message.reply_text("⛔ Dieser User ist ein Administrator — Mute ist nicht möglich.")
+        return
+
+    reason = " ".join(context.args) if context.args else None
+    if update.message.reply_to_message and context.args:
+        reason = " ".join(context.args)
+
+    try:
+        await context.bot.restrict_chat_member(
+            chat_id=chat.id,
+            user_id=target_id,
+            permissions=ChatPermissions.no_permissions(),
+        )
+
+        # Look up username
+        tracked = lookup_user(str(target_id))
+        target_username = tracked.get("username") if tracked else None
+        uname = f"@{target_username} " if target_username else ""
+
+        reason_text = f"\n📝 <b>Grund:</b> {html.escape(reason)}" if reason else ""
+
+        keyboard = InlineKeyboardMarkup([
+            [
+                InlineKeyboardButton("🕹 Rechte", url=f"tg://resolve?domain={chat.username}&admin={target_id}" if chat.username else f"tg://chat_permissions?chat_id={str(chat.id).replace('-100', '')}"),
+                InlineKeyboardButton("✅ Unmute", callback_data=f"cmd_unmute_{chat.id}_{target_id}"),
+            ]
+        ])
+
+        await update.message.reply_text(
+            f"{uname}[<code>{target_id}</code>] wurde 🔇 stummgeschaltet.{reason_text}",
+            reply_markup=keyboard,
+            parse_mode="HTML",
+        )
+        await log_action(context, f"🔇 Mute: {target_name} [{target_id}] in {chat.title} von {update.effective_user.first_name}" + (f" | Grund: {reason}" if reason else ""))
+    except Exception as e:
+        await update.message.reply_text(f"❌ Mute fehlgeschlagen: {e}")
+
+async def unmute_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Unmute a user in the group. Usage: /unmute (reply to a message)."""
+    user_id = update.effective_user.id
+    if not is_authorized(user_id):
+        return
+
+    chat = update.effective_chat
+    if not chat or chat.type not in ("group", "supergroup"):
+        await update.message.reply_text("⚠️ Dieser Befehl funktioniert nur in Gruppen.")
+        return
+
+    target_id, target_name = await resolve_target(update, context)
+    if target_id is None:
+        return
+
+    try:
+        chat_obj = await context.bot.get_chat(chat.id)
+        await context.bot.restrict_chat_member(
+            chat_id=chat.id,
+            user_id=target_id,
+            permissions=chat_obj.permissions or ChatPermissions.all_permissions(),
+        )
+
+        tracked = lookup_user(str(target_id))
+        target_username = tracked.get("username") if tracked else None
+        uname = f"@{target_username} " if target_username else ""
+
+        await update.message.reply_text(
+            f"{uname}[<code>{target_id}</code>] wurde ✅ entmutet.",
+            parse_mode="HTML",
+        )
+        await log_action(context, f"✅ Unmute: {target_name} [{target_id}] in {chat.title} von {update.effective_user.first_name}")
+    except Exception as e:
+        await update.message.reply_text(f"❌ Unmute fehlgeschlagen: {e}")
 
 # --- /kick ---
 
@@ -4649,6 +4766,8 @@ def main():
     app.add_handler(CommandHandler("unbanall", unbanall))
     app.add_handler(CommandHandler("befehl", personal_command))
     app.add_handler(CommandHandler("unbefehl", unpersonal_command))
+    app.add_handler(CommandHandler("mute", mute_command))
+    app.add_handler(CommandHandler("unmute", unmute_command))
     app.add_handler(CommandHandler("kick", kick_command))
     app.add_handler(CommandHandler("warn", warn_command))
     app.add_handler(CommandHandler("unwarn", unwarn_command))
