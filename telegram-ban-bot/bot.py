@@ -5051,7 +5051,9 @@ def schedule_job(context, sched):
         return
     
     sched_id = sched["id"]
-    interval = sched.get("interval_minutes", 60) * 60  # convert to seconds
+    interval_minutes = sched.get("interval_minutes", 60)
+    interval = interval_minutes * 60  # convert to seconds
+    interval_td = datetime.timedelta(minutes=interval_minutes)
     
     # Remove existing job if any
     remove_scheduled_job(context, sched_id)
@@ -5059,22 +5061,36 @@ def schedule_job(context, sched):
     # Calculate first run time
     now = now_de()
     time_str = sched.get("time", "")
+    last_sent_str = sched.get("last_sent")
     
-    if time_str and time_str != "00:00":
-        # User set a specific start time
+    # Priority 1: If we have a last_sent timestamp, calculate next run from there
+    if last_sent_str:
+        try:
+            last_sent_dt = datetime.datetime.strptime(last_sent_str, "%d.%m.%Y %H:%M").replace(tzinfo=BERLIN_TZ)
+            next_run = last_sent_dt + interval_td
+            # If next_run is in the past (e.g. bot was down), find the next valid time
+            while next_run <= now:
+                next_run += interval_td
+            delay = (next_run - now).total_seconds()
+            logger.info(f"Scheduled {sched_id}: last_sent={last_sent_str}, next run in {delay:.0f}s")
+        except Exception as e:
+            logger.error(f"Error parsing last_sent for {sched_id}: {e}")
+            last_sent_str = None  # Fall through to time-based calculation
+    
+    # Priority 2: Use configured start time
+    if not last_sent_str and time_str and time_str != "00:00":
         try:
             h, m = map(int, time_str.split(":"))
         except Exception:
             h, m = 0, 0
         first_run = now.replace(hour=h, minute=m, second=0, microsecond=0)
-        interval_td = datetime.timedelta(minutes=sched.get("interval_minutes", 60))
         while first_run <= now:
             first_run += interval_td
         delay = (first_run - now).total_seconds()
-    else:
-        # No time set – start immediately, only interval matters
+    elif not last_sent_str:
+        # No time set and no last_sent – start immediately
         delay = 0
-        logger.info(f"No start time set for {sched_id}, starting immediately")
+        logger.info(f"No start time or last_sent for {sched_id}, starting immediately")
     
     jq.run_repeating(
         execute_scheduled_message,
