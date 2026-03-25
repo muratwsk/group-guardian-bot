@@ -62,6 +62,10 @@ def normalize_data(data):
         "close_text": "Wir haben geschlossen. Bis zum nächsten Mal! 👋",
         "active_open_messages": {},
     })
+    data.setdefault("cmd_delete", {
+        "admin_prefixes": [],
+        "user_prefixes": [],
+    })
     return data
 
 def load_data():
@@ -248,7 +252,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
          InlineKeyboardButton("🔓 Open/Close", callback_data="menu_openclose")],
         [InlineKeyboardButton("🏗 Befehle", callback_data="pcmd_menu"),
          InlineKeyboardButton("⚠️ Warns", callback_data="menu_warns")],
-        [InlineKeyboardButton("🔤 Verbotene Worte", callback_data="menu_badwords")],
+        [InlineKeyboardButton("🔤 Verbotene Worte", callback_data="menu_badwords"),
+         InlineKeyboardButton("🗑 Nachrichten", callback_data="menu_msgdelete")],
         [InlineKeyboardButton("⚙️ Einstellungen", callback_data="menu_settings")],
     ]
 
@@ -486,7 +491,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
              InlineKeyboardButton("🔓 Open/Close", callback_data="menu_openclose")],
             [InlineKeyboardButton("🏗 Befehle", callback_data="pcmd_menu"),
              InlineKeyboardButton("⚠️ Warns", callback_data="menu_warns")],
-            [InlineKeyboardButton("🔤 Verbotene Worte", callback_data="menu_badwords")],
+            [InlineKeyboardButton("🔤 Verbotene Worte", callback_data="menu_badwords"),
+             InlineKeyboardButton("🗑 Nachrichten", callback_data="menu_msgdelete")],
             [InlineKeyboardButton("⚙️ Einstellungen", callback_data="menu_settings")],
         ]
         role = "👑 Owner" if is_owner(user_id) else "🛡️ Admin"
@@ -1687,6 +1693,113 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             [InlineKeyboardButton("🔙 Zurück", callback_data="back_main")],
         ]
         await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
+
+    # === MESSAGE DELETE MENU ===
+    elif data == "menu_msgdelete":
+        bot_data = load_data()
+        cd = bot_data.get("cmd_delete", {"admin_prefixes": [], "user_prefixes": []})
+        keyboard = [
+            [InlineKeyboardButton("📋 Befehle löschen", callback_data="cmdel_menu")],
+            [InlineKeyboardButton("🔙 Zurück", callback_data="back_main")],
+        ]
+        await query.edit_message_text(
+            "🗑 <b>Nachrichten löschen</b>\n\n"
+            "Hier kannst du einstellen, welche Nachrichten automatisch gelöscht werden sollen.",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode="HTML",
+        )
+
+    elif data == "cmdel_menu":
+        bot_data = load_data()
+        cd = bot_data.get("cmd_delete", {"admin_prefixes": [], "user_prefixes": []})
+        admin_p = cd.get("admin_prefixes", [])
+        user_p = cd.get("user_prefixes", [])
+        all_prefixes = ["/", "!", ";", "."]
+
+        def _prefix_status(prefixes, prefix):
+            return "✅" if prefix in prefixes else ""
+
+        admin_display = ", ".join(admin_p) if admin_p else "Nein"
+        user_display = ", ".join(user_p) if user_p else "Nein"
+
+        keyboard = [
+            [InlineKeyboardButton(f"Admin", callback_data="noop"),
+             InlineKeyboardButton(f"{'✅' if not admin_p else 'Nein'}", callback_data="cmdel_admin_none"),
+             InlineKeyboardButton(f"/ {'✅' if '/' in admin_p else ''}", callback_data="cmdel_admin_/")],
+            [InlineKeyboardButton("➡️", callback_data="noop"),
+             InlineKeyboardButton(f"/!;. {'✅' if set(all_prefixes).issubset(set(admin_p)) else ''}", callback_data="cmdel_admin_all"),
+             InlineKeyboardButton(f"!;. {'✅' if set(['!',';','.']).issubset(set(admin_p)) and '/' not in admin_p else ''}", callback_data="cmdel_admin_nosl")],
+            [InlineKeyboardButton(f"Benutzer", callback_data="noop"),
+             InlineKeyboardButton(f"{'✅' if not user_p else 'Nein'}", callback_data="cmdel_user_none"),
+             InlineKeyboardButton(f"/ {'✅' if '/' in user_p else ''}", callback_data="cmdel_user_/")],
+            [InlineKeyboardButton("➡️", callback_data="noop"),
+             InlineKeyboardButton(f"/!;. {'✅' if set(all_prefixes).issubset(set(user_p)) else ''}", callback_data="cmdel_user_all"),
+             InlineKeyboardButton(f"!;. {'✅' if set(['!',';','.']).issubset(set(user_p)) and '/' not in user_p else ''}", callback_data="cmdel_user_nosl")],
+            [InlineKeyboardButton("🔙 Zurück", callback_data="menu_msgdelete")],
+        ]
+        await query.edit_message_text(
+            f"📋 <b>Befehle löschen</b>\n"
+            f"Welcher dieser Befehle soll gelöscht werden?\n"
+            f"  Beispiel: /Hallo, !Hallo, ;Hallo, .Hallo\n\n"
+            f"<b>Admin:</b> beginnend mit {admin_display}\n"
+            f"<b>Nutzer:</b> beginnend mit {user_display}",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode="HTML",
+        )
+
+    elif data.startswith("cmdel_admin_") or data.startswith("cmdel_user_"):
+        role_key = "admin_prefixes" if data.startswith("cmdel_admin_") else "user_prefixes"
+        action = data.split("_", 2)[2]  # after cmdel_admin_ or cmdel_user_
+        bot_data = load_data()
+        cd = bot_data.setdefault("cmd_delete", {"admin_prefixes": [], "user_prefixes": []})
+        all_prefixes = ["/", "!", ";", "."]
+
+        if action == "none":
+            cd[role_key] = []
+        elif action == "all":
+            cd[role_key] = list(all_prefixes)
+        elif action == "nosl":
+            cd[role_key] = ["!", ";", "."]
+        elif action in all_prefixes:
+            current = cd.get(role_key, [])
+            if action in current:
+                current.remove(action)
+            else:
+                current.append(action)
+            cd[role_key] = current
+
+        save_data(bot_data)
+        await query.answer("✅ Gespeichert")
+        # Re-render the menu
+        admin_p = cd.get("admin_prefixes", [])
+        user_p = cd.get("user_prefixes", [])
+        admin_display = ", ".join(admin_p) if admin_p else "Nein"
+        user_display = ", ".join(user_p) if user_p else "Nein"
+
+        keyboard = [
+            [InlineKeyboardButton(f"Admin", callback_data="noop"),
+             InlineKeyboardButton(f"{'✅' if not admin_p else 'Nein'}", callback_data="cmdel_admin_none"),
+             InlineKeyboardButton(f"/ {'✅' if '/' in admin_p else ''}", callback_data="cmdel_admin_/")],
+            [InlineKeyboardButton("➡️", callback_data="noop"),
+             InlineKeyboardButton(f"/!;. {'✅' if set(all_prefixes).issubset(set(admin_p)) else ''}", callback_data="cmdel_admin_all"),
+             InlineKeyboardButton(f"!;. {'✅' if set(['!',';','.']).issubset(set(admin_p)) and '/' not in admin_p else ''}", callback_data="cmdel_admin_nosl")],
+            [InlineKeyboardButton(f"Benutzer", callback_data="noop"),
+             InlineKeyboardButton(f"{'✅' if not user_p else 'Nein'}", callback_data="cmdel_user_none"),
+             InlineKeyboardButton(f"/ {'✅' if '/' in user_p else ''}", callback_data="cmdel_user_/")],
+            [InlineKeyboardButton("➡️", callback_data="noop"),
+             InlineKeyboardButton(f"/!;. {'✅' if set(all_prefixes).issubset(set(user_p)) else ''}", callback_data="cmdel_user_all"),
+             InlineKeyboardButton(f"!;. {'✅' if set(['!',';','.']).issubset(set(user_p)) and '/' not in user_p else ''}", callback_data="cmdel_user_nosl")],
+            [InlineKeyboardButton("🔙 Zurück", callback_data="menu_msgdelete")],
+        ]
+        await query.edit_message_text(
+            f"📋 <b>Befehle löschen</b>\n"
+            f"Welcher dieser Befehle soll gelöscht werden?\n"
+            f"  Beispiel: /Hallo, !Hallo, ;Hallo, .Hallo\n\n"
+            f"<b>Admin:</b> beginnend mit {admin_display}\n"
+            f"<b>Nutzer:</b> beginnend mit {user_display}",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode="HTML",
+        )
 
     # === FORBIDDEN WORDS MENU ===
     elif data == "menu_badwords":
@@ -3296,6 +3409,23 @@ async def track_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if update.message.from_user:
         track_user(update.message.from_user, group_id=update.effective_chat.id)
+
+    # --- Command delete check ---
+    msg_text_raw = update.message.text or ""
+    if msg_text_raw and update.message.from_user:
+        first_char = msg_text_raw[0] if msg_text_raw else ""
+        if first_char in ["/", "!", ";", "."]:
+            bot_data_cd = load_data()
+            cd = bot_data_cd.get("cmd_delete", {"admin_prefixes": [], "user_prefixes": []})
+            sender_cd = update.message.from_user
+            is_adm = await is_chat_admin(context, update.effective_chat.id, sender_cd.id)
+            prefixes = cd.get("admin_prefixes", []) if is_adm else cd.get("user_prefixes", [])
+            if first_char in prefixes:
+                try:
+                    await update.message.delete()
+                    logger.info(f"Auto-deleted command '{msg_text_raw[:30]}' from {'admin' if is_adm else 'user'} {sender_cd.id} in {update.effective_chat.id}")
+                except Exception as e:
+                    logger.error(f"Cmd delete failed: {e}")
 
     # --- Forbidden words check ---
     msg_text = update.message.text or update.message.caption or ""
