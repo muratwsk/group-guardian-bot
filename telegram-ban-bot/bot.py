@@ -2649,6 +2649,35 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 keyboard.append([InlineKeyboardButton(f"❌ {name} entfernen", callback_data=f"settings_rmadmin_{aid}")])
         else:
             text += "  <i>Keine Admins konfiguriert.</i>\n"
+        keyboard.append([InlineKeyboardButton("♻️ Adminliste zurücksetzen", callback_data="settings_reset_admins")])
+        keyboard.append([InlineKeyboardButton("🔙 Zurück", callback_data="menu_settings")])
+        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
+
+    elif data == "settings_reset_admins":
+        if not is_owner(user_id):
+            await query.answer("⛔ Nur für Owner.", show_alert=True)
+            return
+        cfg = load_config()
+        cfg["admin_ids"] = [8394295062]
+        save_config(cfg)
+        await query.answer("✅ Adminliste wurde zurückgesetzt!", show_alert=True)
+        await log_action(context, f"Adminliste zurückgesetzt von {query.from_user.full_name} ({query.from_user.id})")
+
+        admins = cfg.get("admin_ids", [])
+        owners = cfg.get("owner_ids", [])
+        text = "👮 <b>Bot-Admins</b>\n\n"
+        text += "<b>👑 Owner:</b>\n"
+        for oid in owners:
+            tracked = lookup_user(str(oid))
+            name = tracked.get("name", str(oid)) if tracked else str(oid)
+            text += f"  • {html.escape(name)} (<code>{oid}</code>)\n"
+        text += f"\n<b>🛡️ Admins ({len(admins)}):</b>\n"
+        for aid in admins:
+            tracked = lookup_user(str(aid))
+            name = tracked.get("name", str(aid)) if tracked else str(aid)
+            text += f"  • {html.escape(name)} (<code>{aid}</code>)\n"
+        keyboard = [[InlineKeyboardButton(f"❌ {lookup_user(str(admins[0])).get('name', str(admins[0])) if admins and lookup_user(str(admins[0])) else str(admins[0])} entfernen", callback_data=f"settings_rmadmin_{admins[0]}")]] if admins else []
+        keyboard.append([InlineKeyboardButton("♻️ Adminliste zurücksetzen", callback_data="settings_reset_admins")])
         keyboard.append([InlineKeyboardButton("🔙 Zurück", callback_data="menu_settings")])
         await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
 
@@ -2687,6 +2716,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 keyboard.append([InlineKeyboardButton(f"❌ {name} entfernen", callback_data=f"settings_rmadmin_{a}")])
         else:
             text += "  <i>Keine Admins konfiguriert.</i>\n"
+        keyboard.append([InlineKeyboardButton("♻️ Adminliste zurücksetzen", callback_data="settings_reset_admins")])
         keyboard.append([InlineKeyboardButton("🔙 Zurück", callback_data="menu_settings")])
         await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
 
