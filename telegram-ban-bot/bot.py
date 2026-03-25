@@ -4770,13 +4770,25 @@ async def media_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
         msg = update.message
 
-        has_supported_media = bool(
-            msg.photo or msg.video or msg.animation or
-            (msg.document and not (msg.document.file_name and msg.document.file_name.endswith(".json")))
-        )
-        if not has_supported_media:
+        media_file_id = None
+        media_type = None
+        if msg.photo:
+            media_file_id = msg.photo[-1].file_id
+            media_type = "photo"
+        elif msg.video:
+            media_file_id = msg.video.file_id
+            media_type = "video"
+        elif msg.animation:
+            media_file_id = msg.animation.file_id
+            media_type = "animation"
+        elif msg.document and not (msg.document.file_name and msg.document.file_name.endswith(".json")):
+            media_file_id = msg.document.file_id
+            media_type = "document"
+
+        if not media_file_id:
             return
 
+        caption_html = msg.caption_html or msg.caption or ""
         groups = pending["groups"]
         success = 0
         fail = 0
@@ -4784,31 +4796,68 @@ async def media_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         broadcast_id = str(int(time.time() * 1000))
         sent_msgs = []
 
-        media_label = "medium"
-        if msg.photo:
-            media_label = "photo"
-        elif msg.video:
-            media_label = "video"
-        elif msg.animation:
-            media_label = "animation"
-        elif msg.document:
-            media_label = "document"
+        logger.info(
+            "Messenger media broadcast start: user=%s media_type=%s caption_len=%s groups=%s chat_id=%s message_id=%s",
+            user_id,
+            media_type,
+            len(caption_html),
+            len(groups),
+            msg.chat_id,
+            msg.message_id,
+        )
 
         for gid in groups:
             try:
-                sent = await msg.copy(chat_id=gid)
+                sent = None
+                try:
+                    if media_type == "photo":
+                        sent = await context.bot.send_photo(
+                            chat_id=gid,
+                            photo=media_file_id,
+                            caption=caption_html or None,
+                            parse_mode="HTML" if caption_html else None,
+                        )
+                    elif media_type == "video":
+                        sent = await context.bot.send_video(
+                            chat_id=gid,
+                            video=media_file_id,
+                            caption=caption_html or None,
+                            parse_mode="HTML" if caption_html else None,
+                        )
+                    elif media_type == "animation":
+                        sent = await context.bot.send_animation(
+                            chat_id=gid,
+                            animation=media_file_id,
+                            caption=caption_html or None,
+                            parse_mode="HTML" if caption_html else None,
+                        )
+                    else:
+                        sent = await context.bot.send_document(
+                            chat_id=gid,
+                            document=media_file_id,
+                            caption=caption_html or None,
+                            parse_mode="HTML" if caption_html else None,
+                        )
+                except Exception as send_err:
+                    logger.error(f"Messenger direct media send failed in {gid}: {send_err}")
+                    sent = await context.bot.copy_message(
+                        chat_id=gid,
+                        from_chat_id=msg.chat_id,
+                        message_id=msg.message_id,
+                    )
+
                 sent_msgs.append((gid, sent.message_id))
                 success += 1
             except Exception as e:
                 fail += 1
-                logger.error(f"Messenger media send failed in {gid}: {e}")
+                logger.error(f"Messenger media fallback failed in {gid}: {e}")
 
         bot_data = load_data()
         bot_data.setdefault("broadcasts", {})[broadcast_id] = {
             "messages": sent_msgs,
             "date": now_de().strftime("%d.%m %H:%M"),
             "count": success,
-            "preview": ((msg.caption or "")[:50] if msg.caption else f"[{media_label}]"),
+            "preview": ((msg.caption or "")[:50] if msg.caption else f"[{media_type}]"),
         }
         save_data(bot_data)
 
@@ -4818,8 +4867,8 @@ async def media_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             + (f"\n❌ {fail} Fehler" if fail else ""),
             reply_markup=InlineKeyboardMarkup(keyboard),
         )
-        preview = ((msg.caption_html or msg.caption or "")[:100] if (msg.caption_html or msg.caption) else f"[{media_label}]")
-        await log_action(context, f"MESSENGER: {update.effective_user.full_name} ({user_id}) → {success} Gruppen\nMedia: {media_label}\nText: {preview}")
+        preview = ((msg.caption_html or msg.caption or "")[:100] if (msg.caption_html or msg.caption) else f"[{media_type}]")
+        await log_action(context, f"MESSENGER: {update.effective_user.full_name} ({user_id}) → {success} Gruppen\nMedia: {media_type}\nText: {preview}")
         context.user_data["state"] = None
         user_data_store.pop(user_id, None)
         return
