@@ -201,6 +201,14 @@ def is_authorized(user_id: int) -> bool:
     """Check if user is owner or admin (can use ban/unban)."""
     return is_admin(user_id)
 
+async def is_chat_admin(context, chat_id: int, user_id: int) -> bool:
+    """Check if user is admin or creator in a specific chat."""
+    try:
+        member = await context.bot.get_chat_member(chat_id=chat_id, user_id=user_id)
+        return member.status in ("administrator", "creator")
+    except Exception:
+        return False
+
 async def log_action(context: ContextTypes.DEFAULT_TYPE, text: str):
     cfg = load_config()
     channel = cfg.get("log_channel_id")
@@ -1118,6 +1126,11 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         target_name = tracked.get("name", str(target_id)) if tracked else str(target_id)
         target_username = tracked.get("username") if tracked else None
 
+        # Admin-Schutz: Prüfe ob target Admin in irgendeiner Gruppe ist
+        if scope_chat_id and await is_chat_admin(context, scope_chat_id, target_id):
+            await query.answer("⚠️ Administratoren können nicht gebannt werden.", show_alert=True)
+            return
+
         successful_groups, failed_groups = await ban_user_in_groups(context, groups, target_id)
         if successful_groups:
             remember_group_ban([g["id"] for g in successful_groups], target_id, target_name, target_username)
@@ -1187,6 +1200,11 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         target_name = tracked.get("name", str(target_id)) if tracked else str(target_id)
         target_username = tracked.get("username") if tracked else None
 
+        # Admin-Schutz
+        if await is_chat_admin(context, scope_chat_id, target_id):
+            await query.answer("⚠️ Administratoren können nicht gebannt werden.", show_alert=True)
+            return
+
         await context.bot.ban_chat_member(chat_id=scope_chat_id, user_id=target_id, revoke_messages=True)
         remember_group_ban([scope_chat_id], target_id, target_name, target_username)
 
@@ -1233,6 +1251,11 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         tracked = lookup_user(str(target_id))
         target_name = tracked.get("name", str(target_id)) if tracked else str(target_id)
         target_username = tracked.get("username") if tracked else None
+
+        # Admin-Schutz
+        if await is_chat_admin(context, scope_chat_id, target_id):
+            await query.answer("⚠️ Administratoren können nicht gemutet werden.", show_alert=True)
+            return
 
         await context.bot.restrict_chat_member(
             chat_id=scope_chat_id,
@@ -1848,6 +1871,11 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         t_name = tracked.get("name", str(target_id)) if tracked else str(target_id)
         t_username = tracked.get("username") if tracked else None
         result_text = ""
+        # Admin-Schutz
+        if await is_chat_admin(context, chat_id_val, target_id):
+            await query.answer("⚠️ Administratoren können nicht bestraft werden.", show_alert=True)
+            return
+
         try:
             if action == "ban":
                 await context.bot.ban_chat_member(chat_id=chat_id_val, user_id=target_id, revoke_messages=True)
@@ -2452,6 +2480,11 @@ async def warn_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     target_id, target_name = await resolve_target(update, context)
     if target_id is None:
+        return
+
+    # Admins/Creators dürfen nicht verwarnt werden
+    if await is_chat_admin(context, chat.id, target_id):
+        await update.message.reply_text("⚠️ Administratoren können nicht verwarnt werden.")
         return
 
     reason = " ".join(context.args) if context.args else None
