@@ -2260,6 +2260,122 @@ async def info_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # --- /banall ---
 
+# --- /warn ---
+
+async def warn_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Warn a user. Usage: /warn [reason] (reply to a message)."""
+    user_id = update.effective_user.id
+    if not is_authorized(user_id):
+        return
+
+    chat = update.effective_chat
+    if not chat or chat.type not in ("group", "supergroup"):
+        await update.message.reply_text("⚠️ Dieser Befehl funktioniert nur in Gruppen.")
+        return
+
+    target_id, target_name = await resolve_target(update, context)
+    if target_id is None:
+        return
+
+    reason = " ".join(context.args) if context.args else None
+    # If target was resolved from reply, args might contain the reason
+    if update.message.reply_to_message and context.args:
+        reason = " ".join(context.args)
+
+    tracked = lookup_user(str(target_id))
+    target_username = tracked.get("username") if tracked else None
+
+    bot_data = load_data()
+    wc = bot_data.get("warn_config", {"max_warns": 3, "punishment": "mute"})
+    max_warns = wc.get("max_warns", 3)
+    punishment = wc.get("punishment", "mute")
+
+    warnings = bot_data.setdefault("warnings", {})
+    key = f"{chat.id}_{target_id}"
+    warn_entry = warnings.get(key, {"count": 0, "name": target_name, "username": target_username})
+    warn_entry["count"] = warn_entry.get("count", 0) + 1
+    warn_entry["name"] = target_name
+    warn_entry["username"] = target_username
+    warnings[key] = warn_entry
+    save_data(bot_data)
+
+    current_count = warn_entry["count"]
+    uname = f"@{target_username}" if target_username else target_name
+
+    text = f"{uname} [{target_id}] wurde verwarnt zum {current_count}. Mal (von {max_warns})."
+    if reason:
+        text += f"\n<b>Grund:</b> {html.escape(reason)}"
+
+    keyboard = [[InlineKeyboardButton("❌ Abbrechen", callback_data=f"warn_undo_{chat.id}_{target_id}")]]
+
+    # Check if max warns reached
+    if current_count >= max_warns:
+        punishment_text = ""
+        try:
+            if punishment == "kick":
+                await context.bot.ban_chat_member(chat_id=chat.id, user_id=target_id)
+                await context.bot.unban_chat_member(chat_id=chat.id, user_id=target_id)
+                punishment_text = "❗ Gekickt"
+            elif punishment == "mute":
+                await context.bot.restrict_chat_member(
+                    chat_id=chat.id, user_id=target_id,
+                    permissions=ChatPermissions.no_permissions(),
+                )
+                punishment_text = "📛 Gemutet"
+            elif punishment == "ban":
+                await context.bot.ban_chat_member(chat_id=chat.id, user_id=target_id, revoke_messages=True)
+                remember_group_ban([chat.id], target_id, target_name, target_username)
+                punishment_text = "🚫 Gebannt"
+            elif punishment == "aus":
+                punishment_text = ""
+        except Exception as e:
+            logger.error(f"Warn punishment failed for {target_id} in {chat.id}: {e}")
+            punishment_text = f"⚠️ Bestrafung fehlgeschlagen: {e}"
+
+        if punishment_text:
+            text += f"\n\n⚠️ <b>Max. Verwarnungen erreicht!</b>\n{punishment_text}"
+        # Reset warns
+        warnings.pop(key, None)
+        save_data(bot_data)
+
+    await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
+    await log_action(context, f"WARN: {target_name} ({target_id}) in {chat.title} — {current_count}/{max_warns}" + (f" Grund: {reason}" if reason else ""))
+
+
+async def unwarn_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Remove a warn from a user. Usage: /unwarn (reply to a message)."""
+    user_id = update.effective_user.id
+    if not is_authorized(user_id):
+        return
+
+    chat = update.effective_chat
+    if not chat or chat.type not in ("group", "supergroup"):
+        await update.message.reply_text("⚠️ Dieser Befehl funktioniert nur in Gruppen.")
+        return
+
+    target_id, target_name = await resolve_target(update, context)
+    if target_id is None:
+        return
+
+    bot_data = load_data()
+    warnings = bot_data.get("warnings", {})
+    key = f"{chat.id}_{target_id}"
+    if key not in warnings or warnings[key].get("count", 0) == 0:
+        await update.message.reply_text(f"ℹ️ {target_name} hat keine Verwarnungen in dieser Gruppe.")
+        return
+
+    warnings[key]["count"] = max(0, warnings[key]["count"] - 1)
+    new_count = warnings[key]["count"]
+    if new_count == 0:
+        warnings.pop(key)
+    save_data(bot_data)
+
+    wc = bot_data.get("warn_config", {"max_warns": 3})
+    max_w = wc.get("max_warns", 3)
+    await update.message.reply_text(f"✅ Verwarnung von {target_name} entfernt. ({new_count}/{max_w})")
+    await log_action(context, f"UNWARN: {target_name} ({target_id}) in {chat.title} — jetzt {new_count}/{max_w}")
+
+
 async def banall(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_authorized(update.effective_user.id):
         await update.message.reply_text("⛔ Kein Zugriff.")
@@ -3676,6 +3792,8 @@ def main():
     app.add_handler(CommandHandler("unbanall", unbanall))
     app.add_handler(CommandHandler("befehl", personal_command))
     app.add_handler(CommandHandler("unbefehl", unpersonal_command))
+    app.add_handler(CommandHandler("warn", warn_command))
+    app.add_handler(CommandHandler("unwarn", unwarn_command))
     app.add_handler(CommandHandler("open", handle_open_command))
     app.add_handler(CommandHandler("close", handle_close_command))
     app.add_handler(CallbackQueryHandler(button_handler))
