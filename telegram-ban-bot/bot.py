@@ -1871,6 +1871,11 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         t_name = tracked.get("name", str(target_id)) if tracked else str(target_id)
         t_username = tracked.get("username") if tracked else None
         result_text = ""
+        # Admin-Schutz
+        if await is_chat_admin(context, chat_id_val, target_id):
+            await query.answer("⚠️ Administratoren können nicht bestraft werden.", show_alert=True)
+            return
+
         try:
             if action == "ban":
                 await context.bot.ban_chat_member(chat_id=chat_id_val, user_id=target_id, revoke_messages=True)
