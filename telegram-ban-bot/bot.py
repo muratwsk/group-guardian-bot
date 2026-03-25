@@ -1891,7 +1891,7 @@ async def info_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"🆔 <b>ID:</b> <code>{target_id}</code> <code>#id{target_id}</code>\n"
         f"👤 <b>Name:</b> {name_display}\n"
         f"🔗 <b>Username:</b> {username_display}\n"
-        f"👀 <b>Situation:</b> {situation}\n"
+        
         f"📷 <b>Profilbild:</b> {photo_icon}\n"
         f"⭐ <b>Premium:</b> {premium_icon}\n"
         f"📝 <b>Bio:</b> {html.escape(bio[:100]) if bio != '—' else '—'}\n"
