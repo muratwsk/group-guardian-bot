@@ -1739,9 +1739,9 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text(
             f"🏗 <b>Persönliche Befehle</b>\n\n"
             f"Gespeicherte Befehle: {cmd_count}\n\n"
-            f"<i>Nutze /befehl &lt;Name&gt; als Antwort auf eine Nachricht in einer Gruppe, "
+            f"<i>Nutze /personal &lt;Name&gt; als Antwort auf eine Nachricht in einer Gruppe, "
             f"um einen Befehl zu erstellen.\n"
-            f"Lösche mit /unbefehl &lt;Name&gt;</i>",
+            f"Lösche mit /unpersonal &lt;Name&gt;</i>",
             reply_markup=InlineKeyboardMarkup(keyboard),
             parse_mode="HTML",
         )
