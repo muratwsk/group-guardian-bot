@@ -3895,7 +3895,7 @@ async def mute_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=keyboard,
             parse_mode="HTML",
         )
-        await log_action(context, f"🔇 Mute: {target_name} [{target_id}] in {chat.title} von {update.effective_user.first_name}" + (f" | Grund: {reason}" if reason else ""))
+        await log_action(context, f"🔇 Mute: {target_name} [{target_id}] in {chat.title} von {update.effective_user.first_name}" + (f" | Grund: {reason}" if reason else ""), group_id=chat.id, group_name=chat.title)
     except Exception as e:
         await update.message.reply_text(f"❌ Mute fehlgeschlagen: {e}")
 
