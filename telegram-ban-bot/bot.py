@@ -3267,6 +3267,7 @@ async def register_group(update: Update, context: ContextTypes.DEFAULT_TYPE):
     groups.append({"id": chat.id, "title": chat.title})
     data["groups"] = groups
     save_data(data)
+    sync_groups_to_file()
     await update.message.reply_text(f"✅ Gruppe registriert: *{chat.title}*", parse_mode="Markdown")
     await log_action(context, f"Gruppe registriert: {chat.title} ({chat.id})")
 
