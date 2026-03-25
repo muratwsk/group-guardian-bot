@@ -1881,10 +1881,25 @@ async def info_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     premium_icon = "⭐ Ja" if is_premium else "Nein"
     ban_status = f"🚫 {banned_in}/{len(groups)} Gruppen" if banned_in > 0 else "✅ Nicht gebannt"
 
-    # Message count and first seen from tracking
+    # Message count and first seen from tracking (per-group if in a group)
     tracked_data = lookup_user(str(target_id))
-    msg_count = tracked_data.get("msg_count", 0) if tracked_data else 0
-    first_seen = tracked_data.get("first_seen", "—") if tracked_data else "—"
+    chat_id = update.effective_chat.id
+    if tracked_data and str(chat_id) in tracked_data.get("group_stats", {}):
+        gs = tracked_data["group_stats"][str(chat_id)]
+        msg_count = gs.get("msg_count", 0)
+        first_seen = gs.get("first_seen", "—")
+    else:
+        # Sum all groups
+        total = 0
+        first_seen = "—"
+        if tracked_data:
+            for gs in tracked_data.get("group_stats", {}).values():
+                total += gs.get("msg_count", 0)
+                if first_seen == "—":
+                    first_seen = gs.get("first_seen", "—")
+            msg_count = total
+        else:
+            msg_count = 0
 
     info_text = (
         f"━━━━━━━━━━━━━━━━━━\n"
