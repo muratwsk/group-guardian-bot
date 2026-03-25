@@ -1977,6 +1977,20 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=InlineKeyboardMarkup(keyboard),
             parse_mode="HTML",
         )
+        # Send notification to each selected group
+        groups = await get_bot_groups(context)
+        for gid in selected:
+            group_title = next((g["title"] for g in groups if g["id"] == gid), str(gid))
+            try:
+                await context.bot.send_message(
+                    chat_id=gid,
+                    text=f"✅ <b>All {action_label} abgeschlossen</b>\n\n"
+                         f"✅ Erfolgreich: {success_count}\n"
+                         f"❌ Fehler: {error_count}",
+                    parse_mode="HTML",
+                )
+            except Exception as e:
+                logger.error(f"Failed to send {action_label} notification to {gid}: {e}")
         await log_action(context, f"MASS {action_label.upper()}: {success_count} erfolgreich, {error_count} Fehler – von {query.from_user.full_name}")
 
     # === SETTINGS ===
