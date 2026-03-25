@@ -468,6 +468,7 @@ WAITING_PCMD_TEXT = 17
 WAITING_PCMD_GROUPS = 18
 WAITING_WARN_MUTE_DUR = 19
 WAITING_BADWORD_ADD = 20
+WAITING_PROTO_CHANNEL = 21
 
 # --- Smart text normalizer for forbidden word evasion detection ---
 LEET_MAP = {
