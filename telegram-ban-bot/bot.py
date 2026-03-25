@@ -2853,12 +2853,49 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
         groups = await get_bot_groups(context)
         if not groups:
-            await query.edit_message_text("Keine Gruppen registriert.\nNutze /registergroup in einer Gruppe.")
+            keyboard = [[InlineKeyboardButton("🔙 Zurück", callback_data="menu_settings")]]
+            await query.edit_message_text("Keine Gruppen registriert.\nNutze /registergroup in einer Gruppe.",
+                                          reply_markup=InlineKeyboardMarkup(keyboard))
             return
         text = "👥 *Registrierte Gruppen:*\n\n"
+        keyboard = []
         for g in groups:
             text += f"• {g['title']} (`{g['id']}`)\n"
-        await query.edit_message_text(text, parse_mode="Markdown")
+            keyboard.append([InlineKeyboardButton(f"❌ {g['title']}", callback_data=f"remove_group_{g['id']}")])
+        keyboard.append([InlineKeyboardButton("🔙 Zurück", callback_data="menu_settings")])
+        await query.edit_message_text(text, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(keyboard))
+
+    elif data.startswith("remove_group_"):
+        if not is_owner(user_id):
+            await query.answer("⛔ Nur für Owner.", show_alert=True)
+            return
+        gid = int(data.replace("remove_group_", ""))
+        bot_data = load_data()
+        groups = bot_data.get("groups", [])
+        removed_name = None
+        for g in groups:
+            if g["id"] == gid:
+                removed_name = g["title"]
+                break
+        bot_data["groups"] = [g for g in groups if g["id"] != gid]
+        save_data(bot_data)
+        sync_groups_to_file()
+        # Refresh group list
+        groups = bot_data["groups"]
+        if not groups:
+            keyboard = [[InlineKeyboardButton("🔙 Zurück", callback_data="menu_settings")]]
+            await query.edit_message_text(
+                f"✅ *{removed_name}* entfernt.\n\nKeine Gruppen mehr registriert.",
+                parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(keyboard))
+            return
+        text = f"✅ *{removed_name}* entfernt.\n\n👥 *Registrierte Gruppen:*\n\n"
+        keyboard = []
+        for g in groups:
+            text += f"• {g['title']} (`{g['id']}`)\n"
+            keyboard.append([InlineKeyboardButton(f"❌ {g['title']}", callback_data=f"remove_group_{g['id']}")])
+        keyboard.append([InlineKeyboardButton("🔙 Zurück", callback_data="menu_settings")])
+        await query.edit_message_text(text, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(keyboard))
+        await log_action(context, f"Gruppe entfernt (Menü): {removed_name} ({gid})")
 
 # --- Message handler for text input ---
 
