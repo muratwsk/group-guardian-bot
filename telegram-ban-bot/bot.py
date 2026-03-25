@@ -2205,12 +2205,14 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # --- Vollständige Linksperre ---
     elif data == "as_links_menu":
         bot_data = load_data()
-        lc = bot_data.get("antispam_links", {"punishment": "aus", "delete": True})
+        lc = bot_data.get("antispam_links", {"punishment": "aus", "delete": True, "groups": []})
         punishment = lc.get("punishment", "aus")
         delete_msg = lc.get("delete", True)
+        selected_groups = lc.get("groups", [])
         p_labels = {"aus": "Aus", "warn": "Warn", "kick": "Kick", "mute": "Mute", "ban": "Ban"}
         p_label = p_labels.get(punishment, punishment)
         del_label = "Ja ✅" if delete_msg else "Nein"
+        grp_label = f"{len(selected_groups)} Gruppen" if selected_groups else "Alle Gruppen"
         keyboard = [
             [InlineKeyboardButton("❌ Aus", callback_data="as_link_set_aus"),
              InlineKeyboardButton("❗ Warn", callback_data="as_link_set_warn"),
@@ -2218,13 +2220,15 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             [InlineKeyboardButton("🤫 Mute", callback_data="as_link_set_mute"),
              InlineKeyboardButton("🚫 Ban", callback_data="as_link_set_ban")],
             [InlineKeyboardButton(f"🗑 Nachrichten Löschen {'✅' if delete_msg else '❌'}", callback_data="as_link_toggle_delete")],
+            [InlineKeyboardButton(f"👥 Gruppen: {grp_label}", callback_data="as_link_groups_menu")],
             [InlineKeyboardButton("🔙 Zurück", callback_data="menu_antispam")],
         ]
         await query.edit_message_text(
             f"🔗 <b>Vollständige Linksperre</b>\n"
             f"Wähle die Bestrafung für das Senden eines Links jeglicher Art aus.\n\n"
             f"<b>Bestrafung:</b> {p_label}\n"
-            f"<b>Löschen:</b> {del_label}",
+            f"<b>Löschen:</b> {del_label}\n"
+            f"<b>Gruppen:</b> {grp_label}",
             reply_markup=InlineKeyboardMarkup(keyboard),
             parse_mode="HTML",
         )
@@ -2235,13 +2239,14 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         bot_data.setdefault("antispam_links", {})["punishment"] = val
         save_data(bot_data)
         await query.answer(f"Bestrafung auf {val} gesetzt ✅")
-        # Re-render
         lc = bot_data["antispam_links"]
         punishment = lc.get("punishment", "aus")
         delete_msg = lc.get("delete", True)
+        selected_groups = lc.get("groups", [])
         p_labels = {"aus": "Aus", "warn": "Warn", "kick": "Kick", "mute": "Mute", "ban": "Ban"}
         p_label = p_labels.get(punishment, punishment)
         del_label = "Ja ✅" if delete_msg else "Nein"
+        grp_label = f"{len(selected_groups)} Gruppen" if selected_groups else "Alle Gruppen"
         keyboard = [
             [InlineKeyboardButton("❌ Aus", callback_data="as_link_set_aus"),
              InlineKeyboardButton("❗ Warn", callback_data="as_link_set_warn"),
@@ -2249,28 +2254,32 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             [InlineKeyboardButton("🤫 Mute", callback_data="as_link_set_mute"),
              InlineKeyboardButton("🚫 Ban", callback_data="as_link_set_ban")],
             [InlineKeyboardButton(f"🗑 Nachrichten Löschen {'✅' if delete_msg else '❌'}", callback_data="as_link_toggle_delete")],
+            [InlineKeyboardButton(f"👥 Gruppen: {grp_label}", callback_data="as_link_groups_menu")],
             [InlineKeyboardButton("🔙 Zurück", callback_data="menu_antispam")],
         ]
         await query.edit_message_text(
             f"🔗 <b>Vollständige Linksperre</b>\n"
             f"Wähle die Bestrafung für das Senden eines Links jeglicher Art aus.\n\n"
             f"<b>Bestrafung:</b> {p_label}\n"
-            f"<b>Löschen:</b> {del_label}",
+            f"<b>Löschen:</b> {del_label}\n"
+            f"<b>Gruppen:</b> {grp_label}",
             reply_markup=InlineKeyboardMarkup(keyboard),
             parse_mode="HTML",
         )
 
     elif data == "as_link_toggle_delete":
         bot_data = load_data()
-        lc = bot_data.setdefault("antispam_links", {"punishment": "aus", "delete": True})
+        lc = bot_data.setdefault("antispam_links", {"punishment": "aus", "delete": True, "groups": []})
         lc["delete"] = not lc.get("delete", True)
         save_data(bot_data)
         await query.answer(f"Löschen: {'An' if lc['delete'] else 'Aus'} ✅")
         punishment = lc.get("punishment", "aus")
         delete_msg = lc.get("delete", True)
+        selected_groups = lc.get("groups", [])
         p_labels = {"aus": "Aus", "warn": "Warn", "kick": "Kick", "mute": "Mute", "ban": "Ban"}
         p_label = p_labels.get(punishment, punishment)
         del_label = "Ja ✅" if delete_msg else "Nein"
+        grp_label = f"{len(selected_groups)} Gruppen" if selected_groups else "Alle Gruppen"
         keyboard = [
             [InlineKeyboardButton("❌ Aus", callback_data="as_link_set_aus"),
              InlineKeyboardButton("❗ Warn", callback_data="as_link_set_warn"),
@@ -2278,13 +2287,78 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             [InlineKeyboardButton("🤫 Mute", callback_data="as_link_set_mute"),
              InlineKeyboardButton("🚫 Ban", callback_data="as_link_set_ban")],
             [InlineKeyboardButton(f"🗑 Nachrichten Löschen {'✅' if delete_msg else '❌'}", callback_data="as_link_toggle_delete")],
+            [InlineKeyboardButton(f"👥 Gruppen: {grp_label}", callback_data="as_link_groups_menu")],
             [InlineKeyboardButton("🔙 Zurück", callback_data="menu_antispam")],
         ]
         await query.edit_message_text(
             f"🔗 <b>Vollständige Linksperre</b>\n"
             f"Wähle die Bestrafung für das Senden eines Links jeglicher Art aus.\n\n"
             f"<b>Bestrafung:</b> {p_label}\n"
-            f"<b>Löschen:</b> {del_label}",
+            f"<b>Löschen:</b> {del_label}\n"
+            f"<b>Gruppen:</b> {grp_label}",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode="HTML",
+        )
+
+    # --- Linksperre Gruppen-Auswahl ---
+    elif data == "as_link_groups_menu":
+        bot_data = load_data()
+        lc = bot_data.get("antispam_links", {"punishment": "aus", "delete": True, "groups": []})
+        selected_groups = set(lc.get("groups", []))
+        groups = await get_bot_groups(context)
+        keyboard = []
+        for g in groups:
+            check = "✅" if g["id"] in selected_groups else "❌"
+            keyboard.append([InlineKeyboardButton(f"{check} {g['title']}", callback_data=f"as_link_grp_{g['id']}")])
+        keyboard.append([InlineKeyboardButton("✅ Alle auswählen", callback_data="as_link_grp_all")])
+        keyboard.append([InlineKeyboardButton("❌ Alle abwählen", callback_data="as_link_grp_none")])
+        keyboard.append([InlineKeyboardButton("🔙 Zurück", callback_data="as_links_menu")])
+        grp_info = f"{len(selected_groups)} ausgewählt" if selected_groups else "Alle (keine Einschränkung)"
+        await query.edit_message_text(
+            f"🔗 <b>Linksperre — Gruppen</b>\n\n"
+            f"Wähle die Gruppen, in denen die Linksperre aktiv sein soll.\n"
+            f"Wenn keine Gruppe ausgewählt ist, gilt sie für <b>alle</b> Gruppen.\n\n"
+            f"<b>Aktuell:</b> {grp_info}",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode="HTML",
+        )
+
+    elif data.startswith("as_link_grp_"):
+        val = data.replace("as_link_grp_", "")
+        bot_data = load_data()
+        lc = bot_data.setdefault("antispam_links", {"punishment": "aus", "delete": True, "groups": []})
+        selected_groups = set(lc.get("groups", []))
+        if val == "all":
+            groups = await get_bot_groups(context)
+            selected_groups = {g["id"] for g in groups}
+            await query.answer("Alle Gruppen ausgewählt ✅")
+        elif val == "none":
+            selected_groups = set()
+            await query.answer("Alle abgewählt (gilt für alle) ✅")
+        else:
+            gid = int(val)
+            if gid in selected_groups:
+                selected_groups.discard(gid)
+            else:
+                selected_groups.add(gid)
+            await query.answer("Aktualisiert ✅")
+        lc["groups"] = list(selected_groups)
+        save_data(bot_data)
+        # Re-render groups menu
+        groups = await get_bot_groups(context)
+        keyboard = []
+        for g in groups:
+            check = "✅" if g["id"] in selected_groups else "❌"
+            keyboard.append([InlineKeyboardButton(f"{check} {g['title']}", callback_data=f"as_link_grp_{g['id']}")])
+        keyboard.append([InlineKeyboardButton("✅ Alle auswählen", callback_data="as_link_grp_all")])
+        keyboard.append([InlineKeyboardButton("❌ Alle abwählen", callback_data="as_link_grp_none")])
+        keyboard.append([InlineKeyboardButton("🔙 Zurück", callback_data="as_links_menu")])
+        grp_info = f"{len(selected_groups)} ausgewählt" if selected_groups else "Alle (keine Einschränkung)"
+        await query.edit_message_text(
+            f"🔗 <b>Linksperre — Gruppen</b>\n\n"
+            f"Wähle die Gruppen, in denen die Linksperre aktiv sein soll.\n"
+            f"Wenn keine Gruppe ausgewählt ist, gilt sie für <b>alle</b> Gruppen.\n\n"
+            f"<b>Aktuell:</b> {grp_info}",
             reply_markup=InlineKeyboardMarkup(keyboard),
             parse_mode="HTML",
         )
