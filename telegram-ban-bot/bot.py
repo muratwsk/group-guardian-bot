@@ -3434,6 +3434,41 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("⚠️ Bitte eine numerische Chat-ID senden.")
         context.user_data["state"] = None
 
+    elif state == WAITING_PROTO_CHANNEL:
+        try:
+            channel_id = int(text.strip())
+            try:
+                chat = await context.bot.get_chat(channel_id)
+                ch_name = chat.title or str(channel_id)
+            except Exception:
+                await update.message.reply_text("⚠️ Kanal nicht gefunden. Ist der Bot dort Admin?")
+                context.user_data["state"] = None
+                return
+
+            bot_data = load_data()
+            proto_channels = bot_data.setdefault("protokoll_channels", {})
+            proto_channels[str(channel_id)] = {
+                "name": ch_name,
+                "groups": ["all"],
+            }
+            save_data(bot_data)
+            context.user_data["state"] = None
+
+            keyboard = [
+                [InlineKeyboardButton("🎯 Gruppen konfigurieren", callback_data=f"proto_cfg_{channel_id}")],
+                [InlineKeyboardButton("🔙 Zum Protokoll-Menü", callback_data="menu_protokoll")],
+            ]
+            await update.message.reply_text(
+                f"✅ Protokoll-Kanal *{ch_name}* hinzugefügt!\n\n"
+                f"Standardmäßig werden *alle Gruppen* protokolliert.\n"
+                f"Klicke auf 'Gruppen konfigurieren' um dies anzupassen.",
+                reply_markup=InlineKeyboardMarkup(keyboard),
+                parse_mode="Markdown",
+            )
+        except ValueError:
+            await update.message.reply_text("⚠️ Bitte eine gültige numerische Kanal-ID senden (z.B. `-1001234567890`).")
+        context.user_data["state"] = None
+
     elif state == WAITING_MESSENGER_INPUT:
         pending = user_data_store.get(user_id)
         if not pending:
