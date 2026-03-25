@@ -448,6 +448,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
              InlineKeyboardButton("🔓 Open/Close", callback_data="menu_openclose")],
             [InlineKeyboardButton("🏗 Befehle", callback_data="pcmd_menu"),
              InlineKeyboardButton("⚠️ Warns", callback_data="menu_warns")],
+            [InlineKeyboardButton("🔤 Verbotene Worte", callback_data="menu_badwords")],
             [InlineKeyboardButton("⚙️ Einstellungen", callback_data="menu_settings")],
         ]
         role = "👑 Owner" if is_owner(user_id) else "🛡️ Admin"
