@@ -355,6 +355,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
          InlineKeyboardButton("🗑 Nachrichten", callback_data="menu_msgdelete")],
         [InlineKeyboardButton("🛡 Anti-Spam", callback_data="menu_antispam"),
          InlineKeyboardButton("👥 Mitglieder", callback_data="menu_members")],
+        [InlineKeyboardButton("🚪 Freigabemodus", callback_data="menu_freigabe")],
         [InlineKeyboardButton("⚙️ Einstellungen", callback_data="menu_settings")],
     ]
 
