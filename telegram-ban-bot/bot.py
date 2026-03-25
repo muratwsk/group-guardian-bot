@@ -1854,19 +1854,18 @@ async def info_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     join_date = None
     member_status_raw = None
     is_premium = False
+    is_muted = False
+    is_banned_status = False
     for g in groups:
         try:
             member = await context.bot.get_chat_member(chat_id=g["id"], user_id=target_id)
             member_status_raw = member.status
-            status_map = {
-                "creator": "👑 Ersteller",
-                "administrator": "🛡️ Admin",
-                "member": "👤 Mitglied",
-                "restricted": "⚠️ Eingeschränkt",
-                "left": "📤 Verlassen",
-                "kicked": "🚫 Gebannt",
-            }
-            situation = status_map.get(member.status, member.status)
+            if member.status == "restricted":
+                # Check if actually muted (can't send messages)
+                if hasattr(member, 'can_send_messages') and not member.can_send_messages:
+                    is_muted = True
+            if member.status == "kicked":
+                is_banned_status = True
             # Check premium
             if hasattr(member, 'user') and member.user:
                 is_premium = getattr(member.user, 'is_premium', False) or False
