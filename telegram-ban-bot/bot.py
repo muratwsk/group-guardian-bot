@@ -1067,53 +1067,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data["state"] = WAITING_UNBAN_INPUT
 
     # === INFO MODERATION BUTTONS ===
-    elif data.startswith("info_ban_"):
-        payload = data.replace("info_ban_", "", 1)
-        scope_chat_id_str, target_id_str = payload.rsplit("_", 1)
-        scope_chat_id = int(scope_chat_id_str)
-        target_id = int(target_id_str)
-        groups = await get_bot_groups(context)
-        tracked = lookup_user(str(target_id))
-        target_name = tracked.get("name", str(target_id)) if tracked else str(target_id)
-        target_username = tracked.get("username") if tracked else None
-
-        await context.bot.ban_chat_member(chat_id=scope_chat_id, user_id=target_id, revoke_messages=True)
-        remember_group_ban([scope_chat_id], target_id, target_name, target_username)
-
-        is_banned_all = bool(groups) and all(is_banned_in_group(g["id"], target_id) for g in groups)
-        keyboard = build_info_keyboard(scope_chat_id, target_id, False, True, is_banned_all)
-        uname = f"@{target_username} " if target_username else ""
-        await query.edit_message_text(
-            f"{uname}[<code>{target_id}</code>] verbannt.",
-            reply_markup=keyboard,
-            parse_mode="HTML",
-        )
-        await log_action(context, f"BAN (via /info): {target_name} ({target_id}) in {scope_chat_id} von {query.from_user.full_name}")
-
-    elif data.startswith("info_unban_"):
-        payload = data.replace("info_unban_", "", 1)
-        scope_chat_id_str, target_id_str = payload.rsplit("_", 1)
-        scope_chat_id = int(scope_chat_id_str)
-        target_id = int(target_id_str)
-        groups = await get_bot_groups(context)
-        tracked = lookup_user(str(target_id))
-        target_name = tracked.get("name", str(target_id)) if tracked else str(target_id)
-        target_username = tracked.get("username") if tracked else None
-
-        await context.bot.unban_chat_member(chat_id=scope_chat_id, user_id=target_id, only_if_banned=True)
-        forget_group_ban([scope_chat_id], target_id)
-
-        group_state = await get_info_group_state(context, scope_chat_id, target_id)
-        is_banned_all = bool(groups) and all(is_banned_in_group(g["id"], target_id) for g in groups)
-        keyboard = build_info_keyboard(scope_chat_id, target_id, group_state["is_muted"], False, is_banned_all)
-        uname = f"@{target_username} " if target_username else ""
-        await query.edit_message_text(
-            f"{uname}[<code>{target_id}</code>] entsperrt ✅",
-            reply_markup=keyboard,
-            parse_mode="HTML",
-        )
-        await log_action(context, f"UNBAN (via /info): {target_name} ({target_id}) in {scope_chat_id} von {query.from_user.full_name}")
-
+    # IMPORTANT: banall/unbanall must be checked BEFORE ban/unban (prefix overlap)
     elif data.startswith("info_banall_"):
         target_id = int(data.replace("info_banall_", "", 1))
         groups = await get_bot_groups(context)
@@ -1169,6 +1123,53 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode="HTML",
         )
         await log_action(context, f"UNBANALL (via /info): {target_name} ({target_id}) von {query.from_user.full_name}")
+
+    elif data.startswith("info_ban_"):
+        payload = data.replace("info_ban_", "", 1)
+        scope_chat_id_str, target_id_str = payload.rsplit("_", 1)
+        scope_chat_id = int(scope_chat_id_str)
+        target_id = int(target_id_str)
+        groups = await get_bot_groups(context)
+        tracked = lookup_user(str(target_id))
+        target_name = tracked.get("name", str(target_id)) if tracked else str(target_id)
+        target_username = tracked.get("username") if tracked else None
+
+        await context.bot.ban_chat_member(chat_id=scope_chat_id, user_id=target_id, revoke_messages=True)
+        remember_group_ban([scope_chat_id], target_id, target_name, target_username)
+
+        is_banned_all = bool(groups) and all(is_banned_in_group(g["id"], target_id) for g in groups)
+        keyboard = build_info_keyboard(scope_chat_id, target_id, False, True, is_banned_all)
+        uname = f"@{target_username} " if target_username else ""
+        await query.edit_message_text(
+            f"{uname}[<code>{target_id}</code>] verbannt.",
+            reply_markup=keyboard,
+            parse_mode="HTML",
+        )
+        await log_action(context, f"BAN (via /info): {target_name} ({target_id}) in {scope_chat_id} von {query.from_user.full_name}")
+
+    elif data.startswith("info_unban_"):
+        payload = data.replace("info_unban_", "", 1)
+        scope_chat_id_str, target_id_str = payload.rsplit("_", 1)
+        scope_chat_id = int(scope_chat_id_str)
+        target_id = int(target_id_str)
+        groups = await get_bot_groups(context)
+        tracked = lookup_user(str(target_id))
+        target_name = tracked.get("name", str(target_id)) if tracked else str(target_id)
+        target_username = tracked.get("username") if tracked else None
+
+        await context.bot.unban_chat_member(chat_id=scope_chat_id, user_id=target_id, only_if_banned=True)
+        forget_group_ban([scope_chat_id], target_id)
+
+        group_state = await get_info_group_state(context, scope_chat_id, target_id)
+        is_banned_all = bool(groups) and all(is_banned_in_group(g["id"], target_id) for g in groups)
+        keyboard = build_info_keyboard(scope_chat_id, target_id, group_state["is_muted"], False, is_banned_all)
+        uname = f"@{target_username} " if target_username else ""
+        await query.edit_message_text(
+            f"{uname}[<code>{target_id}</code>] entsperrt ✅",
+            reply_markup=keyboard,
+            parse_mode="HTML",
+        )
+        await log_action(context, f"UNBAN (via /info): {target_name} ({target_id}) in {scope_chat_id} von {query.from_user.full_name}")
 
     elif data.startswith("info_mute_"):
         payload = data.replace("info_mute_", "", 1)
