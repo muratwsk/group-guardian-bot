@@ -3707,7 +3707,7 @@ async def unmute_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def kick_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Kick a user from the group (they can rejoin). Usage: /kick [reason] (reply to a message)."""
     user_id = update.effective_user.id
-    if not is_authorized(user_id):
+    if not await is_group_authorized(context, user_id, update.effective_chat):
         return
 
     chat = update.effective_chat
