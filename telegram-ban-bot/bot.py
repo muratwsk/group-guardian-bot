@@ -1464,6 +1464,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await log_action(
             context,
             f"BANALL (via /info): {target_name} ({target_id}) von {query.from_user.full_name} — {len(successful_groups)} OK, {len(failed_groups)} Fehler",
+            group_id=scope_chat_id, group_name=str(scope_chat_id),
         )
 
     elif data.startswith("info_unbanall_"):
@@ -1492,7 +1493,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=keyboard,
             parse_mode="HTML",
         )
-        await log_action(context, f"UNBANALL (via /info): {target_name} ({target_id}) von {query.from_user.full_name}")
+        await log_action(context, f"UNBANALL (via /info): {target_name} ({target_id}) von {query.from_user.full_name}", group_id=scope_chat_id, group_name=str(scope_chat_id))
 
     elif data.startswith("info_ban_"):
         payload = data.replace("info_ban_", "", 1)
@@ -1520,7 +1521,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=keyboard,
             parse_mode="HTML",
         )
-        await log_action(context, f"BAN (via /info): {target_name} ({target_id}) in {scope_chat_id} von {query.from_user.full_name}")
+        await log_action(context, f"BAN (via /info): {target_name} ({target_id}) in {scope_chat_id} von {query.from_user.full_name}", group_id=scope_chat_id, group_name=str(scope_chat_id))
 
     elif data.startswith("info_unban_"):
         payload = data.replace("info_unban_", "", 1)
@@ -1544,7 +1545,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=keyboard,
             parse_mode="HTML",
         )
-        await log_action(context, f"UNBAN (via /info): {target_name} ({target_id}) in {scope_chat_id} von {query.from_user.full_name}")
+        await log_action(context, f"UNBAN (via /info): {target_name} ({target_id}) in {scope_chat_id} von {query.from_user.full_name}", group_id=scope_chat_id, group_name=str(scope_chat_id))
 
     elif data.startswith("info_mute_"):
         payload = data.replace("info_mute_", "", 1)
@@ -1576,7 +1577,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=keyboard,
             parse_mode="HTML",
         )
-        await log_action(context, f"MUTE (via /info): {target_name} ({target_id}) in {scope_chat_id} von {query.from_user.full_name}")
+        await log_action(context, f"MUTE (via /info): {target_name} ({target_id}) in {scope_chat_id} von {query.from_user.full_name}", group_id=scope_chat_id, group_name=str(scope_chat_id))
 
     elif data.startswith("info_unmute_"):
         payload = data.replace("info_unmute_", "", 1)
@@ -1604,7 +1605,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=keyboard,
             parse_mode="HTML",
         )
-        await log_action(context, f"UNMUTE (via /info): {target_name} ({target_id}) in {scope_chat_id} von {query.from_user.full_name}")
+        await log_action(context, f"UNMUTE (via /info): {target_name} ({target_id}) in {scope_chat_id} von {query.from_user.full_name}", group_id=scope_chat_id, group_name=str(scope_chat_id))
 
     # === CMD UNMUTE BUTTON ===
     elif data.startswith("cmd_unmute_"):
@@ -1628,7 +1629,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"{uname}[<code>{target_id}</code>] wurde ✅ entmutet.",
                 parse_mode="HTML",
             )
-            await log_action(context, f"✅ Unmute (Button): {target_name} ({target_id}) in {scope_chat_id} von {query.from_user.full_name}")
+            await log_action(context, f"✅ Unmute (Button): {target_name} ({target_id}) in {scope_chat_id} von {query.from_user.full_name}", group_id=scope_chat_id, group_name=str(scope_chat_id))
         except Exception as e:
             await query.answer(f"❌ Unmute fehlgeschlagen: {e}", show_alert=True)
 
@@ -1650,7 +1651,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"{uname}[<code>{target_id}</code>] wurde ✅ entbannt.",
                 parse_mode="HTML",
             )
-            await log_action(context, f"✅ Unban (Button): {target_name} ({target_id}) in {scope_chat_id} von {query.from_user.full_name}")
+            await log_action(context, f"✅ Unban (Button): {target_name} ({target_id}) in {scope_chat_id} von {query.from_user.full_name}", group_id=scope_chat_id, group_name=str(scope_chat_id))
         except Exception as e:
             await query.answer(f"❌ Unban fehlgeschlagen: {e}", show_alert=True)
 
@@ -1677,7 +1678,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"↩️ Link-Verwarnung für {uname}[<code>{target_id}</code>] wurde zurückgenommen.",
             parse_mode="HTML",
         )
-        await log_action(context, f"LINK-WARN CANCEL: {target_name} ({target_id}) in {scope_chat_id} von {query.from_user.full_name}")
+        await log_action(context, f"LINK-WARN CANCEL: {target_name} ({target_id}) in {scope_chat_id} von {query.from_user.full_name}", group_id=scope_chat_id, group_name=str(scope_chat_id))
 
     # === OPEN / CLOSE MENU ===
     elif data == "menu_openclose":
@@ -3183,7 +3184,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 warnings.pop(f"{chat_id_str}_{target_id_str}", None)
                 save_data(bot_data)
                 await query.edit_message_text(result_text, parse_mode="HTML")
-                await log_action(context, f"WARN AUTO-PUNISH ({punishment}): {t_name} ({target_id}) von {query.from_user.full_name}")
+                await log_action(context, f"WARN AUTO-PUNISH ({punishment}): {t_name} ({target_id}) von {query.from_user.full_name}", group_id=int(chat_id_str), group_name=str(chat_id_str))
             else:
                 keyboard = [
                     [InlineKeyboardButton("🚫 Ban", callback_data=f"warn_punish_ban_{chat_id_str}_{target_id_str}"),
@@ -3267,7 +3268,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         warnings.pop(f"{chat_id_val}_{target_id}", None)
         save_data(bot_data)
         await query.edit_message_text(result_text)
-        await log_action(context, f"WARN PUNISH ({action}): {t_name} ({target_id}) von {query.from_user.full_name}")
+        await log_action(context, f"WARN PUNISH ({action}): {t_name} ({target_id}) von {query.from_user.full_name}", group_id=int(chat_id_val), group_name=str(chat_id_val))
 
     elif data == "add_admin":
         if not is_owner(user_id):
