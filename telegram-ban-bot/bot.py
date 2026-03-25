@@ -32,6 +32,7 @@ CONFIG_FILE = os.path.join(os.path.dirname(__file__), "config.json")
 DATA_FILE = os.path.join(os.path.dirname(__file__), "data.json")
 GROUPS_FILE = os.path.join(os.path.dirname(__file__), "groups.json")
 LOCK_FILE = os.path.join(os.path.dirname(__file__), "bot.lock")
+PROTOKOLL_FILE = os.path.join(os.path.dirname(__file__), "protokoll.json")
 
 
 
