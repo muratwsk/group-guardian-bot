@@ -4057,7 +4057,7 @@ async def unban_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"✅ {uname}[<code>{target_id}</code>] wurde entsperrt.",
             parse_mode="HTML",
         )
-        await log_action(context, f"✅ Unban: {target_name} [{target_id}] in {chat.title} von {update.effective_user.first_name}")
+        await log_action(context, f"✅ Unban: {target_name} [{target_id}] in {chat.title} von {update.effective_user.first_name}", group_id=chat.id, group_name=chat.title)
     except Exception as e:
         await update.message.reply_text(f"❌ Unban fehlgeschlagen: {e}")
 
