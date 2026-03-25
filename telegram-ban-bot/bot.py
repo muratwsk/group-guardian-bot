@@ -2953,6 +2953,97 @@ async def info_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode="HTML",
     )
 
+# --- /mute ---
+
+async def mute_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Mute a user in the group. Usage: /mute [reason] (reply to a message)."""
+    user_id = update.effective_user.id
+    if not is_authorized(user_id):
+        return
+
+    chat = update.effective_chat
+    if not chat or chat.type not in ("group", "supergroup"):
+        await update.message.reply_text("⚠️ Dieser Befehl funktioniert nur in Gruppen.")
+        return
+
+    target_id, target_name = await resolve_target(update, context)
+    if target_id is None:
+        return
+
+    # Admin-Schutz
+    if await is_chat_admin(context, chat.id, target_id):
+        await update.message.reply_text("⛔ Dieser User ist ein Administrator — Mute ist nicht möglich.")
+        return
+
+    reason = " ".join(context.args) if context.args else None
+    if update.message.reply_to_message and context.args:
+        reason = " ".join(context.args)
+
+    try:
+        await context.bot.restrict_chat_member(
+            chat_id=chat.id,
+            user_id=target_id,
+            permissions=ChatPermissions.no_permissions(),
+        )
+
+        # Look up username
+        tracked = lookup_user(str(target_id))
+        target_username = tracked.get("username") if tracked else None
+        uname = f"@{target_username} " if target_username else ""
+
+        reason_text = f"\n📝 <b>Grund:</b> {html.escape(reason)}" if reason else ""
+
+        keyboard = InlineKeyboardMarkup([
+            [
+                InlineKeyboardButton("🕹 Rechte", url=f"tg://resolve?domain={chat.username}&admin={target_id}" if chat.username else f"tg://chat_permissions?chat_id={str(chat.id).replace('-100', '')}"),
+                InlineKeyboardButton("✅ Unmute", callback_data=f"cmd_unmute_{chat.id}_{target_id}"),
+            ]
+        ])
+
+        await update.message.reply_text(
+            f"{uname}[<code>{target_id}</code>] wurde 🔇 stummgeschaltet.{reason_text}",
+            reply_markup=keyboard,
+            parse_mode="HTML",
+        )
+        await log_action(context, f"🔇 Mute: {target_name} [{target_id}] in {chat.title} von {update.effective_user.first_name}" + (f" | Grund: {reason}" if reason else ""))
+    except Exception as e:
+        await update.message.reply_text(f"❌ Mute fehlgeschlagen: {e}")
+
+async def unmute_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Unmute a user in the group. Usage: /unmute (reply to a message)."""
+    user_id = update.effective_user.id
+    if not is_authorized(user_id):
+        return
+
+    chat = update.effective_chat
+    if not chat or chat.type not in ("group", "supergroup"):
+        await update.message.reply_text("⚠️ Dieser Befehl funktioniert nur in Gruppen.")
+        return
+
+    target_id, target_name = await resolve_target(update, context)
+    if target_id is None:
+        return
+
+    try:
+        chat_obj = await context.bot.get_chat(chat.id)
+        await context.bot.restrict_chat_member(
+            chat_id=chat.id,
+            user_id=target_id,
+            permissions=chat_obj.permissions or ChatPermissions.all_permissions(),
+        )
+
+        tracked = lookup_user(str(target_id))
+        target_username = tracked.get("username") if tracked else None
+        uname = f"@{target_username} " if target_username else ""
+
+        await update.message.reply_text(
+            f"{uname}[<code>{target_id}</code>] wurde ✅ entmutet.",
+            parse_mode="HTML",
+        )
+        await log_action(context, f"✅ Unmute: {target_name} [{target_id}] in {chat.title} von {update.effective_user.first_name}")
+    except Exception as e:
+        await update.message.reply_text(f"❌ Unmute fehlgeschlagen: {e}")
+
 # --- /kick ---
 
 async def kick_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
