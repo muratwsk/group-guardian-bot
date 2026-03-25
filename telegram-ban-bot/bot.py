@@ -4176,9 +4176,9 @@ async def personal_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if not context.args:
         await update.message.reply_text(
-            "⚠️ Nutzung: /befehl <Name>\n"
+            "⚠️ Nutzung: /personal <Name>\n"
             "Antwort auf eine Nachricht, die als Befehl gespeichert werden soll.\n\n"
-            "Beispiel: Antworte auf eine Nachricht und schreibe /befehl hele",
+            "Beispiel: Antworte auf eine Nachricht und schreibe /personal hele",
         )
         return
 
