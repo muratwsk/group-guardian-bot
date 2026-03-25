@@ -3728,19 +3728,21 @@ async def track_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     logger.error(f"Cmd delete failed: {e}")
 
     # --- Anti-Spam: Link check ---
-    if update.message.from_user and not is_authorized(update.message.from_user.id):
-        if not await is_chat_admin(context, update.effective_chat.id, update.message.from_user.id):
-            bot_data_as = load_data()
-            lc = bot_data_as.get("antispam_links", {"punishment": "aus", "delete": True})
-            lc_punishment = lc.get("punishment", "aus")
-            lc_delete = lc.get("delete", True)
-            has_link = False
-            # Check entities for URLs
-            for ent in (update.message.entities or []) + (update.message.caption_entities or []):
-                if ent.type in ("url", "text_link"):
-                    has_link = True
-                    break
-            if has_link and (lc_punishment != "aus" or lc_delete):
+    if update.message.from_user:
+        sender_as = update.message.from_user
+        # Check all entities for links
+        all_entities = list(update.message.entities or []) + list(update.message.caption_entities or [])
+        has_link = any(ent.type in ("url", "text_link") for ent in all_entities)
+        if has_link:
+            logger.info(f"LINK detected from {sender_as.id} in {update.effective_chat.id}")
+            is_adm_as = is_authorized(sender_as.id) or await is_chat_admin(context, update.effective_chat.id, sender_as.id)
+            if not is_adm_as:
+                bot_data_as = load_data()
+                lc = bot_data_as.get("antispam_links", {"punishment": "aus", "delete": True})
+                lc_punishment = lc.get("punishment", "aus")
+                lc_delete = lc.get("delete", True)
+                logger.info(f"Link config: punishment={lc_punishment}, delete={lc_delete}")
+                if lc_punishment != "aus" or lc_delete:
                 chat_id_as = update.effective_chat.id
                 user_id_as = update.message.from_user.id
                 user_name_as = update.message.from_user.full_name
