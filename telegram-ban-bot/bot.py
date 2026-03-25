@@ -1605,7 +1605,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=keyboard,
             parse_mode="HTML",
         )
-        await log_action(context, f"UNMUTE (via /info): {target_name} ({target_id}) in {scope_chat_id} von {query.from_user.full_name}")
+        await log_action(context, f"UNMUTE (via /info): {target_name} ({target_id}) in {scope_chat_id} von {query.from_user.full_name}", group_id=scope_chat_id, group_name=str(scope_chat_id))
 
     # === CMD UNMUTE BUTTON ===
     elif data.startswith("cmd_unmute_"):
