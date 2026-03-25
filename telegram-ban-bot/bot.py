@@ -1651,7 +1651,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"{uname}[<code>{target_id}</code>] wurde ✅ entbannt.",
                 parse_mode="HTML",
             )
-            await log_action(context, f"✅ Unban (Button): {target_name} ({target_id}) in {scope_chat_id} von {query.from_user.full_name}")
+            await log_action(context, f"✅ Unban (Button): {target_name} ({target_id}) in {scope_chat_id} von {query.from_user.full_name}", group_id=scope_chat_id, group_name=str(scope_chat_id))
         except Exception as e:
             await query.answer(f"❌ Unban fehlgeschlagen: {e}", show_alert=True)
 
