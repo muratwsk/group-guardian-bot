@@ -452,7 +452,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
          InlineKeyboardButton("👥 Mitglieder", callback_data="menu_members")],
         [InlineKeyboardButton("🚪 Freigabemodus", callback_data="menu_freigabe"),
          InlineKeyboardButton("📋 Protokoll", callback_data="menu_protokoll")],
-        [InlineKeyboardButton("⚙️ Einstellungen", callback_data="menu_settings")],
+        [InlineKeyboardButton("🔒 Sperren", callback_data="menu_sperren"),
+         InlineKeyboardButton("⚙️ Einstellungen", callback_data="menu_settings")],
     ]
 
     role = "👑 Owner" if is_owner(user_id) else "🛡️ Admin"
@@ -697,7 +698,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
              InlineKeyboardButton("👥 Mitglieder", callback_data="menu_members")],
             [InlineKeyboardButton("🚪 Freigabemodus", callback_data="menu_freigabe"),
              InlineKeyboardButton("📋 Protokoll", callback_data="menu_protokoll")],
-            [InlineKeyboardButton("⚙️ Einstellungen", callback_data="menu_settings")],
+            [InlineKeyboardButton("🔒 Sperren", callback_data="menu_sperren"),
+             InlineKeyboardButton("⚙️ Einstellungen", callback_data="menu_settings")],
         ]
         role = "👑 Owner" if is_owner(user_id) else "🛡️ Admin"
         # Clear any pending state
@@ -2386,6 +2388,118 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             [InlineKeyboardButton("🔙 Zurück", callback_data="back_main")],
         ]
         await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
+
+    # === SPERREN MENU ===
+    elif data == "menu_sperren":
+        keyboard = [
+            [InlineKeyboardButton("🤖 Bot Sperren", callback_data="sperr_bot_menu")],
+            [InlineKeyboardButton("🔙 Zurück", callback_data="back_main")],
+        ]
+        await query.edit_message_text(
+            "🔒 <b>Sperren</b>\n\nWähle eine Sperr-Funktion:",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode="HTML",
+        )
+
+    # === BOT SPERREN MENU ===
+    elif data == "sperr_bot_menu":
+        bot_data = load_data()
+        sb = bot_data.get("sperr_bots", {"enabled": False, "punishment": "ban", "delete": True, "groups": []})
+        enabled = sb.get("enabled", False)
+        punishment = sb.get("punishment", "ban")
+        delete_msg = sb.get("delete", True)
+        selected_groups = sb.get("groups", [])
+        p_labels = {"warn": "Warn", "kick": "Kick", "mute": "Mute", "ban": "Ban"}
+        p_label = p_labels.get(punishment, punishment)
+        status = f"Aktiv (Bestrafung: {p_label})" if enabled else "Inaktiv"
+        del_label = "Ja ✅" if delete_msg else "Nein"
+        grp_label = f"{len(selected_groups)} Gruppen" if selected_groups else "Alle Gruppen"
+        keyboard = [
+            [InlineKeyboardButton("❌ Aus" if not enabled else "✖️ Aus", callback_data="sperr_bot_off"),
+             InlineKeyboardButton("✔️ Ein" if enabled else "☑️ Ein", callback_data="sperr_bot_on")],
+            [InlineKeyboardButton(f"{'❌' if not delete_msg else '✅'} Auto-Delete", callback_data="sperr_bot_del")],
+            [InlineKeyboardButton("❗ Warn", callback_data="sperr_bot_p_warn"),
+             InlineKeyboardButton("❗ Kick", callback_data="sperr_bot_p_kick")],
+            [InlineKeyboardButton("🔇 Mute", callback_data="sperr_bot_p_mute"),
+             InlineKeyboardButton("🚫 Ban", callback_data="sperr_bot_p_ban")],
+            [InlineKeyboardButton(f"📋 Gruppen ({grp_label})", callback_data="sperr_bot_groups")],
+            [InlineKeyboardButton("🔙 Zurück", callback_data="menu_sperren")],
+        ]
+        await query.edit_message_text(
+            f"🤖 <b>Bots Sperren</b>\n"
+            f"Wenn du diese Funktion aktivierst, können der Gruppe keine Bots von Nutzern hinzugefügt werden.\n"
+            f"Darüberhinaus kannst du eine Bestrafung für Benutzer festlegen, die versuchen, dies zu tun.\n\n"
+            f"<b>Status</b>: {status}\n"
+            f"<b>Auto-Delete</b>: {del_label}\n"
+            f"<b>Gruppen</b>: {grp_label}",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode="HTML",
+        )
+
+    elif data == "sperr_bot_on":
+        bot_data = load_data()
+        sb = bot_data.setdefault("sperr_bots", {"enabled": False, "punishment": "ban", "delete": True, "groups": []})
+        sb["enabled"] = True
+        save_data(bot_data)
+        # Re-render
+        query.data = "sperr_bot_menu"
+        return await button_handler(update, context)
+
+    elif data == "sperr_bot_off":
+        bot_data = load_data()
+        sb = bot_data.setdefault("sperr_bots", {"enabled": False, "punishment": "ban", "delete": True, "groups": []})
+        sb["enabled"] = False
+        save_data(bot_data)
+        query.data = "sperr_bot_menu"
+        return await button_handler(update, context)
+
+    elif data == "sperr_bot_del":
+        bot_data = load_data()
+        sb = bot_data.setdefault("sperr_bots", {"enabled": False, "punishment": "ban", "delete": True, "groups": []})
+        sb["delete"] = not sb.get("delete", True)
+        save_data(bot_data)
+        query.data = "sperr_bot_menu"
+        return await button_handler(update, context)
+
+    elif data.startswith("sperr_bot_p_"):
+        p = data.replace("sperr_bot_p_", "")
+        bot_data = load_data()
+        sb = bot_data.setdefault("sperr_bots", {"enabled": False, "punishment": "ban", "delete": True, "groups": []})
+        sb["punishment"] = p
+        save_data(bot_data)
+        query.data = "sperr_bot_menu"
+        return await button_handler(update, context)
+
+    elif data == "sperr_bot_groups":
+        bot_data = load_data()
+        sb = bot_data.get("sperr_bots", {"groups": []})
+        selected = [str(g) for g in sb.get("groups", [])]
+        groups = await get_bot_groups(context)
+        keyboard = []
+        for g in groups:
+            gid_str = str(g["id"])
+            check = "✅" if gid_str in selected else "⬜"
+            keyboard.append([InlineKeyboardButton(f"{check} {g['title']}", callback_data=f"sperr_bot_tg_{gid_str}")])
+        keyboard.append([InlineKeyboardButton("🔙 Zurück", callback_data="sperr_bot_menu")])
+        await query.edit_message_text(
+            "🤖 <b>Bot Sperren — Gruppen</b>\n\nWähle die Gruppen (leer = alle):",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode="HTML",
+        )
+
+    elif data.startswith("sperr_bot_tg_"):
+        gid_str = data.replace("sperr_bot_tg_", "")
+        bot_data = load_data()
+        sb = bot_data.setdefault("sperr_bots", {"enabled": False, "punishment": "ban", "delete": True, "groups": []})
+        groups_list = [str(g) for g in sb.get("groups", [])]
+        if gid_str in groups_list:
+            groups_list.remove(gid_str)
+        else:
+            groups_list.append(gid_str)
+        sb["groups"] = groups_list
+        save_data(bot_data)
+        query.data = "sperr_bot_groups"
+        return await button_handler(update, context)
 
     # === ANTI-SPAM MENU ===
     elif data == "menu_antispam":
@@ -5023,16 +5137,71 @@ async def track_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     for member in update.message.new_chat_members or []:
         track_user(member)
-        if is_banned_in_group(update.effective_chat.id, member.id):
+        chat_id = update.effective_chat.id
+
+        # --- Bot Sperren: block bots added by non-admins ---
+        if member.is_bot and member.id != context.bot.id:
+            bot_data_sb = load_data()
+            sb = bot_data_sb.get("sperr_bots", {"enabled": False})
+            if sb.get("enabled", False):
+                sb_groups = [str(g) for g in sb.get("groups", [])]
+                applies = not sb_groups or str(chat_id) in sb_groups
+                if applies:
+                    adder = update.message.from_user
+                    is_adm = await is_chat_admin(context, chat_id, adder.id) if adder else False
+                    if not is_adm:
+                        # Remove the bot
+                        try:
+                            await context.bot.ban_chat_member(chat_id=chat_id, user_id=member.id, revoke_messages=True)
+                            await context.bot.unban_chat_member(chat_id=chat_id, user_id=member.id, only_if_banned=True)
+                        except Exception as e:
+                            logger.error(f"Bot-Sperren: Could not remove bot {member.id}: {e}")
+                        # Delete service message
+                        if sb.get("delete", True):
+                            try:
+                                await update.message.delete()
+                            except Exception:
+                                pass
+                        # Punish the adder
+                        punishment = sb.get("punishment", "ban")
+                        adder_name = adder.full_name if adder else "Unknown"
+                        adder_id = adder.id if adder else 0
+                        try:
+                            if punishment == "ban":
+                                await context.bot.ban_chat_member(chat_id=chat_id, user_id=adder_id, revoke_messages=False)
+                                remember_group_ban([chat_id], adder_id)
+                            elif punishment == "kick":
+                                await context.bot.ban_chat_member(chat_id=chat_id, user_id=adder_id, revoke_messages=False)
+                                await context.bot.unban_chat_member(chat_id=chat_id, user_id=adder_id, only_if_banned=True)
+                            elif punishment == "mute":
+                                await context.bot.restrict_chat_member(chat_id=chat_id, user_id=adder_id, permissions=ChatPermissions.no_permissions())
+                            elif punishment == "warn":
+                                # Add a warning
+                                warnings_sb = bot_data_sb.setdefault("warnings", {})
+                                key = f"{chat_id}_{adder_id}"
+                                warnings_sb[key] = warnings_sb.get(key, 0) + 1
+                                save_data(bot_data_sb)
+                        except Exception as e:
+                            logger.error(f"Bot-Sperren punishment failed for {adder_id}: {e}")
+                        await log_action(
+                            context,
+                            f"🤖 BOT-SPERREN: Bot {member.full_name} ({member.id}) entfernt aus {update.effective_chat.title}. "
+                            f"Hinzugefügt von {adder_name} ({adder_id}) — Strafe: {punishment}",
+                            group_id=chat_id,
+                            group_name=update.effective_chat.title,
+                        )
+                        continue
+
+        if is_banned_in_group(chat_id, member.id):
             try:
-                await context.bot.ban_chat_member(chat_id=update.effective_chat.id, user_id=member.id, revoke_messages=True)
+                await context.bot.ban_chat_member(chat_id=chat_id, user_id=member.id, revoke_messages=True)
                 try:
                     await update.message.delete()
                 except Exception:
                     pass
                 await log_action(context, f"AUTO-REBANNED: {member.full_name} ({member.id}) in {update.effective_chat.title}")
             except Exception as e:
-                logger.error(f"Auto-reban via new_chat_members failed for {member.id} in {update.effective_chat.id}: {e}")
+                logger.error(f"Auto-reban via new_chat_members failed for {member.id} in {chat_id}: {e}")
 
 async def enforce_ban_on_chat_member(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.chat_member:
