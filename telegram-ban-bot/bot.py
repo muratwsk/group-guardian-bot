@@ -3318,7 +3318,7 @@ async def track_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
         left_member = update.message.left_chat_member
-        if is_banned_in_group(update.effective_chat.id, left_member.id):
+        if left_member and is_banned_in_group(update.effective_chat.id, left_member.id):
             try:
                 await update.message.delete()
             except Exception as e:
