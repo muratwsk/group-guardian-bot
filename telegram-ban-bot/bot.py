@@ -3601,10 +3601,10 @@ async def ban_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         uname = f"@{target_username} " if target_username else ""
         reason_text = f"\n📝 <b>Grund:</b> {html.escape(reason)}" if reason else ""
         keyboard = InlineKeyboardMarkup([
-            [InlineKeyboardButton("✅ Unban", callback_data=f"cmd_unban_{chat.id}_{target_id}")]
+            [InlineKeyboardButton("✅ Entsperren", callback_data=f"cmd_unban_{chat.id}_{target_id}")]
         ])
         await update.message.reply_text(
-            f"🚫 {uname}[<code>{target_id}</code>] wurde gebannt!{reason_text}",
+            f"{uname}[<code>{target_id}</code>] verbannt.{reason_text}",
             parse_mode="HTML",
             reply_markup=keyboard,
         )
