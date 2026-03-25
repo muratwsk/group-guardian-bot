@@ -46,13 +46,16 @@ LOCK_FILE = os.path.join(os.path.dirname(__file__), "bot.lock")
 
 async def get_banned_members_pyrogram(chat_id: int) -> list[int]:
     """Use Pyrogram (MTProto) to quickly fetch all banned user IDs from a chat."""
+    if not PYROGRAM_AVAILABLE:
+        logger.warning("Pyrogram not installed, falling back to tracked bans")
+        return None
     cfg = load_config()
     api_id = cfg.get("api_id")
     api_hash = cfg.get("api_hash")
     bot_token = cfg.get("bot_token")
     if not api_id or not api_hash:
-        logger.warning("Pyrogram: api_id/api_hash not configured, falling back to slow scan")
-        return None  # Signal: fallback needed
+        logger.warning("Pyrogram: api_id/api_hash not configured, falling back")
+        return None
 
     banned_ids = []
     session_path = os.path.join(os.path.dirname(__file__), "pyrogram_bot_session")
