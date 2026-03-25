@@ -426,9 +426,7 @@ async def reload_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
 
     # Clear caches so fresh data is loaded
-    CONFIG_CACHE["data"] = None
-    DATA_CACHE["data"] = None
-    USERS_CACHE["data"] = None
+    db_invalidate_cache()
     ADMIN_STATUS_CACHE.clear()
 
     await update.message.reply_text("✅ Bot-Konfiguration neu geladen.")
