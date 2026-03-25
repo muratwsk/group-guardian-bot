@@ -9,15 +9,6 @@ import signal
 import subprocess
 from zoneinfo import ZoneInfo
 
-# Pyrogram for fast banned-member scan (optional)
-try:
-    from pyrogram import Client as PyroClient
-    from pyrogram import enums as pyro_enums
-    PYROGRAM_AVAILABLE = True
-except ImportError:
-    PYROGRAM_AVAILABLE = False
-    PyroClient = None
-    pyro_enums = None
 
 BERLIN_TZ = ZoneInfo("Europe/Berlin")
 
@@ -42,37 +33,6 @@ DATA_FILE = os.path.join(os.path.dirname(__file__), "data.json")
 GROUPS_FILE = os.path.join(os.path.dirname(__file__), "groups.json")
 LOCK_FILE = os.path.join(os.path.dirname(__file__), "bot.lock")
 
-# --- Pyrogram helper for fast banned-member scan ---
-
-async def get_banned_members_pyrogram(chat_id: int) -> list[int]:
-    """Use Pyrogram (MTProto) to quickly fetch all banned user IDs from a chat."""
-    if not PYROGRAM_AVAILABLE:
-        logger.warning("Pyrogram not installed, falling back to tracked bans")
-        return None
-    cfg = load_config()
-    api_id = cfg.get("api_id")
-    api_hash = cfg.get("api_hash")
-    bot_token = cfg.get("bot_token")
-    if not api_id or not api_hash:
-        logger.warning("Pyrogram: api_id/api_hash not configured, falling back")
-        return None
-
-    banned_ids = []
-    session_path = os.path.join(os.path.dirname(__file__), "pyrogram_bot_session")
-    async with PyroClient(
-        name=session_path,
-        api_id=api_id,
-        api_hash=api_hash,
-        bot_token=bot_token,
-        no_updates=True,
-    ) as pyro_app:
-        try:
-            async for member in pyro_app.get_chat_members(chat_id, filter=pyro_enums.ChatMembersFilter.BANNED):
-                banned_ids.append(member.user.id)
-        except Exception as e:
-            logger.error(f"Pyrogram get_banned_members failed for {chat_id}: {e}")
-            return None
-    return banned_ids
 
 
 
@@ -1576,6 +1536,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         try:
             await context.bot.unban_chat_member(chat_id=scope_chat_id, user_id=target_id, only_if_banned=True)
+            forget_group_ban([scope_chat_id], target_id)
             uname = f"@{target_username} " if target_username else ""
             await query.edit_message_text(
                 f"{uname}[<code>{target_id}</code>] wurde ✅ entbannt.",
@@ -1975,18 +1936,16 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         if "unban" in action:
             for gid in selected:
-                # Try fast Pyrogram scan first
-                banned_ids = await get_banned_members_pyrogram(gid)
-
-                if banned_ids is None:
-                    # Fallback: use local tracking only
-                    logger.warning(f"Pyrogram unavailable, using tracked bans for {gid}")
-                    banned_ids = get_tracked_banned_user_ids(gid)
+                banned_ids = get_tracked_banned_user_ids(gid)
 
                 group_obj = next((g for g in (await get_bot_groups(context)) if g["id"] == gid), None)
                 group_title = group_obj["title"] if group_obj else str(gid)
 
-                logger.info(f"Mass unban: {len(banned_ids)} banned users in {group_title}")
+                logger.info(f"Mass unban: {len(banned_ids)} tracked banned users in {group_title}")
+
+                if not banned_ids:
+                    skipped_count += 1
+                    continue
 
                 try:
                     await query.edit_message_text(
@@ -2003,6 +1962,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     except Exception as e:
                         logger.error(f"Mass unban failed for {uid} in {gid}: {e}")
                         error_count += 1
+                    await asyncio.sleep(0.3)  # Rate-Limit Schutz
 
                 # Clear tracked bans for this group
                 bot_data = load_data()
