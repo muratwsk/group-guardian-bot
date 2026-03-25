@@ -2606,6 +2606,9 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text("✅ Alle Verwarnungen gelöscht.", reply_markup=InlineKeyboardMarkup(keyboard))
 
     elif data.startswith("warn_undo_"):
+        if not is_admin(query.from_user.id):
+            await query.answer("⚠️ Du hast keine Berechtigung, diesen Vorgang auszuführen\n\n💡 Falls du denkst, berechtigt zu sein, sende /reload und versuche es erneut.", show_alert=True)
+            return
         parts = data.replace("warn_undo_", "").split("_")
         chat_id_str = parts[0]
         target_id_str = parts[1]
