@@ -4852,7 +4852,7 @@ async def track_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                                     text=f"⚠️ {html.escape(user_name)} wurde verwarnt ({max_w}/{max_w}) — Verbotenes Wort: <code>{html.escape(matched)}</code>\n{action_label_bw}",
                                     parse_mode="HTML",
                                 )
-                                await log_action(context, f"BADWORD-WARN AUTO-PUNISH ({warn_punishment}): {user_name} ({user_id_bw}) in {chat_id} — {max_w}/{max_w}")
+                                await log_action(context, f"BADWORD-WARN AUTO-PUNISH ({warn_punishment}): {user_name} ({user_id_bw}) in {chat_id} — {max_w}/{max_w}", group_id=chat_id, group_name=update.effective_chat.title)
                             else:
                                 await context.bot.send_message(
                                     chat_id=chat_id,
