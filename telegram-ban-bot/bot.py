@@ -2657,8 +2657,8 @@ async def warn_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     await context.bot.unban_chat_member(chat_id=chat.id, user_id=target_id)
                     action_label = "• <b>Aktion:</b> Gekickt ❗"
                 elif punishment == "mute":
-                    mute_hours = wc.get("mute_duration_hours", 5)
-                    until_date = now_de() + datetime.timedelta(hours=mute_hours)
+                    mute_secs = wc.get("mute_duration_seconds", wc.get("mute_duration_hours", 5) * 3600)
+                    until_date = now_de() + datetime.timedelta(seconds=mute_secs)
                     await context.bot.restrict_chat_member(
                         chat_id=chat.id, user_id=target_id,
                         permissions=ChatPermissions.no_permissions(),
