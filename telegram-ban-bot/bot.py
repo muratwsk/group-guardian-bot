@@ -302,12 +302,19 @@ def normalize_text(text):
     return ''.join(normalized)
 
 def check_forbidden_words(text, word_list):
-    """Check if any forbidden word appears in normalized text. Returns matched word or None."""
-    norm = normalize_text(text)
+    """Check if any forbidden word appears as a standalone word in the text. Returns matched word or None."""
+    # First check the original text split into words (normalized per-word)
+    import re as _re
+    # Split original text by whitespace and common separators
+    raw_words = _re.split(r'[\s,.\-_;:!?/\\|+=()\[\]{}<>]+', text)
     for word in word_list:
         norm_word = normalize_text(word)
-        if norm_word and norm_word in norm:
-            return word
+        if not norm_word:
+            continue
+        for raw_w in raw_words:
+            norm_raw = normalize_text(raw_w)
+            if norm_raw == norm_word:
+                return word
     return None
 
 import re as _re
