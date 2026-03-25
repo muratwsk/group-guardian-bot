@@ -2601,7 +2601,7 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     elif state == WAITING_BADWORD_ADD:
         text_input = update.message.text.strip()
-        words = [w.strip() for w in text_input.split(",") if w.strip()]
+        words = [w.strip() for w in text_input.splitlines() if w.strip()]
         if not words:
             await update.message.reply_text("⚠️ Bitte sende mindestens ein Wort.")
             return
