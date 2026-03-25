@@ -66,6 +66,16 @@ def normalize_data(data):
         "admin_prefixes": [],
         "user_prefixes": [],
     })
+    data.setdefault("antispam_links", {
+        "punishment": "aus",
+        "delete": True,
+    })
+    data.setdefault("antispam_forward", {
+        "channels": False,
+        "groups": False,
+        "users": False,
+        "bots": False,
+    })
     return data
 
 def load_data():
@@ -254,7 +264,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
          InlineKeyboardButton("⚠️ Warns", callback_data="menu_warns")],
         [InlineKeyboardButton("🔤 Verbotene Worte", callback_data="menu_badwords"),
          InlineKeyboardButton("🗑 Nachrichten", callback_data="menu_msgdelete")],
-        [InlineKeyboardButton("⚙️ Einstellungen", callback_data="menu_settings")],
+        [InlineKeyboardButton("🛡 Anti-Spam", callback_data="menu_antispam"),
+         InlineKeyboardButton("⚙️ Einstellungen", callback_data="menu_settings")],
     ]
 
     role = "👑 Owner" if is_owner(user_id) else "🛡️ Admin"
@@ -493,7 +504,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
              InlineKeyboardButton("⚠️ Warns", callback_data="menu_warns")],
             [InlineKeyboardButton("🔤 Verbotene Worte", callback_data="menu_badwords"),
              InlineKeyboardButton("🗑 Nachrichten", callback_data="menu_msgdelete")],
-            [InlineKeyboardButton("⚙️ Einstellungen", callback_data="menu_settings")],
+            [InlineKeyboardButton("🛡 Anti-Spam", callback_data="menu_antispam"),
+             InlineKeyboardButton("⚙️ Einstellungen", callback_data="menu_settings")],
         ]
         role = "👑 Owner" if is_owner(user_id) else "🛡️ Admin"
         # Clear any pending state
@@ -1719,6 +1731,168 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             [InlineKeyboardButton("🔙 Zurück", callback_data="back_main")],
         ]
         await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
+
+    # === ANTI-SPAM MENU ===
+    elif data == "menu_antispam":
+        keyboard = [
+            [InlineKeyboardButton("🔗 Vollständige Linksperre", callback_data="as_links_menu")],
+            [InlineKeyboardButton("📬 Weiterleitung", callback_data="as_forward_menu")],
+            [InlineKeyboardButton("🔙 Zurück", callback_data="back_main")],
+        ]
+        await query.edit_message_text(
+            "🛡 <b>Anti-Spam</b>\n\n"
+            "Hier kannst du Spam-Schutz Funktionen konfigurieren.",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode="HTML",
+        )
+
+    # --- Vollständige Linksperre ---
+    elif data == "as_links_menu":
+        bot_data = load_data()
+        lc = bot_data.get("antispam_links", {"punishment": "aus", "delete": True})
+        punishment = lc.get("punishment", "aus")
+        delete_msg = lc.get("delete", True)
+        p_labels = {"aus": "Aus", "warn": "Warn", "kick": "Kick", "mute": "Mute", "ban": "Ban"}
+        p_label = p_labels.get(punishment, punishment)
+        del_label = "Ja ✅" if delete_msg else "Nein"
+        keyboard = [
+            [InlineKeyboardButton("❌ Aus", callback_data="as_link_set_aus"),
+             InlineKeyboardButton("❗ Warn", callback_data="as_link_set_warn"),
+             InlineKeyboardButton("❗ Kick", callback_data="as_link_set_kick")],
+            [InlineKeyboardButton("🤫 Mute", callback_data="as_link_set_mute"),
+             InlineKeyboardButton("🚫 Ban", callback_data="as_link_set_ban")],
+            [InlineKeyboardButton(f"🗑 Nachrichten Löschen {'✅' if delete_msg else '❌'}", callback_data="as_link_toggle_delete")],
+            [InlineKeyboardButton("🔙 Zurück", callback_data="menu_antispam")],
+        ]
+        await query.edit_message_text(
+            f"🔗 <b>Vollständige Linksperre</b>\n"
+            f"Wähle die Bestrafung für das Senden eines Links jeglicher Art aus.\n\n"
+            f"<b>Bestrafung:</b> {p_label}\n"
+            f"<b>Löschen:</b> {del_label}",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode="HTML",
+        )
+
+    elif data.startswith("as_link_set_"):
+        val = data.replace("as_link_set_", "")
+        bot_data = load_data()
+        bot_data.setdefault("antispam_links", {})["punishment"] = val
+        save_data(bot_data)
+        await query.answer(f"Bestrafung auf {val} gesetzt ✅")
+        # Re-render
+        lc = bot_data["antispam_links"]
+        punishment = lc.get("punishment", "aus")
+        delete_msg = lc.get("delete", True)
+        p_labels = {"aus": "Aus", "warn": "Warn", "kick": "Kick", "mute": "Mute", "ban": "Ban"}
+        p_label = p_labels.get(punishment, punishment)
+        del_label = "Ja ✅" if delete_msg else "Nein"
+        keyboard = [
+            [InlineKeyboardButton("❌ Aus", callback_data="as_link_set_aus"),
+             InlineKeyboardButton("❗ Warn", callback_data="as_link_set_warn"),
+             InlineKeyboardButton("❗ Kick", callback_data="as_link_set_kick")],
+            [InlineKeyboardButton("🤫 Mute", callback_data="as_link_set_mute"),
+             InlineKeyboardButton("🚫 Ban", callback_data="as_link_set_ban")],
+            [InlineKeyboardButton(f"🗑 Nachrichten Löschen {'✅' if delete_msg else '❌'}", callback_data="as_link_toggle_delete")],
+            [InlineKeyboardButton("🔙 Zurück", callback_data="menu_antispam")],
+        ]
+        await query.edit_message_text(
+            f"🔗 <b>Vollständige Linksperre</b>\n"
+            f"Wähle die Bestrafung für das Senden eines Links jeglicher Art aus.\n\n"
+            f"<b>Bestrafung:</b> {p_label}\n"
+            f"<b>Löschen:</b> {del_label}",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode="HTML",
+        )
+
+    elif data == "as_link_toggle_delete":
+        bot_data = load_data()
+        lc = bot_data.setdefault("antispam_links", {"punishment": "aus", "delete": True})
+        lc["delete"] = not lc.get("delete", True)
+        save_data(bot_data)
+        await query.answer(f"Löschen: {'An' if lc['delete'] else 'Aus'} ✅")
+        punishment = lc.get("punishment", "aus")
+        delete_msg = lc.get("delete", True)
+        p_labels = {"aus": "Aus", "warn": "Warn", "kick": "Kick", "mute": "Mute", "ban": "Ban"}
+        p_label = p_labels.get(punishment, punishment)
+        del_label = "Ja ✅" if delete_msg else "Nein"
+        keyboard = [
+            [InlineKeyboardButton("❌ Aus", callback_data="as_link_set_aus"),
+             InlineKeyboardButton("❗ Warn", callback_data="as_link_set_warn"),
+             InlineKeyboardButton("❗ Kick", callback_data="as_link_set_kick")],
+            [InlineKeyboardButton("🤫 Mute", callback_data="as_link_set_mute"),
+             InlineKeyboardButton("🚫 Ban", callback_data="as_link_set_ban")],
+            [InlineKeyboardButton(f"🗑 Nachrichten Löschen {'✅' if delete_msg else '❌'}", callback_data="as_link_toggle_delete")],
+            [InlineKeyboardButton("🔙 Zurück", callback_data="menu_antispam")],
+        ]
+        await query.edit_message_text(
+            f"🔗 <b>Vollständige Linksperre</b>\n"
+            f"Wähle die Bestrafung für das Senden eines Links jeglicher Art aus.\n\n"
+            f"<b>Bestrafung:</b> {p_label}\n"
+            f"<b>Löschen:</b> {del_label}",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode="HTML",
+        )
+
+    # --- Weiterleitung ---
+    elif data == "as_forward_menu":
+        bot_data = load_data()
+        fw = bot_data.get("antispam_forward", {})
+        ch = "✅" if fw.get("channels") else "❌"
+        gr = "✅" if fw.get("groups") else "❌"
+        us = "✅" if fw.get("users") else "❌"
+        bo = "✅" if fw.get("bots") else "❌"
+        keyboard = [
+            [InlineKeyboardButton(f"📣 Kanäle {ch}", callback_data="as_fw_toggle_channels"),
+             InlineKeyboardButton(f"👥 Gruppen {gr}", callback_data="as_fw_toggle_groups")],
+            [InlineKeyboardButton(f"👤 Benutzer {us}", callback_data="as_fw_toggle_users"),
+             InlineKeyboardButton(f"🤖 Bot {bo}", callback_data="as_fw_toggle_bots")],
+            [InlineKeyboardButton("🔙 Zurück", callback_data="menu_antispam")],
+        ]
+        await query.edit_message_text(
+            f"📬 <b>Weiterleitung</b>\n"
+            f"Wähle eine Strafe für das Weiterleiten von Nachrichten* in der Gruppe "
+            f"(<i>*aus Kanälen oder Posts von Nutzern / Bots</i>).\n\n"
+            f"Weiterleitung aus Gruppen blockiert Nachrichten, die von einem anonymen "
+            f"Administrator einer anderen Gruppe geschrieben und an diese Gruppe weitergeleitet werden.\n\n"
+            f"📣 <b>Weiterleitung aus Kanälen</b>\n  └ Löschen: {ch}\n"
+            f"👥 <b>Gruppen</b>\n  └ Löschen: {gr}\n"
+            f"👤 <b>Benutzer</b>\n  └ Löschen: {us}\n"
+            f"🤖 <b>Bot</b>\n  └ Löschen: {bo}",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode="HTML",
+        )
+
+    elif data.startswith("as_fw_toggle_"):
+        key = data.replace("as_fw_toggle_", "")
+        bot_data = load_data()
+        fw = bot_data.setdefault("antispam_forward", {})
+        fw[key] = not fw.get(key, False)
+        save_data(bot_data)
+        await query.answer(f"{key.title()}: {'Löschen An' if fw[key] else 'Aus'} ✅")
+        ch = "✅" if fw.get("channels") else "❌"
+        gr = "✅" if fw.get("groups") else "❌"
+        us = "✅" if fw.get("users") else "❌"
+        bo = "✅" if fw.get("bots") else "❌"
+        keyboard = [
+            [InlineKeyboardButton(f"📣 Kanäle {ch}", callback_data="as_fw_toggle_channels"),
+             InlineKeyboardButton(f"👥 Gruppen {gr}", callback_data="as_fw_toggle_groups")],
+            [InlineKeyboardButton(f"👤 Benutzer {us}", callback_data="as_fw_toggle_users"),
+             InlineKeyboardButton(f"🤖 Bot {bo}", callback_data="as_fw_toggle_bots")],
+            [InlineKeyboardButton("🔙 Zurück", callback_data="menu_antispam")],
+        ]
+        await query.edit_message_text(
+            f"📬 <b>Weiterleitung</b>\n"
+            f"Wähle eine Strafe für das Weiterleiten von Nachrichten* in der Gruppe "
+            f"(<i>*aus Kanälen oder Posts von Nutzern / Bots</i>).\n\n"
+            f"Weiterleitung aus Gruppen blockiert Nachrichten, die von einem anonymen "
+            f"Administrator einer anderen Gruppe geschrieben und an diese Gruppe weitergeleitet werden.\n\n"
+            f"📣 <b>Weiterleitung aus Kanälen</b>\n  └ Löschen: {ch}\n"
+            f"👥 <b>Gruppen</b>\n  └ Löschen: {gr}\n"
+            f"👤 <b>Benutzer</b>\n  └ Löschen: {us}\n"
+            f"🤖 <b>Bot</b>\n  └ Löschen: {bo}",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode="HTML",
+        )
 
     # === MESSAGE DELETE MENU ===
     elif data == "menu_msgdelete":
@@ -3552,6 +3726,85 @@ async def track_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     logger.info(f"Auto-deleted command '{msg_text_raw[:30]}' from {'admin' if is_adm else 'user'} {sender_cd.id} in {update.effective_chat.id}")
                 except Exception as e:
                     logger.error(f"Cmd delete failed: {e}")
+
+    # --- Anti-Spam: Link check ---
+    if update.message.from_user and not is_authorized(update.message.from_user.id):
+        if not await is_chat_admin(context, update.effective_chat.id, update.message.from_user.id):
+            bot_data_as = load_data()
+            lc = bot_data_as.get("antispam_links", {"punishment": "aus", "delete": True})
+            lc_punishment = lc.get("punishment", "aus")
+            lc_delete = lc.get("delete", True)
+            has_link = False
+            # Check entities for URLs
+            for ent in (update.message.entities or []) + (update.message.caption_entities or []):
+                if ent.type in ("url", "text_link"):
+                    has_link = True
+                    break
+            if has_link and (lc_punishment != "aus" or lc_delete):
+                chat_id_as = update.effective_chat.id
+                user_id_as = update.message.from_user.id
+                user_name_as = update.message.from_user.full_name
+                if lc_delete:
+                    try:
+                        await update.message.delete()
+                    except Exception as e:
+                        logger.error(f"Link delete failed: {e}")
+                try:
+                    if lc_punishment == "warn":
+                        wc = bot_data_as.get("warn_config", {"max_warns": 3})
+                        max_w = wc.get("max_warns", 3)
+                        warnings = bot_data_as.setdefault("warnings", {})
+                        key = f"{chat_id_as}_{user_id_as}"
+                        warn_entry = warnings.get(key, {"count": 0, "name": user_name_as})
+                        warn_entry["count"] = warn_entry.get("count", 0) + 1
+                        warn_entry["name"] = user_name_as
+                        warnings[key] = warn_entry
+                        save_data(bot_data_as)
+                        await context.bot.send_message(chat_id=chat_id_as, text=f"⚠️ {html.escape(user_name_as)} verwarnt ({warn_entry['count']}/{max_w}) — Link gesendet", parse_mode="HTML")
+                    elif lc_punishment == "kick":
+                        await context.bot.ban_chat_member(chat_id=chat_id_as, user_id=user_id_as)
+                        await context.bot.unban_chat_member(chat_id=chat_id_as, user_id=user_id_as)
+                        await context.bot.send_message(chat_id=chat_id_as, text=f"👢 {html.escape(user_name_as)} gekickt — Link gesendet", parse_mode="HTML")
+                    elif lc_punishment == "mute":
+                        await context.bot.restrict_chat_member(chat_id=chat_id_as, user_id=user_id_as, permissions=ChatPermissions.no_permissions())
+                        await context.bot.send_message(chat_id=chat_id_as, text=f"🔇 {html.escape(user_name_as)} gemutet — Link gesendet", parse_mode="HTML")
+                    elif lc_punishment == "ban":
+                        await context.bot.ban_chat_member(chat_id=chat_id_as, user_id=user_id_as, revoke_messages=True)
+                        await context.bot.send_message(chat_id=chat_id_as, text=f"🚫 {html.escape(user_name_as)} gebannt — Link gesendet", parse_mode="HTML")
+                except Exception as e:
+                    logger.error(f"Link punishment failed: {e}")
+                await log_action(context, f"LINK-SPAM: {user_name_as} ({user_id_as}) in {update.effective_chat.title} — Strafe: {lc_punishment}")
+                return
+
+    # --- Anti-Spam: Forward check ---
+    if update.message.forward_origin and update.message.from_user:
+        if not is_authorized(update.message.from_user.id):
+            if not await is_chat_admin(context, update.effective_chat.id, update.message.from_user.id):
+                bot_data_fw = load_data()
+                fw = bot_data_fw.get("antispam_forward", {})
+                origin = update.message.forward_origin
+                should_delete = False
+                origin_type = getattr(origin, "type", "")
+                if origin_type == "channel" and fw.get("channels"):
+                    should_delete = True
+                elif origin_type == "chat" and fw.get("groups"):
+                    should_delete = True
+                elif origin_type == "user":
+                    fwd_user = getattr(origin, "sender_user", None)
+                    if fwd_user and fwd_user.is_bot and fw.get("bots"):
+                        should_delete = True
+                    elif fwd_user and not fwd_user.is_bot and fw.get("users"):
+                        should_delete = True
+                elif origin_type == "hidden_user" and fw.get("users"):
+                    should_delete = True
+                if should_delete:
+                    try:
+                        await update.message.delete()
+                        logger.info(f"Deleted forwarded msg from {update.message.from_user.id} in {update.effective_chat.id} (origin: {origin_type})")
+                    except Exception as e:
+                        logger.error(f"Forward delete failed: {e}")
+                    await log_action(context, f"FORWARD-SPAM: {update.message.from_user.full_name} ({update.message.from_user.id}) in {update.effective_chat.title} — Typ: {origin_type}")
+                    return
 
     # --- Forbidden words check ---
     msg_text = update.message.text or update.message.caption or ""
