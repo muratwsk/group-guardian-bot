@@ -1789,7 +1789,9 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif data == "bw_add":
         keyboard = [[InlineKeyboardButton("❌ Abbrechen", callback_data="menu_badwords")]]
         await query.edit_message_text(
-            "➕ Sende jetzt das verbotene Wort (oder mehrere, getrennt durch Komma):",
+            "➕ Sende jetzt die verbotenen Wörter (jedes Wort in eine neue Zeile):\n\n"
+            "<i>Beispiel:\ncp\nfick\nhele</i>",
+            parse_mode="HTML",
             reply_markup=InlineKeyboardMarkup(keyboard),
         )
         context.user_data["state"] = WAITING_BADWORD_ADD
@@ -2601,7 +2603,7 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     elif state == WAITING_BADWORD_ADD:
         text_input = update.message.text.strip()
-        words = [w.strip() for w in text_input.split(",") if w.strip()]
+        words = [w.strip() for w in text_input.splitlines() if w.strip()]
         if not words:
             await update.message.reply_text("⚠️ Bitte sende mindestens ein Wort.")
             return
