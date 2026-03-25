@@ -1493,7 +1493,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=keyboard,
             parse_mode="HTML",
         )
-        await log_action(context, f"UNBANALL (via /info): {target_name} ({target_id}) von {query.from_user.full_name}")
+        await log_action(context, f"UNBANALL (via /info): {target_name} ({target_id}) von {query.from_user.full_name}", group_id=scope_chat_id, group_name=str(scope_chat_id))
 
     elif data.startswith("info_ban_"):
         payload = data.replace("info_ban_", "", 1)
