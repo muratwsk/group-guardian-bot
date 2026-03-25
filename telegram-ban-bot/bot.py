@@ -5502,8 +5502,10 @@ async def show_scheduled_detail(query, context, user_id, sched_id):
                 job = jobs[0]
                 if job.next_t:
                     next_fire_str = job.next_t.astimezone(BERLIN_TZ).strftime("%d.%m.%Y %H:%M")
+        if next_fire_str == "—" and sched.get("next_run_at"):
+            next_fire_str = sched.get("next_run_at")
     
-    last_sent = sched.get("last_sent", "—")
+    last_sent = sched.get("last_sent") or "None"
     
     text = (
         f"🕐 <b>Wiederholte Mitteilungen</b>\n\n"
