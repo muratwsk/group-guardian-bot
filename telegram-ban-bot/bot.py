@@ -3541,6 +3541,56 @@ async def kick_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         await update.message.reply_text(f"❌ Kick fehlgeschlagen: {e}")
 
+# --- /ban (single group) ---
+
+async def ban_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Ban a user from the current group. Usage: /ban [reason] (reply to a message)."""
+    user_id = update.effective_user.id
+    if not is_authorized(user_id):
+        return
+
+    chat = update.effective_chat
+    if not chat or chat.type not in ("group", "supergroup"):
+        await update.message.reply_text("⚠️ Dieser Befehl funktioniert nur in Gruppen.")
+        return
+
+    target_id, target_name = await resolve_target(update, context)
+    if target_id is None:
+        return
+
+    # Admin-Schutz
+    if await is_chat_admin(context, chat.id, target_id):
+        await update.message.reply_text("⛔ Dieser User ist ein Administrator — Ban ist nicht möglich.")
+        return
+
+    args = list(context.args) if context.args else []
+    if args and not update.message.reply_to_message:
+        args = args[1:]
+    elif args and update.message.reply_to_message and (args[0].startswith("@") or args[0].isdigit()):
+        args = args[1:]
+    reason = " ".join(args) if args else None
+
+    tracked = lookup_user(str(target_id))
+    target_username = tracked.get("username") if tracked else None
+
+    try:
+        await context.bot.ban_chat_member(chat_id=chat.id, user_id=target_id, revoke_messages=True)
+        remember_group_ban([chat.id], target_id, target_name, target_username)
+
+        uname = f"@{target_username} " if target_username else ""
+        reason_text = f"\n📝 <b>Grund:</b> {html.escape(reason)}" if reason else ""
+        keyboard = InlineKeyboardMarkup([
+            [InlineKeyboardButton("✅ Unban", callback_data=f"cmd_unban_{chat.id}_{target_id}")]
+        ])
+        await update.message.reply_text(
+            f"🚫 {uname}[<code>{target_id}</code>] wurde gebannt!{reason_text}",
+            parse_mode="HTML",
+            reply_markup=keyboard,
+        )
+        await log_action(context, f"🚫 Ban: {target_name} [{target_id}] in {chat.title} von {update.effective_user.first_name}" + (f" | Grund: {reason}" if reason else ""))
+    except Exception as e:
+        await update.message.reply_text(f"❌ Ban fehlgeschlagen: {e}")
+
 # --- /banall ---
 
 # --- /warn ---
