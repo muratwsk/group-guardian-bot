@@ -69,6 +69,7 @@ def normalize_data(data):
         "admin_prefixes": [],
         "user_prefixes": [],
     })
+    data.setdefault("auto_approve", {})  # per-group: { "group_id": true/false }
     data.setdefault("antispam_links", {
         "punishment": "aus",
         "delete": True,
@@ -354,6 +355,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
          InlineKeyboardButton("🗑 Nachrichten", callback_data="menu_msgdelete")],
         [InlineKeyboardButton("🛡 Anti-Spam", callback_data="menu_antispam"),
          InlineKeyboardButton("👥 Mitglieder", callback_data="menu_members")],
+        [InlineKeyboardButton("🚪 Freigabemodus", callback_data="menu_freigabe")],
         [InlineKeyboardButton("⚙️ Einstellungen", callback_data="menu_settings")],
     ]
 
@@ -595,6 +597,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
              InlineKeyboardButton("🗑 Nachrichten", callback_data="menu_msgdelete")],
             [InlineKeyboardButton("🛡 Anti-Spam", callback_data="menu_antispam"),
              InlineKeyboardButton("👥 Mitglieder", callback_data="menu_members")],
+            [InlineKeyboardButton("🚪 Freigabemodus", callback_data="menu_freigabe")],
             [InlineKeyboardButton("⚙️ Einstellungen", callback_data="menu_settings")],
         ]
         role = "👑 Owner" if is_owner(user_id) else "🛡️ Admin"
@@ -2020,6 +2023,82 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             except Exception as e:
                 logger.error(f"Failed to send {action_label} notification to {gid}: {e}")
         await log_action(context, f"MASS {action_label.upper()}: {success_count} erfolgreich, {error_count} Fehler – von {query.from_user.full_name}")
+
+    # === FREIGABEMODUS ===
+    elif data == "menu_freigabe":
+        bot_data = load_data()
+        auto_approve = bot_data.get("auto_approve", {})
+        groups = await get_bot_groups(context)
+
+        if not groups:
+            keyboard = [[InlineKeyboardButton("🔙 Zurück", callback_data="back_main")]]
+            await query.edit_message_text(
+                "🚪 <b>Freigabemodus</b>\n\nKeine Gruppen registriert.",
+                reply_markup=InlineKeyboardMarkup(keyboard),
+                parse_mode="HTML",
+            )
+            return
+
+        enabled_count = sum(1 for g in groups if auto_approve.get(str(g["id"]), False))
+
+        text = (
+            "🚪 <b>Freigabemodus</b>\n\n"
+            "In diesem Menü kannst du entscheiden, ob der Bot "
+            "Gruppenbeitritts-Anfragen <b>automatisch genehmigt</b>.\n\n"
+            "👤 Wenn ein Benutzer über einen <b>freigabepflichtigen Link</b> "
+            "beitritt, wird er automatisch angenommen – sofern er nicht gebannt ist.\n\n"
+            "🚫 Gebannte User werden weiterhin <b>automatisch abgelehnt</b>.\n\n"
+            f"📊 <b>Status:</b> {enabled_count}/{len(groups)} Gruppen aktiv"
+        )
+
+        keyboard = []
+        for g in groups:
+            gid_str = str(g["id"])
+            is_on = auto_approve.get(gid_str, False)
+            status = "✅" if is_on else "❌"
+            keyboard.append([InlineKeyboardButton(
+                f"{status} {g['title']}", callback_data=f"freigabe_toggle_{g['id']}"
+            )])
+        keyboard.append([InlineKeyboardButton("🔙 Zurück", callback_data="back_main")])
+
+        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
+
+    elif data.startswith("freigabe_toggle_"):
+        gid = int(data.replace("freigabe_toggle_", ""))
+        bot_data = load_data()
+        auto_approve = bot_data.setdefault("auto_approve", {})
+        gid_str = str(gid)
+        current = auto_approve.get(gid_str, False)
+        auto_approve[gid_str] = not current
+        save_data(bot_data)
+
+        new_state = "aktiviert ✅" if not current else "deaktiviert ❌"
+        groups = await get_bot_groups(context)
+        group_title = next((g["title"] for g in groups if g["id"] == gid), str(gid))
+        await query.answer(f"Auto-Freigabe für {group_title} {new_state}")
+        await log_action(context, f"Freigabemodus {new_state} für {group_title} von {query.from_user.full_name}")
+
+        # Re-render menu
+        enabled_count = sum(1 for g in groups if auto_approve.get(str(g["id"]), False))
+        text = (
+            "🚪 <b>Freigabemodus</b>\n\n"
+            "In diesem Menü kannst du entscheiden, ob der Bot "
+            "Gruppenbeitritts-Anfragen <b>automatisch genehmigt</b>.\n\n"
+            "👤 Wenn ein Benutzer über einen <b>freigabepflichtigen Link</b> "
+            "beitritt, wird er automatisch angenommen – sofern er nicht gebannt ist.\n\n"
+            "🚫 Gebannte User werden weiterhin <b>automatisch abgelehnt</b>.\n\n"
+            f"📊 <b>Status:</b> {enabled_count}/{len(groups)} Gruppen aktiv"
+        )
+        keyboard = []
+        for g in groups:
+            gs = str(g["id"])
+            is_on = auto_approve.get(gs, False)
+            status = "✅" if is_on else "❌"
+            keyboard.append([InlineKeyboardButton(
+                f"{status} {g['title']}", callback_data=f"freigabe_toggle_{g['id']}"
+            )])
+        keyboard.append([InlineKeyboardButton("🔙 Zurück", callback_data="back_main")])
+        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
 
     # === SETTINGS ===
     elif data == "menu_settings":
@@ -4505,12 +4584,26 @@ async def block_banned_join_request(update: Update, context: ContextTypes.DEFAUL
         return
 
     track_user(member)
-    if is_banned_in_group(request.chat.id, member.id):
+    chat_id = request.chat.id
+
+    # Always block banned users
+    if is_banned_in_group(chat_id, member.id):
         try:
-            await context.bot.decline_chat_join_request(chat_id=request.chat.id, user_id=member.id)
-            await log_action(context, f"JOIN-REQUEST ABGELEHNT: {member.full_name} ({member.id}) in {request.chat.title}")
+            await context.bot.decline_chat_join_request(chat_id=chat_id, user_id=member.id)
+            await log_action(context, f"🚫 JOIN-REQUEST ABGELEHNT (gebannt): {member.full_name} ({member.id}) in {request.chat.title}")
         except Exception as e:
-            logger.error(f"Decline join request failed for {member.id} in {request.chat.id}: {e}")
+            logger.error(f"Decline join request failed for {member.id} in {chat_id}: {e}")
+        return
+
+    # Auto-approve if Freigabemodus is enabled for this group
+    bot_data = load_data()
+    auto_approve = bot_data.get("auto_approve", {})
+    if auto_approve.get(str(chat_id), False):
+        try:
+            await context.bot.approve_chat_join_request(chat_id=chat_id, user_id=member.id)
+            logger.info(f"Auto-approved join request: {member.full_name} ({member.id}) in {request.chat.title}")
+        except Exception as e:
+            logger.error(f"Auto-approve join request failed for {member.id} in {chat_id}: {e}")
 
 # --- Media handler (photos, videos, stickers for scheduled messages + JSON import) ---
 
