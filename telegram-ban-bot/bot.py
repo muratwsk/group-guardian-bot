@@ -256,6 +256,52 @@ def get_interval_label(minutes):
     }
     return labels.get(minutes, f"{minutes} Min")
 
+
+def get_info_scope_chat_id(update: Update):
+    if update.effective_chat and update.effective_chat.type in ("group", "supergroup"):
+        return update.effective_chat.id
+    return None
+
+
+async def get_info_group_state(context: ContextTypes.DEFAULT_TYPE, chat_id: int | None, user_id: int):
+    state = {"is_muted": False, "is_banned_local": False, "is_premium": False}
+    if not chat_id:
+        return state
+    try:
+        member = await context.bot.get_chat_member(chat_id=chat_id, user_id=user_id)
+        if member.status == "restricted" and getattr(member, "can_send_messages", True) is False:
+            state["is_muted"] = True
+        if member.status == "kicked":
+            state["is_banned_local"] = True
+        if getattr(member, "user", None):
+            state["is_premium"] = getattr(member.user, "is_premium", False) or False
+    except Exception:
+        pass
+    return state
+
+
+def build_info_keyboard(scope_chat_id: int | None, target_id: int, is_muted: bool, is_banned_local: bool, is_banned_all: bool):
+    keyboard = []
+    if scope_chat_id:
+        keyboard.append([
+            InlineKeyboardButton(
+                "✅ Unmute" if is_muted else "🔇 Mute",
+                callback_data=f"info_unmute_{scope_chat_id}_{target_id}" if is_muted else f"info_mute_{scope_chat_id}_{target_id}",
+            ),
+            InlineKeyboardButton(
+                "✅ Entsperren" if is_banned_local else "🚫 Ban",
+                callback_data=f"info_unban_{scope_chat_id}_{target_id}" if is_banned_local else f"info_ban_{scope_chat_id}_{target_id}",
+            ),
+        ])
+
+    keyboard.append([
+        InlineKeyboardButton(
+            "✅ Entsperren ALL" if is_banned_all else "🚫 BanALL",
+            callback_data=f"info_unbanall_{target_id}" if is_banned_all else f"info_banall_{target_id}",
+        )
+    ])
+    return InlineKeyboardMarkup(keyboard)
+
 async def show_messenger_selection(query, context, user_id, groups):
     """Show group selection grid with checkboxes in 2-column layout."""
     selected = user_data_store.get(user_id, {}).get("selected", set())
