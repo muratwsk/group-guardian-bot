@@ -1915,13 +1915,18 @@ async def info_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"━━━━━━━━━━━━━━━━━━"
     )
 
-    # Inline buttons - 2 column grid like screenshot
-    keyboard = [
-        [InlineKeyboardButton("🚫 BanALL", callback_data=f"info_ban_{target_id}"),
-         InlineKeyboardButton("✅ UnbanALL", callback_data=f"info_unban_{target_id}")],
-        [InlineKeyboardButton("🔇 Mute", callback_data=f"info_mute_{target_id}"),
-         InlineKeyboardButton("🔊 Unmute", callback_data=f"info_unmute_{target_id}")],
-    ]
+    # Dynamic buttons based on user status
+    keyboard = []
+    # Mute/Unmute row
+    if is_muted:
+        keyboard.append([InlineKeyboardButton("✅ Unmute", callback_data=f"info_unmute_{target_id}")])
+    else:
+        keyboard.append([InlineKeyboardButton("🔇 Mute", callback_data=f"info_mute_{target_id}")])
+    # Ban/Unban row
+    if is_banned_status or banned_in > 0:
+        keyboard.append([InlineKeyboardButton("✅ Entsperren", callback_data=f"info_unban_{target_id}")])
+    else:
+        keyboard.append([InlineKeyboardButton("🚫 BanALL", callback_data=f"info_ban_{target_id}")])
 
     await update.message.reply_text(
         info_text,
