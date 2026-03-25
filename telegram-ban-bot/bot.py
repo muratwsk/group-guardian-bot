@@ -2496,35 +2496,30 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return await button_handler(update, context)
 
     elif data == "sperr_bot_groups":
-        bot_data = load_data()
-        sb = bot_data.get("sperr_bots", {"groups": []})
-        selected = [str(g) for g in sb.get("groups", [])]
-        groups = await get_bot_groups(context)
-        keyboard = []
-        for g in groups:
-            gid_str = str(g["id"])
-            check = "✅" if gid_str in selected else "⬜"
-            keyboard.append([InlineKeyboardButton(f"{check} {g['title']}", callback_data=f"sperr_bot_tg_{gid_str}")])
-        keyboard.append([InlineKeyboardButton("🔙 Zurück", callback_data="sperr_bot_menu")])
-        await query.edit_message_text(
-            "🤖 <b>Bot Sperren — Gruppen</b>\n\nWähle die Gruppen (leer = alle):",
-            reply_markup=InlineKeyboardMarkup(keyboard),
-            parse_mode="HTML",
-        )
+        await render_sperr_bot_groups(query, context)
 
-    elif data.startswith("sperr_bot_tg_"):
-        gid_str = data.replace("sperr_bot_tg_", "")
+    elif data == "sperr_bot_tga":
+        bot_data = load_data()
+        sb = bot_data.setdefault("sperr_bots", {"enabled": False, "punishment": "ban", "delete": True, "groups": []})
+        current = [str(g) for g in sb.get("groups", [])]
+        sb["groups"] = [] if current else [str(g["id"]) for g in await get_bot_groups(context)]
+        save_data(bot_data)
+        await query.answer("✅ Aktualisiert")
+        await render_sperr_bot_groups(query, context)
+
+    elif data.startswith("sperr_bot_tgg_"):
+        gid_str = data.replace("sperr_bot_tgg_", "")
         bot_data = load_data()
         sb = bot_data.setdefault("sperr_bots", {"enabled": False, "punishment": "ban", "delete": True, "groups": []})
         groups_list = [str(g) for g in sb.get("groups", [])]
         if gid_str in groups_list:
-            groups_list.remove(gid_str)
+            groups_list = [g for g in groups_list if g != gid_str]
         else:
             groups_list.append(gid_str)
         sb["groups"] = groups_list
         save_data(bot_data)
-        query.data = "sperr_bot_groups"
-        return await button_handler(update, context)
+        await query.answer("✅ Aktualisiert")
+        await render_sperr_bot_groups(query, context)
 
     # === ANTI-SPAM MENU ===
     elif data == "menu_antispam":
