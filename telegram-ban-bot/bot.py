@@ -1,3 +1,4 @@
+import asyncio
 import atexit
 import datetime
 import html
@@ -7,6 +8,10 @@ import os
 import signal
 import subprocess
 from zoneinfo import ZoneInfo
+
+# Pyrogram for fast banned-member scan
+from pyrogram import Client as PyroClient
+from pyrogram import enums as pyro_enums
 
 BERLIN_TZ = ZoneInfo("Europe/Berlin")
 
