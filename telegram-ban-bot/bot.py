@@ -328,30 +328,59 @@ async def is_chat_admin(context, chat_id: int, user_id: int) -> bool:
 async def log_action(context: ContextTypes.DEFAULT_TYPE, text: str, group_id: int = None, group_name: str = None):
     """Log action to the global log channel AND any matching protokoll channels."""
     cfg = load_config()
+    targets = set()
+
     # Global log channel (from settings)
     channel = cfg.get("log_channel_id")
     if channel:
-        try:
-            await context.bot.send_message(chat_id=channel, text=f"📋 {text}")
-        except Exception as e:
-            logger.error(f"Log channel error: {e}")
+        targets.add(int(channel))
 
     # Per-group protokoll channels
     bot_data = load_data()
     proto_channels = bot_data.get("protokoll_channels", {})
     for ch_id_str, ch_cfg in proto_channels.items():
         ch_groups = ch_cfg.get("groups", [])
-        # Send if channel covers "all" or this specific group
         should_send = False
         if "all" in ch_groups:
             should_send = True
         elif group_id and str(group_id) in [str(g) for g in ch_groups]:
             should_send = True
         if should_send:
-            try:
-                await context.bot.send_message(chat_id=int(ch_id_str), text=f"📋 {text}")
-            except Exception as e:
-                logger.error(f"Protokoll channel {ch_id_str} error: {e}")
+            targets.add(int(ch_id_str))
+
+    async def _send_log(chat_id: int):
+        try:
+            await asyncio.wait_for(
+                context.bot.send_message(chat_id=chat_id, text=f"📋 {text}"),
+                timeout=4,
+            )
+        except Exception as e:
+            logger.error(f"Log channel {chat_id} error: {e}")
+
+    if targets:
+        await asyncio.gather(*[_send_log(chat_id) for chat_id in targets], return_exceptions=True)
+
+
+async def render_protokoll_channel_config(query, ch_id: str):
+    bot_data = load_data()
+    ch_cfg = bot_data.get("protokoll_channels", {}).get(str(ch_id), {})
+    ch_groups = [str(x) for x in ch_cfg.get("groups", [])]
+    ch_name = ch_cfg.get("name", str(ch_id))
+    groups = bot_data.get("groups", [])
+
+    keyboard = []
+    all_check = "✅" if "all" in ch_groups else "⬜"
+    keyboard.append([InlineKeyboardButton(f"{all_check} Alle Gruppen", callback_data=f"proto_tga_{ch_id}")])
+    for g in groups:
+        gid = str(g["id"])
+        check = "✅" if gid in ch_groups else "⬜"
+        keyboard.append([InlineKeyboardButton(f"{check} {g['title']}", callback_data=f"proto_tgg_{gid}_{ch_id}")])
+    keyboard.append([InlineKeyboardButton("🔙 Zurück", callback_data="proto_what")])
+    await query.edit_message_text(
+        f"🎯 *Protokoll: {ch_name}*\nWähle welche Gruppen protokolliert werden:",
+        reply_markup=InlineKeyboardMarkup(keyboard),
+        parse_mode="Markdown",
+    )
 
 
 # --- Get bot's groups ---
@@ -2294,24 +2323,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     elif data.startswith("proto_cfg_"):
         ch_id = data.replace("proto_cfg_", "")
-        bot_data = load_data()
-        ch_cfg = bot_data.get("protokoll_channels", {}).get(ch_id, {})
-        ch_groups = ch_cfg.get("groups", [])
-        ch_name = ch_cfg.get("name", ch_id)
-        groups = bot_data.get("groups", [])
-
-        keyboard = []
-        all_check = "✅" if "all" in ch_groups else "⬜"
-        keyboard.append([InlineKeyboardButton(f"{all_check} Alle Gruppen", callback_data=f"proto_tga_{ch_id}")])
-        for g in groups:
-            check = "✅" if str(g["id"]) in [str(x) for x in ch_groups] else "⬜"
-            keyboard.append([InlineKeyboardButton(f"{check} {g['title']}", callback_data=f"proto_tgg_{g['id']}_{ch_id}")])
-        keyboard.append([InlineKeyboardButton("🔙 Zurück", callback_data="proto_what")])
-        await query.edit_message_text(
-            f"🎯 *Protokoll: {ch_name}*\nWähle welche Gruppen protokolliert werden:",
-            reply_markup=InlineKeyboardMarkup(keyboard),
-            parse_mode="Markdown",
-        )
+        await render_protokoll_channel_config(query, ch_id)
 
     elif data.startswith("proto_tga_"):
         ch_id = data.replace("proto_tga_", "")
@@ -2326,8 +2338,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         bot_data["protokoll_channels"][ch_id] = ch_cfg
         save_data(bot_data)
         await query.answer("✅ Aktualisiert")
-        query.data = f"proto_cfg_{ch_id}"
-        await button_handler(update, context)
+        await render_protokoll_channel_config(query, ch_id)
 
     elif data.startswith("proto_tgg_"):
         # proto_tgg_{group_id}_{channel_id}
@@ -2350,8 +2361,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         bot_data["protokoll_channels"][ch_id] = ch_cfg
         save_data(bot_data)
         await query.answer("✅ Aktualisiert")
-        query.data = f"proto_cfg_{ch_id}"
-        await button_handler(update, context)
+        await render_protokoll_channel_config(query, ch_id)
 
 
     # === SETTINGS ===
