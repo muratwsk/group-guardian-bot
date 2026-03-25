@@ -4943,7 +4943,10 @@ async def track_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg_text_raw = update.message.text or ""
     if msg_text_raw and update.message.from_user:
         first_char = msg_text_raw[0] if msg_text_raw else ""
-        if first_char in ["/", "!", ";", "."]:
+        # Only treat as command if prefix is followed by a letter (not emoticons like ;) or ...)
+        rest_after_prefix = msg_text_raw[1:] if len(msg_text_raw) > 1 else ""
+        looks_like_command = rest_after_prefix and rest_after_prefix[0].isalpha()
+        if first_char in ["/", "!", ";", "."] and looks_like_command:
             bot_data_cd = load_data()
             cd = bot_data_cd.get("cmd_delete", {"admin_prefixes": [], "user_prefixes": []})
             sender_cd = update.message.from_user
