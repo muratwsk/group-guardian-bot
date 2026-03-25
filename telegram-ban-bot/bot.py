@@ -5282,11 +5282,25 @@ async def handle_open_command(update: Update, context: ContextTypes.DEFAULT_TYPE
     bot_data["open_close"] = oc
     save_data(bot_data)
     
-    await update.message.reply_text(
-        f"🔓 *{chat.title}* ist jetzt OPEN!\n📢 {len(sent_messages)} Gruppen benachrichtigt.",
+    # Delete the /open command message itself
+    try:
+        await update.message.delete()
+    except Exception as e:
+        logger.error(f"Delete /open command failed: {e}")
+    
+    confirm_msg = await context.bot.send_message(
+        chat_id=chat.id,
+        text=f"🔓 *{chat.title}* ist jetzt OPEN!\n📢 {len(sent_messages)} Gruppen benachrichtigt.",
         parse_mode="Markdown",
     )
     await log_action(context, f"OPEN: {chat.title} von {update.effective_user.full_name} → {len(sent_messages)} Gruppen benachrichtigt")
+    
+    # Auto-delete confirmation after 5 seconds
+    await asyncio.sleep(5)
+    try:
+        await confirm_msg.delete()
+    except Exception:
+        pass
 
 
 async def handle_close_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
