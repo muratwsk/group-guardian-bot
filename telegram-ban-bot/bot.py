@@ -4512,10 +4512,15 @@ async def track_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             is_adm_as = is_authorized(sender_as.id) or await is_chat_admin(context, update.effective_chat.id, sender_as.id)
             if not is_adm_as and not is_freed(sender_as.id):
                 bot_data_as = load_data()
-                lc = bot_data_as.get("antispam_links", {"punishment": "aus", "delete": True})
-                lc_punishment = lc.get("punishment", "aus")
-                lc_delete = lc.get("delete", True)
-                logger.info(f"Link config: punishment={lc_punishment}, delete={lc_delete}")
+                lc = bot_data_as.get("antispam_links", {"punishment": "aus", "delete": True, "groups": []})
+                lc_groups = lc.get("groups", [])
+                # If groups are specified, only enforce in those groups
+                if lc_groups and update.effective_chat.id not in lc_groups:
+                    logger.info(f"Link detected but group {update.effective_chat.id} not in linksperre groups, skipping")
+                else:
+                    lc_punishment = lc.get("punishment", "aus")
+                    lc_delete = lc.get("delete", True)
+                    logger.info(f"Link config: punishment={lc_punishment}, delete={lc_delete}")
                 if lc_punishment != "aus" or lc_delete:
                     chat_id_as = update.effective_chat.id
                     user_id_as = update.message.from_user.id
