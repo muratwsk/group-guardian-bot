@@ -2363,6 +2363,27 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode="HTML",
         )
 
+    elif state == WAITING_WARN_MUTE_DUR:
+        text_input = update.message.text.strip()
+        total_secs = parse_duration_text(text_input)
+        if total_secs < 30:
+            await update.message.reply_text("⚠️ Minimum ist 30 Sekunden. Bitte erneut eingeben.")
+            return
+        if total_secs > 365 * 86400:
+            await update.message.reply_text("⚠️ Maximum ist 365 Tage. Bitte erneut eingeben.")
+            return
+        bot_data = load_data()
+        bot_data.setdefault("warn_config", {})["mute_duration_seconds"] = total_secs
+        save_data(bot_data)
+        context.user_data["state"] = None
+        label = format_duration_human(total_secs)
+        keyboard = [[InlineKeyboardButton("🔙 Zurück", callback_data="menu_warns")]]
+        await update.message.reply_text(
+            f"✅ Mute-Dauer auf <b>{label}</b> gesetzt!",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode="HTML",
+        )
+
 # --- /registergroup - run in a group to add it ---
 
 async def register_group(update: Update, context: ContextTypes.DEFAULT_TYPE):
