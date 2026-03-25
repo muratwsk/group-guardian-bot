@@ -4727,58 +4727,49 @@ async def media_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # If waiting for messenger input (broadcast with media)
     if state == WAITING_MESSENGER_INPUT:
         pending = user_data_store.get(user_id)
-        if not pending or not pending.get("groups"):
+        if not pending or pending.get("action") != "messenger" or not pending.get("groups"):
             return
         msg = update.message
-        # Determine media type and file_id
-        media_file_id = None
-        media_type = None
-        if msg.photo:
-            media_file_id = msg.photo[-1].file_id
-            media_type = "photo"
-        elif msg.video:
-            media_file_id = msg.video.file_id
-            media_type = "video"
-        elif msg.animation:
-            media_file_id = msg.animation.file_id
-            media_type = "animation"
-        elif msg.document and not (msg.document.file_name and msg.document.file_name.endswith(".json")):
-            media_file_id = msg.document.file_id
-            media_type = "document"
 
-        if not media_file_id:
+        has_supported_media = bool(
+            msg.photo or msg.video or msg.animation or
+            (msg.document and not (msg.document.file_name and msg.document.file_name.endswith(".json")))
+        )
+        if not has_supported_media:
             return
 
         groups = pending["groups"]
-        text_html = msg.caption_html or ""
         success = 0
         fail = 0
         import time
         broadcast_id = str(int(time.time() * 1000))
         sent_msgs = []
+
+        media_label = "medium"
+        if msg.photo:
+            media_label = "photo"
+        elif msg.video:
+            media_label = "video"
+        elif msg.animation:
+            media_label = "animation"
+        elif msg.document:
+            media_label = "document"
+
         for gid in groups:
             try:
-                if media_type == "photo":
-                    sent = await context.bot.send_photo(chat_id=gid, photo=media_file_id, caption=text_html or None, parse_mode="HTML" if text_html else None)
-                elif media_type == "video":
-                    sent = await context.bot.send_video(chat_id=gid, video=media_file_id, caption=text_html or None, parse_mode="HTML" if text_html else None)
-                elif media_type == "animation":
-                    sent = await context.bot.send_animation(chat_id=gid, animation=media_file_id, caption=text_html or None, parse_mode="HTML" if text_html else None)
-                else:
-                    sent = await context.bot.send_document(chat_id=gid, document=media_file_id, caption=text_html or None, parse_mode="HTML" if text_html else None)
+                sent = await msg.copy(chat_id=gid)
                 sent_msgs.append((gid, sent.message_id))
                 success += 1
             except Exception as e:
                 fail += 1
                 logger.error(f"Messenger media send failed in {gid}: {e}")
 
-        # Save broadcast
         bot_data = load_data()
         bot_data.setdefault("broadcasts", {})[broadcast_id] = {
             "messages": sent_msgs,
             "date": now_de().strftime("%d.%m %H:%M"),
             "count": success,
-            "preview": (text_html[:50] if text_html else f"[{media_type}]"),
+            "preview": ((msg.caption or "")[:50] if msg.caption else f"[{media_label}]"),
         }
         save_data(bot_data)
 
@@ -4788,8 +4779,8 @@ async def media_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             + (f"\n❌ {fail} Fehler" if fail else ""),
             reply_markup=InlineKeyboardMarkup(keyboard),
         )
-        preview = text_html[:100] if text_html else f"[{media_type}]"
-        await log_action(context, f"MESSENGER: {update.effective_user.full_name} ({user_id}) → {success} Gruppen\nMedia: {media_type}\nText: {preview}")
+        preview = ((msg.caption_html or msg.caption or "")[:100] if (msg.caption_html or msg.caption) else f"[{media_label}]")
+        await log_action(context, f"MESSENGER: {update.effective_user.full_name} ({user_id}) → {success} Gruppen\nMedia: {media_label}\nText: {preview}")
         context.user_data["state"] = None
         user_data_store.pop(user_id, None)
         return
