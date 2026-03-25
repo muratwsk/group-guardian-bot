@@ -9,15 +9,6 @@ import signal
 import subprocess
 from zoneinfo import ZoneInfo
 
-# Pyrogram for fast banned-member scan (optional)
-try:
-    from pyrogram import Client as PyroClient
-    from pyrogram import enums as pyro_enums
-    PYROGRAM_AVAILABLE = True
-except ImportError:
-    PYROGRAM_AVAILABLE = False
-    PyroClient = None
-    pyro_enums = None
 
 BERLIN_TZ = ZoneInfo("Europe/Berlin")
 
