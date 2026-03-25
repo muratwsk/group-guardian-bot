@@ -4691,7 +4691,7 @@ async def personal_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     cmd_data = {
         "created_by": user_id,
         "created_at": now_de().strftime("%d.%m.%Y %H:%M"),
-        "groups": [update.effective_chat.id] if update.effective_chat and update.effective_chat.type in ("group", "supergroup") else [],
+        "groups": [],
     }
 
     if reply.text:
