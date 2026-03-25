@@ -317,7 +317,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton("🔤 Verbotene Worte", callback_data="menu_badwords"),
          InlineKeyboardButton("🗑 Nachrichten", callback_data="menu_msgdelete")],
         [InlineKeyboardButton("🛡 Anti-Spam", callback_data="menu_antispam"),
-         InlineKeyboardButton("⚙️ Einstellungen", callback_data="menu_settings")],
+         InlineKeyboardButton("👥 Mitglieder", callback_data="menu_members")],
+        [InlineKeyboardButton("⚙️ Einstellungen", callback_data="menu_settings")],
     ]
 
     role = "👑 Owner" if is_owner(user_id) else "🛡️ Admin"
@@ -557,7 +558,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             [InlineKeyboardButton("🔤 Verbotene Worte", callback_data="menu_badwords"),
              InlineKeyboardButton("🗑 Nachrichten", callback_data="menu_msgdelete")],
             [InlineKeyboardButton("🛡 Anti-Spam", callback_data="menu_antispam"),
-             InlineKeyboardButton("⚙️ Einstellungen", callback_data="menu_settings")],
+             InlineKeyboardButton("👥 Mitglieder", callback_data="menu_members")],
+            [InlineKeyboardButton("⚙️ Einstellungen", callback_data="menu_settings")],
         ]
         role = "👑 Owner" if is_owner(user_id) else "🛡️ Admin"
         # Clear any pending state
@@ -1786,6 +1788,167 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "✅ Alle persönlichen Befehle gelöscht.",
             reply_markup=InlineKeyboardMarkup(keyboard),
         )
+
+    # === MEMBERS (Mass Unban / Unmute) ===
+    elif data == "menu_members":
+        keyboard = [
+            [InlineKeyboardButton("✅ All Unban", callback_data="members_unban_select")],
+            [InlineKeyboardButton("🔊 All Unmute", callback_data="members_unmute_select")],
+            [InlineKeyboardButton("🔙 Zurück", callback_data="back_main")],
+        ]
+        await query.edit_message_text(
+            "👥 <b>Mitglieder</b>\n\nWähle eine Aktion:",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode="HTML",
+        )
+
+    elif data == "members_unban_select" or data == "members_unmute_select":
+        action = "mass_unban" if "unban" in data else "mass_unmute"
+        groups = await get_bot_groups(context)
+        if not groups:
+            await query.edit_message_text("⚠️ Keine Gruppen registriert.")
+            return
+        user_data_store[user_id] = {"action": action, "selected": set()}
+        await show_members_group_selection(query, context, user_id, groups, action)
+
+    elif data.startswith("memgrp_toggle_"):
+        payload = data.replace("memgrp_toggle_", "")
+        # gid is everything before last _mass_unban or _mass_unmute
+        pending = user_data_store.get(user_id, {})
+        action = pending.get("action", "mass_unban")
+        gid = int(payload.replace(f"_{action}", ""))
+        selected = pending.get("selected", set())
+        if gid in selected:
+            selected.discard(gid)
+        else:
+            selected.add(gid)
+        pending["selected"] = selected
+        user_data_store[user_id] = pending
+        groups = await get_bot_groups(context)
+        await show_members_group_selection(query, context, user_id, groups, action)
+
+    elif data.startswith("memgrp_all_") or data.startswith("memgrp_none_"):
+        action = user_data_store.get(user_id, {}).get("action", "mass_unban")
+        groups = await get_bot_groups(context)
+        if data.startswith("memgrp_all_"):
+            user_data_store[user_id]["selected"] = {g["id"] for g in groups}
+        else:
+            user_data_store[user_id]["selected"] = set()
+        await show_members_group_selection(query, context, user_id, groups, action)
+
+    elif data.startswith("memgrp_confirm_"):
+        action = user_data_store.get(user_id, {}).get("action", "")
+        selected = user_data_store.get(user_id, {}).get("selected", set())
+        if not selected:
+            await query.answer("⚠️ Keine Gruppen ausgewählt!", show_alert=True)
+            return
+
+        groups = await get_bot_groups(context)
+        group_names = [g["title"] for g in groups if g["id"] in selected]
+        action_label = "Unban" if "unban" in action else "Unmute"
+        action_emoji = "✅" if "unban" in action else "🔊"
+
+        keyboard = [
+            [InlineKeyboardButton(f"⚡ {action_label} jetzt ausführen", callback_data=f"memgrp_exec_{action}")],
+            [InlineKeyboardButton("🔙 Zurück", callback_data="menu_members")],
+        ]
+        await query.edit_message_text(
+            f"{action_emoji} <b>All {action_label}</b>\n\n"
+            f"👥 <b>Gruppen</b>: {len(selected)}\n"
+            f"{', '.join(group_names[:5])}"
+            f"{'...' if len(group_names) > 5 else ''}\n\n"
+            f"⚠️ <b>Achtung:</b> Dies wird ALLE gebannten/gemuteten User in den gewählten Gruppen "
+            f"{'entbannen' if 'unban' in action else 'entmuten'}!",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode="HTML",
+        )
+
+    elif data.startswith("memgrp_exec_"):
+        action = user_data_store.get(user_id, {}).get("action", "")
+        selected = list(user_data_store.get(user_id, {}).get("selected", set()))
+        if not selected:
+            await query.answer("⚠️ Keine Gruppen!", show_alert=True)
+            return
+
+        await query.edit_message_text("⏳ Wird ausgeführt... Bitte warten.")
+
+        success_count = 0
+        error_count = 0
+
+        if "unban" in action:
+            # Get banned users from each group and unban them
+            for gid in selected:
+                try:
+                    # Get list of banned users (kicked members)
+                    banned = []
+                    try:
+                        async for member in context.bot.get_chat_administrators(gid):
+                            pass  # just to verify bot has access
+                    except Exception:
+                        pass
+                    # Use getChatMember won't work for listing, so we use our tracked data
+                    bot_data = load_data()
+                    banned_ids = set()
+                    for grp_data in bot_data.get("groups", []):
+                        if str(grp_data.get("id")) == str(gid):
+                            banned_ids = set(grp_data.get("banned_users", []))
+                            break
+                    # Also check global banned data
+                    for uid_str, udata in bot_data.get("users", {}).items():
+                        bans = udata.get("banned_in", [])
+                        if gid in bans or str(gid) in [str(b) for b in bans]:
+                            banned_ids.add(int(uid_str))
+                    
+                    for uid in banned_ids:
+                        try:
+                            await context.bot.unban_chat_member(chat_id=gid, user_id=uid, only_if_banned=True)
+                            success_count += 1
+                        except Exception as e:
+                            logger.error(f"Mass unban failed for {uid} in {gid}: {e}")
+                            error_count += 1
+                    # Clear tracked bans for this group
+                    forget_group_ban([gid], list(banned_ids))
+                except Exception as e:
+                    logger.error(f"Mass unban error in group {gid}: {e}")
+                    error_count += 1
+        else:
+            # Unmute: restrict with all permissions
+            for gid in selected:
+                try:
+                    bot_data = load_data()
+                    muted_ids = set()
+                    for uid_str, udata in bot_data.get("users", {}).items():
+                        mutes = udata.get("muted_in", [])
+                        if gid in mutes or str(gid) in [str(m) for m in mutes]:
+                            muted_ids.add(int(uid_str))
+                    
+                    chat_obj = await context.bot.get_chat(gid)
+                    default_perms = chat_obj.permissions or ChatPermissions.all_permissions()
+                    
+                    for uid in muted_ids:
+                        try:
+                            await context.bot.restrict_chat_member(
+                                chat_id=gid, user_id=uid,
+                                permissions=default_perms,
+                            )
+                            success_count += 1
+                        except Exception as e:
+                            logger.error(f"Mass unmute failed for {uid} in {gid}: {e}")
+                            error_count += 1
+                except Exception as e:
+                    logger.error(f"Mass unmute error in group {gid}: {e}")
+                    error_count += 1
+
+        action_label = "Unban" if "unban" in action else "Unmute"
+        keyboard = [[InlineKeyboardButton("🔙 Zurück", callback_data="menu_members")]]
+        await query.edit_message_text(
+            f"✅ <b>All {action_label} abgeschlossen!</b>\n\n"
+            f"✅ Erfolgreich: {success_count}\n"
+            f"❌ Fehler: {error_count}",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode="HTML",
+        )
+        await log_action(context, f"MASS {action_label.upper()}: {success_count} erfolgreich, {error_count} Fehler – von {query.from_user.full_name}")
 
     # === SETTINGS ===
     elif data == "menu_settings":
@@ -4555,6 +4718,34 @@ async def show_sched_group_selection(query, context, user_id, groups):
         "🔁 *Wiederholte Nachricht*\nWähle die Gruppen aus:",
         reply_markup=InlineKeyboardMarkup(keyboard),
         parse_mode="Markdown",
+    )
+
+
+async def show_members_group_selection(query, context, user_id, groups, action):
+    """Show group selection grid for mass unban/unmute."""
+    selected = user_data_store.get(user_id, {}).get("selected", set())
+    action_label = "Unban" if "unban" in action else "Unmute"
+    action_emoji = "✅" if "unban" in action else "🔊"
+    keyboard = []
+    row = []
+    for g in groups:
+        check = "✅" if g["id"] in selected else "⬜"
+        row.append(InlineKeyboardButton(f"{check} {g['title']}", callback_data=f"memgrp_toggle_{g['id']}_{action}"))
+        if len(row) == 2:
+            keyboard.append(row)
+            row = []
+    if row:
+        keyboard.append(row)
+    keyboard.append([
+        InlineKeyboardButton("☑️ Alle", callback_data=f"memgrp_all_{action}"),
+        InlineKeyboardButton("◻️ Keine", callback_data=f"memgrp_none_{action}"),
+    ])
+    keyboard.append([InlineKeyboardButton(f"⚡ Weiter ({len(selected)} gewählt)", callback_data=f"memgrp_confirm_{action}")])
+    keyboard.append([InlineKeyboardButton("🔙 Zurück", callback_data="menu_members")])
+    await query.edit_message_text(
+        f"{action_emoji} <b>All {action_label}</b>\nWähle die Gruppen:",
+        reply_markup=InlineKeyboardMarkup(keyboard),
+        parse_mode="HTML",
     )
 
 
