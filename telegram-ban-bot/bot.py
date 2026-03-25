@@ -2949,7 +2949,28 @@ async def show_scheduled_list(query, context, user_id, page=0):
 
 async def show_sched_group_selection(query, context, user_id, groups):
     """Show group selection grid for scheduled messages."""
-    pass
+    selected = user_data_store.get(user_id, {}).get("selected", set())
+    keyboard = []
+    row = []
+    for g in groups:
+        check = "✅" if g["id"] in selected else "⬜"
+        row.append(InlineKeyboardButton(f"{check} {g['title']}", callback_data=f"sched_toggle_{g['id']}"))
+        if len(row) == 2:
+            keyboard.append(row)
+            row = []
+    if row:
+        keyboard.append(row)
+    keyboard.append([
+        InlineKeyboardButton("☑️ Alle", callback_data="sched_select_all"),
+        InlineKeyboardButton("◻️ Keine", callback_data="sched_select_none"),
+    ])
+    keyboard.append([InlineKeyboardButton(f"✅ Weiter ({len(selected)} gewählt)", callback_data="sched_confirm_groups")])
+    keyboard.append([InlineKeyboardButton("🔙 Zurück", callback_data="menu_scheduled")])
+    await query.edit_message_text(
+        "🔁 *Wiederholte Nachricht*\nWähle die Gruppen aus:",
+        reply_markup=InlineKeyboardMarkup(keyboard),
+        parse_mode="Markdown",
+    )
 
 
 async def show_pcmd_group_selection(query, context, user_id, groups):
@@ -2976,33 +2997,6 @@ async def show_pcmd_group_selection(query, context, user_id, groups):
         reply_markup=InlineKeyboardMarkup(keyboard),
         parse_mode="HTML",
     )
-
-
-async def _show_sched_group_selection(query, context, user_id, groups):
-    """Show group selection grid for scheduled messages (actual implementation)."""
-    selected = user_data_store.get(user_id, {}).get("selected", set())
-    keyboard = []
-    row = []
-    for g in groups:
-        check = "✅" if g["id"] in selected else "⬜"
-        row.append(InlineKeyboardButton(f"{check} {g['title']}", callback_data=f"sched_toggle_{g['id']}"))
-        if len(row) == 2:
-            keyboard.append(row)
-            row = []
-    if row:
-        keyboard.append(row)
-    keyboard.append([
-        InlineKeyboardButton("☑️ Alle", callback_data="sched_select_all"),
-        InlineKeyboardButton("◻️ Keine", callback_data="sched_select_none"),
-    ])
-    keyboard.append([InlineKeyboardButton(f"✅ Weiter ({len(selected)} gewählt)", callback_data="sched_confirm_groups")])
-    keyboard.append([InlineKeyboardButton("🔙 Zurück", callback_data="menu_scheduled")])
-    await query.edit_message_text(
-        "🔁 *Wiederholte Nachricht*\nWähle die Gruppen aus:",
-        reply_markup=InlineKeyboardMarkup(keyboard),
-        parse_mode="Markdown",
-    )
-
 
 
 async def show_sched_edit_groups(query, context, user_id, sched_id):
