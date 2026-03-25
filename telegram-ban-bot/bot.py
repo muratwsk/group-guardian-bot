@@ -2760,6 +2760,9 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
     elif data.startswith("warn_punish_"):
+        if not is_admin(query.from_user.id):
+            await query.answer("⚠️ Du hast keine Berechtigung, diesen Vorgang auszuführen\n\n💡 Falls du denkst, berechtigt zu sein, sende /reload und versuche es erneut.", show_alert=True)
+            return
         rest = data.replace("warn_punish_", "")
         parts = rest.split("_")
         action = parts[0]
