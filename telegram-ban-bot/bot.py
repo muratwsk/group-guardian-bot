@@ -4086,7 +4086,7 @@ async def track_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg_text = update.message.text or update.message.caption or ""
     if msg_text and update.message.from_user:
         sender = update.message.from_user
-        if not is_authorized(sender.id):
+        if not is_authorized(sender.id) and not is_freed(sender.id):
             bot_data = load_data()
             bw_config = bot_data.get("badwords_config", {"punishment": "aus", "delete": True})
             bw_punishment = bw_config.get("punishment", "aus")
