@@ -5439,6 +5439,8 @@ def main():
     app.add_handler(CommandHandler("kick", kick_command))
     app.add_handler(CommandHandler("warn", warn_command))
     app.add_handler(CommandHandler("unwarn", unwarn_command))
+    app.add_handler(CommandHandler("free", free_command))
+    app.add_handler(CommandHandler("unfree", unfree_command))
     app.add_handler(CommandHandler("open", handle_open_command))
     app.add_handler(CommandHandler("close", handle_close_command))
     app.add_handler(CallbackQueryHandler(button_handler))
