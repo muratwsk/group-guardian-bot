@@ -4054,7 +4054,7 @@ async def track_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # --- Anti-Spam: Forward check ---
     if update.message.forward_origin and update.message.from_user:
-        if not is_authorized(update.message.from_user.id):
+        if not is_authorized(update.message.from_user.id) and not is_freed(update.message.from_user.id):
             if not await is_chat_admin(context, update.effective_chat.id, update.message.from_user.id):
                 bot_data_fw = load_data()
                 fw = bot_data_fw.get("antispam_forward", {})
