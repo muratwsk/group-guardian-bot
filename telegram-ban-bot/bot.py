@@ -1074,6 +1074,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
         tracked = lookup_user(str(target_id))
         target_name = tracked.get("name", str(target_id)) if tracked else str(target_id)
+        target_username = tracked.get("username") if tracked else None
         from telegram import ChatPermissions
         mute_perms = ChatPermissions(can_send_messages=False, can_send_media_messages=False, can_send_other_messages=False)
         success_count = 0
@@ -1083,8 +1084,11 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 success_count += 1
             except Exception as e:
                 logger.error(f"Info mute failed for {target_id} in {g['id']}: {e}")
+        uname = f"@{target_username} " if target_username else ""
+        keyboard = [[InlineKeyboardButton("✅ Unmute", callback_data=f"info_unmute_{target_id}")]]
         await query.edit_message_text(
-            f"🔇 <code>{target_id}</code> wurde in {success_count}/{len(groups)} Gruppen gemutet ✅",
+            f"{uname}[<code>{target_id}</code>] wurde 🔇 stummgeschaltet.",
+            reply_markup=InlineKeyboardMarkup(keyboard),
             parse_mode="HTML",
         )
         await log_action(context, f"MUTE (via /info): {target_name} ({target_id}) von {query.from_user.full_name}")
@@ -1097,6 +1101,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
         tracked = lookup_user(str(target_id))
         target_name = tracked.get("name", str(target_id)) if tracked else str(target_id)
+        target_username = tracked.get("username") if tracked else None
         from telegram import ChatPermissions
         unmute_perms = ChatPermissions(can_send_messages=True, can_send_media_messages=True, can_send_other_messages=True, can_add_web_page_previews=True)
         success_count = 0
@@ -1106,8 +1111,11 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 success_count += 1
             except Exception as e:
                 logger.error(f"Info unmute failed for {target_id} in {g['id']}: {e}")
+        uname = f"@{target_username} " if target_username else ""
+        keyboard = [[InlineKeyboardButton("🔇 Mute", callback_data=f"info_mute_{target_id}")]]
         await query.edit_message_text(
-            f"🔊 <code>{target_id}</code> wurde in {success_count}/{len(groups)} Gruppen entmutet ✅",
+            f"{uname}[<code>{target_id}</code>] wurde ✅ entmutet.",
+            reply_markup=InlineKeyboardMarkup(keyboard),
             parse_mode="HTML",
         )
         await log_action(context, f"UNMUTE (via /info): {target_name} ({target_id}) von {query.from_user.full_name}")
