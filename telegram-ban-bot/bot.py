@@ -62,6 +62,10 @@ def normalize_data(data):
         "close_text": "Wir haben geschlossen. Bis zum nächsten Mal! 👋",
         "active_open_messages": {},
     })
+    data.setdefault("cmd_delete", {
+        "admin_prefixes": [],
+        "user_prefixes": [],
+    })
     return data
 
 def load_data():
