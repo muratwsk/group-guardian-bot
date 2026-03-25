@@ -1494,6 +1494,27 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except Exception as e:
             await query.answer(f"❌ Unmute fehlgeschlagen: {e}", show_alert=True)
 
+    # === CMD UNBAN BUTTON ===
+    elif data.startswith("cmd_unban_"):
+        payload = data.replace("cmd_unban_", "", 1)
+        scope_chat_id_str, target_id_str = payload.rsplit("_", 1)
+        scope_chat_id = int(scope_chat_id_str)
+        target_id = int(target_id_str)
+        tracked = lookup_user(str(target_id))
+        target_name = tracked.get("name", str(target_id)) if tracked else str(target_id)
+        target_username = tracked.get("username") if tracked else None
+
+        try:
+            await context.bot.unban_chat_member(chat_id=scope_chat_id, user_id=target_id, only_if_banned=True)
+            uname = f"@{target_username} " if target_username else ""
+            await query.edit_message_text(
+                f"{uname}[<code>{target_id}</code>] wurde ✅ entbannt.",
+                parse_mode="HTML",
+            )
+            await log_action(context, f"✅ Unban (Button): {target_name} ({target_id}) in {scope_chat_id} von {query.from_user.full_name}")
+        except Exception as e:
+            await query.answer(f"❌ Unban fehlgeschlagen: {e}", show_alert=True)
+
     # === LINK WARN CANCEL ===
     elif data.startswith("link_warn_cancel_"):
         payload = data.replace("link_warn_cancel_", "", 1)
