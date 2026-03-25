@@ -2143,7 +2143,7 @@ async def track_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     if update.message.from_user:
-        track_user(update.message.from_user)
+        track_user(update.message.from_user, group_id=update.effective_chat.id)
 
     if update.message.left_chat_member:
         left_member = update.message.left_chat_member
