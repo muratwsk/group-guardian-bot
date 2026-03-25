@@ -3746,6 +3746,7 @@ async def track_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     chat_id_as = update.effective_chat.id
                     user_id_as = update.message.from_user.id
                     user_name_as = update.message.from_user.full_name
+                    uname_as = f"@{update.message.from_user.username} " if update.message.from_user.username else ""
                     if lc_delete:
                         try:
                             await update.message.delete()
@@ -3762,17 +3763,44 @@ async def track_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                             warn_entry["name"] = user_name_as
                             warnings[key] = warn_entry
                             save_data(bot_data_as)
-                            await context.bot.send_message(chat_id=chat_id_as, text=f"⚠️ {html.escape(user_name_as)} verwarnt ({warn_entry['count']}/{max_w}) — Link gesendet", parse_mode="HTML")
+                            keyboard_as = InlineKeyboardMarkup([
+                                [InlineKeyboardButton("❌ Abbrechen", callback_data=f"link_warn_cancel_{chat_id_as}_{user_id_as}")]
+                            ])
+                            await context.bot.send_message(
+                                chat_id=chat_id_as,
+                                text=(
+                                    f"{uname_as}[<code>{user_id_as}</code>] hat ohne Genehmigung einen 🔗 Link gesendet.\n"
+                                    f"<b>Aktion:</b> Verwarnt ({warn_entry['count']}/{max_w}) ❗"
+                                ),
+                                reply_markup=keyboard_as,
+                                parse_mode="HTML",
+                            )
                         elif lc_punishment == "kick":
                             await context.bot.ban_chat_member(chat_id=chat_id_as, user_id=user_id_as)
                             await context.bot.unban_chat_member(chat_id=chat_id_as, user_id=user_id_as)
-                            await context.bot.send_message(chat_id=chat_id_as, text=f"👢 {html.escape(user_name_as)} gekickt — Link gesendet", parse_mode="HTML")
+                            await context.bot.send_message(
+                                chat_id=chat_id_as,
+                                text=f"{uname_as}[<code>{user_id_as}</code>] hat ohne Genehmigung einen 🔗 Link gesendet.\n<b>Aktion:</b> Gekickt 👢",
+                                parse_mode="HTML",
+                            )
                         elif lc_punishment == "mute":
                             await context.bot.restrict_chat_member(chat_id=chat_id_as, user_id=user_id_as, permissions=ChatPermissions.no_permissions())
-                            await context.bot.send_message(chat_id=chat_id_as, text=f"🔇 {html.escape(user_name_as)} gemutet — Link gesendet", parse_mode="HTML")
+                            keyboard_as = InlineKeyboardMarkup([
+                                [InlineKeyboardButton("✅ Unmute", callback_data=f"cmd_unmute_{chat_id_as}_{user_id_as}")]
+                            ])
+                            await context.bot.send_message(
+                                chat_id=chat_id_as,
+                                text=f"{uname_as}[<code>{user_id_as}</code>] hat ohne Genehmigung einen 🔗 Link gesendet.\n<b>Aktion:</b> Gemutet 🔇",
+                                reply_markup=keyboard_as,
+                                parse_mode="HTML",
+                            )
                         elif lc_punishment == "ban":
                             await context.bot.ban_chat_member(chat_id=chat_id_as, user_id=user_id_as, revoke_messages=True)
-                            await context.bot.send_message(chat_id=chat_id_as, text=f"🚫 {html.escape(user_name_as)} gebannt — Link gesendet", parse_mode="HTML")
+                            await context.bot.send_message(
+                                chat_id=chat_id_as,
+                                text=f"{uname_as}[<code>{user_id_as}</code>] hat ohne Genehmigung einen 🔗 Link gesendet.\n<b>Aktion:</b> Gebannt 🚫",
+                                parse_mode="HTML",
+                            )
                     except Exception as e:
                         logger.error(f"Link punishment failed: {e}")
                     await log_action(context, f"LINK-SPAM: {user_name_as} ({user_id_as}) in {update.effective_chat.title} — Strafe: {lc_punishment}")
