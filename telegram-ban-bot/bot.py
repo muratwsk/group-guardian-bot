@@ -888,6 +888,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "created_by": user_id,
             "created_at": now_de().strftime("%d.%m.%Y %H:%M"),
             "last_sent": None,
+            "next_run_at": (now_de() + datetime.timedelta(minutes=minutes)).strftime("%d.%m.%Y %H:%M"),
             "last_sent_messages": [],
             "delete_previous": True,
         }
