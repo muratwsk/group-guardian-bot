@@ -132,32 +132,32 @@ def save_users(users):
     with open(USERS_FILE, "w") as f:
         json.dump(users, f, indent=2)
 
-def track_user(user):
-    """Track a user's username → ID mapping, message count, and first seen date."""
+def track_user(user, group_id=None):
+    """Track a user's username → ID mapping, per-group message count, and first seen date."""
     if not user or user.is_bot:
         return
     users = load_users()
     now_str = now_de().strftime("%d.%m.%Y %H:%M")
-    if user.username:
-        key = user.username.lower()
+
+    def _update_entry(key):
         existing = users.get(key, {})
-        users[key] = {
+        entry = {
             "id": user.id,
             "name": user.full_name,
             "username": user.username,
-            "msg_count": existing.get("msg_count", 0) + 1,
             "first_seen": existing.get("first_seen", now_str),
+            "group_stats": existing.get("group_stats", {}),
         }
-    # Also store by ID for reverse lookup
-    id_key = str(user.id)
-    existing_id = users.get(id_key, {})
-    users[id_key] = {
-        "id": user.id,
-        "name": user.full_name,
-        "username": user.username,
-        "msg_count": existing_id.get("msg_count", 0) + 1,
-        "first_seen": existing_id.get("first_seen", now_str),
-    }
+        if group_id:
+            gkey = str(group_id)
+            gs = entry["group_stats"].get(gkey, {"msg_count": 0, "first_seen": now_str})
+            gs["msg_count"] = gs.get("msg_count", 0) + 1
+            entry["group_stats"][gkey] = gs
+        users[key] = entry
+
+    if user.username:
+        _update_entry(user.username.lower())
+    _update_entry(str(user.id))
     save_users(users)
 
 def lookup_user(identifier: str):
