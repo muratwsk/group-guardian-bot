@@ -4820,17 +4820,38 @@ async def personal_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("⚠️ Die Nachricht hat keinen speicherbaren Inhalt.")
         return
 
-    bot_data = load_data()
-    cmds = bot_data.setdefault("personal_commands", {})
-    existing = cmds.get(cmd_name, [])
-    if not isinstance(existing, list):
-        existing = [existing]
-    existing.append(cmd_data)
-    cmds[cmd_name] = existing
-    save_data(bot_data)
+    # Store pending data and show group selection
+    user_data_store[user_id] = {
+        "action": "personal_grp_select",
+        "cmd_name": cmd_name,
+        "cmd_data": cmd_data,
+        "selected": set(),
+    }
 
-    await update.message.reply_text(f"✅ Befehl /{cmd_name} gespeichert für alle Gruppen!")
-    await log_action(context, f"PERSONAL CMD: /{cmd_name} erstellt von {update.effective_user.full_name}")
+    bot_data = load_data()
+    groups = bot_data.get("groups", [])
+    keyboard = []
+    row = []
+    for g in groups:
+        row.append(InlineKeyboardButton(f"⬜ {g['title']}", callback_data=f"pers_grp_{g['id']}"))
+        if len(row) == 2:
+            keyboard.append(row)
+            row = []
+    if row:
+        keyboard.append(row)
+    keyboard.append([
+        InlineKeyboardButton("☑️ Alle", callback_data="pers_grp_all"),
+        InlineKeyboardButton("◻️ Keine", callback_data="pers_grp_none"),
+    ])
+    keyboard.append([InlineKeyboardButton("✅ Speichern", callback_data="pers_grp_save")])
+    keyboard.append([InlineKeyboardButton("❌ Abbrechen", callback_data="pers_grp_cancel")])
+
+    await update.message.reply_text(
+        f"🏗 <b>/{html.escape(cmd_name)}</b> — Wähle Gruppen:\n\n"
+        f"<i>Keine Auswahl = gilt für alle Gruppen</i>",
+        reply_markup=InlineKeyboardMarkup(keyboard),
+        parse_mode="HTML",
+    )
 
 
 async def unpersonal_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
