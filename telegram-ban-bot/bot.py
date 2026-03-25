@@ -1128,7 +1128,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         # Admin-Schutz: Prüfe ob target Admin in irgendeiner Gruppe ist
         if scope_chat_id and await is_chat_admin(context, scope_chat_id, target_id):
-            await query.answer("⚠️ Administratoren können nicht gebannt werden.", show_alert=True)
+            await query.answer("⛔ Dieser User ist ein Administrator und kann nicht gebannt werden.", show_alert=True)
             return
 
         successful_groups, failed_groups = await ban_user_in_groups(context, groups, target_id)
