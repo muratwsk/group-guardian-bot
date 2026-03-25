@@ -1661,33 +1661,45 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         save_data(bot_data)
         await show_openclose_menu(query, context, user_id)
 
-    elif data == "oc_notify_groups":
-        await show_openclose_group_selection(query, context, user_id)
+    elif data == "oc_notify_groups" or data == "oc_source_groups":
+        await show_oc_source_groups(query, context)
 
-    elif data.startswith("oc_grp_toggle_"):
-        gid = int(data.replace("oc_grp_toggle_", ""))
-        bot_data = load_data()
-        notify = set(bot_data["open_close"].get("notify_groups", []))
-        if gid in notify:
-            notify.discard(gid)
-        else:
-            notify.add(gid)
-        bot_data["open_close"]["notify_groups"] = list(notify)
-        save_data(bot_data)
-        await show_openclose_group_selection(query, context, user_id)
+    elif data.startswith("oc_src_"):
+        source_gid = int(data.replace("oc_src_", ""))
+        await show_oc_notify_for_source(query, context, source_gid)
 
-    elif data == "oc_grp_all":
+    elif data.startswith("oc_ntfy_all_"):
+        source_gid = int(data.replace("oc_ntfy_all_", ""))
         groups = await get_bot_groups(context)
         bot_data = load_data()
-        bot_data["open_close"]["notify_groups"] = [g["id"] for g in groups]
+        per_group = bot_data["open_close"].setdefault("per_group_notify", {})
+        per_group[str(source_gid)] = [g["id"] for g in groups if g["id"] != source_gid]
         save_data(bot_data)
-        await show_openclose_group_selection(query, context, user_id)
+        await show_oc_notify_for_source(query, context, source_gid)
 
-    elif data == "oc_grp_none":
+    elif data.startswith("oc_ntfy_none_"):
+        source_gid = int(data.replace("oc_ntfy_none_", ""))
         bot_data = load_data()
-        bot_data["open_close"]["notify_groups"] = []
+        per_group = bot_data["open_close"].setdefault("per_group_notify", {})
+        per_group[str(source_gid)] = []
         save_data(bot_data)
-        await show_openclose_group_selection(query, context, user_id)
+        await show_oc_notify_for_source(query, context, source_gid)
+
+    elif data.startswith("oc_ntfy_"):
+        # Format: oc_ntfy_{source_gid}_{target_gid}
+        parts = data.replace("oc_ntfy_", "").split("_")
+        source_gid = int(parts[0])
+        target_gid = int(parts[1])
+        bot_data = load_data()
+        per_group = bot_data["open_close"].setdefault("per_group_notify", {})
+        notify = set(per_group.get(str(source_gid), []))
+        if target_gid in notify:
+            notify.discard(target_gid)
+        else:
+            notify.add(target_gid)
+        per_group[str(source_gid)] = list(notify)
+        save_data(bot_data)
+        await show_oc_notify_for_source(query, context, source_gid)
 
     elif data == "oc_edit_open_text":
         user_data_store[user_id] = {"action": "oc_edit_open_text"}
@@ -5143,7 +5155,10 @@ async def show_openclose_menu(query, context, user_id):
     
     has_open_sticker = "✅" if oc.get("open_sticker") else "❌"
     has_close_sticker = "✅" if oc.get("close_sticker") else "❌"
-    notify_count = len(oc.get("notify_groups", []))
+    
+    # Count groups that have notify config
+    per_group = oc.get("per_group_notify", {})
+    configured_count = sum(1 for v in per_group.values() if v)
     
     # Check which groups are currently open
     active = oc.get("active_open_messages", {})
@@ -5155,7 +5170,7 @@ async def show_openclose_menu(query, context, user_id):
         f"🔓 <b>Open / Close</b>\n\n"
         f"🎨 Open-Sticker: {has_open_sticker}\n"
         f"🎨 Close-Sticker: {has_close_sticker}\n"
-        f"📢 Benachrichtigungs-Gruppen: {notify_count}\n"
+        f"📢 Gruppen mit Benachrichtigung: {configured_count}\n"
         f"🟢 Aktuell geöffnet: {open_str}\n\n"
         f"<i>Nutze /open in einer Gruppe zum Öffnen.\n"
         f"Nutze /close zum Schließen – die Open-Nachrichten werden automatisch gelöscht.</i>"
@@ -5169,7 +5184,7 @@ async def show_openclose_menu(query, context, user_id):
         keyboard.append([InlineKeyboardButton("🚫 Open-Sticker entfernen", callback_data="oc_remove_open_sticker")])
     if oc.get("close_sticker"):
         keyboard.append([InlineKeyboardButton("🚫 Close-Sticker entfernen", callback_data="oc_remove_close_sticker")])
-    keyboard.append([InlineKeyboardButton(f"📢 Benachrichtigungs-Gruppen ({notify_count})", callback_data="oc_notify_groups")])
+    keyboard.append([InlineKeyboardButton(f"📢 Gruppen-Benachrichtigungen ({configured_count})", callback_data="oc_source_groups")])
     keyboard.append([InlineKeyboardButton("✏️ Open-Text ändern", callback_data="oc_edit_open_text")])
     keyboard.append([InlineKeyboardButton("✏️ Close-Text ändern", callback_data="oc_edit_close_text")])
     keyboard.append([InlineKeyboardButton("🔙 Zurück", callback_data="back_main")])
@@ -5181,31 +5196,55 @@ async def show_openclose_menu(query, context, user_id):
     )
 
 
-async def show_openclose_group_selection(query, context, user_id):
-    """Show group selection for open/close notifications."""
+async def show_oc_source_groups(query, context):
+    """Show list of source groups to configure notify targets for."""
     bot_data = load_data()
-    notify = set(bot_data.get("open_close", {}).get("notify_groups", []))
+    oc = bot_data.get("open_close", {})
+    per_group = oc.get("per_group_notify", {})
     all_groups = await get_bot_groups(context)
     
     keyboard = []
-    row = []
     for g in all_groups:
-        check = "✅" if g["id"] in notify else "⬜"
-        row.append(InlineKeyboardButton(f"{check} {g['title']}", callback_data=f"oc_grp_toggle_{g['id']}"))
-        if len(row) == 2:
-            keyboard.append(row)
-            row = []
-    if row:
-        keyboard.append(row)
-    keyboard.append([
-        InlineKeyboardButton("☑️ Alle", callback_data="oc_grp_all"),
-        InlineKeyboardButton("◻️ Keine", callback_data="oc_grp_none"),
-    ])
-    keyboard.append([InlineKeyboardButton(f"🔙 Zurück ({len(notify)} gewählt)", callback_data="menu_openclose")])
+        notify_list = per_group.get(str(g["id"]), [])
+        count = len(notify_list)
+        label = f"{'✅' if count > 0 else '⬜'} {g['title']} → {count} Gruppen"
+        keyboard.append([InlineKeyboardButton(label, callback_data=f"oc_src_{g['id']}")])
+    keyboard.append([InlineKeyboardButton("🔙 Zurück", callback_data="menu_openclose")])
     
     await query.edit_message_text(
-        "📢 <b>Benachrichtigungs-Gruppen</b>\n\n"
-        "Wähle die Gruppen, die bei /open benachrichtigt werden sollen:",
+        "📢 <b>Gruppen-Benachrichtigungen</b>\n\n"
+        "Wähle eine <b>Quell-Gruppe</b>, um festzulegen welche Gruppen benachrichtigt werden, "
+        "wenn dort /open gemacht wird:",
+        reply_markup=InlineKeyboardMarkup(keyboard),
+        parse_mode="HTML",
+    )
+
+
+async def show_oc_notify_for_source(query, context, source_gid):
+    """Show notify group selection for a specific source group."""
+    bot_data = load_data()
+    oc = bot_data.get("open_close", {})
+    per_group = oc.get("per_group_notify", {})
+    notify = set(per_group.get(str(source_gid), []))
+    all_groups = await get_bot_groups(context)
+    
+    source_name = next((g["title"] for g in all_groups if g["id"] == source_gid), str(source_gid))
+    
+    keyboard = []
+    for g in all_groups:
+        if g["id"] == source_gid:
+            continue  # Don't show source group as target
+        check = "✅" if g["id"] in notify else "⬜"
+        keyboard.append([InlineKeyboardButton(f"{check} {g['title']}", callback_data=f"oc_ntfy_{source_gid}_{g['id']}")])
+    keyboard.append([
+        InlineKeyboardButton("☑️ Alle", callback_data=f"oc_ntfy_all_{source_gid}"),
+        InlineKeyboardButton("◻️ Keine", callback_data=f"oc_ntfy_none_{source_gid}"),
+    ])
+    keyboard.append([InlineKeyboardButton(f"🔙 Zurück ({len(notify)} gewählt)", callback_data="oc_source_groups")])
+    
+    await query.edit_message_text(
+        f"📢 <b>Benachrichtigungen für: {source_name}</b>\n\n"
+        f"Wenn in <b>{source_name}</b> /open gemacht wird, welche Gruppen sollen benachrichtigt werden?",
         reply_markup=InlineKeyboardMarkup(keyboard),
         parse_mode="HTML",
     )
@@ -5225,7 +5264,13 @@ async def handle_open_command(update: Update, context: ContextTypes.DEFAULT_TYPE
     
     bot_data = load_data()
     oc = bot_data.get("open_close", {})
-    notify_groups = oc.get("notify_groups", [])
+    # Get notify groups for THIS source group (per-group config)
+    per_group = oc.get("per_group_notify", {})
+    notify_groups = per_group.get(str(chat.id), [])
+    
+    # Fallback to old global notify_groups if per_group not configured
+    if not notify_groups and not per_group:
+        notify_groups = oc.get("notify_groups", [])
     
     if not notify_groups:
         await update.message.reply_text("⚠️ Keine Benachrichtigungs-Gruppen konfiguriert. Richte sie im Bot-Menü ein.")
