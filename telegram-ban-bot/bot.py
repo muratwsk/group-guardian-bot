@@ -3184,9 +3184,10 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             + (f"\n❌ {fail} Fehler" if fail else ""),
             reply_markup=InlineKeyboardMarkup(keyboard),
         )
-        await log_action(context, f"MESSENGER: {update.effective_user.full_name} ({user_id}) → {success} Gruppen\nText: {text[:100]}")
+        text_preview = (update.message.text_html or update.message.text or "")[:100]
+        await log_action(context, f"MESSENGER: {update.effective_user.full_name} ({user_id}) → {success} Gruppen\nText: {text_preview}")
         context.user_data["state"] = None
-        del user_data_store[user_id]
+        user_data_store.pop(user_id, None)
 
     elif state == WAITING_SCHEDULED_TEXT:
         pending = user_data_store.get(user_id)
