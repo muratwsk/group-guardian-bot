@@ -3914,7 +3914,7 @@ async def warn_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def unwarn_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Remove a warn from a user. Usage: /unwarn (reply to a message)."""
     user_id = update.effective_user.id
-    if not is_authorized(user_id):
+    if not await is_group_authorized(context, user_id, update.effective_chat):
         return
 
     chat = update.effective_chat
