@@ -69,6 +69,7 @@ def normalize_data(data):
         "admin_prefixes": [],
         "user_prefixes": [],
     })
+    data.setdefault("auto_approve", {})  # per-group: { "group_id": true/false }
     data.setdefault("antispam_links", {
         "punishment": "aus",
         "delete": True,
