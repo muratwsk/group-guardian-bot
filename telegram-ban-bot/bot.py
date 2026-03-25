@@ -66,6 +66,16 @@ def normalize_data(data):
         "admin_prefixes": [],
         "user_prefixes": [],
     })
+    data.setdefault("antispam_links", {
+        "punishment": "aus",
+        "delete": True,
+    })
+    data.setdefault("antispam_forward", {
+        "channels": False,
+        "groups": False,
+        "users": False,
+        "bots": False,
+    })
     return data
 
 def load_data():
