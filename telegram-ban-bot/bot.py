@@ -304,6 +304,14 @@ def is_authorized(user_id: int) -> bool:
     """Check if user is owner or admin (can use ban/unban)."""
     return is_admin(user_id)
 
+async def is_group_authorized(context, user_id: int, chat=None) -> bool:
+    """Check if user is config-admin OR a Telegram admin in the given chat."""
+    if is_admin(user_id):
+        return True
+    if chat and chat.type in ("group", "supergroup"):
+        return await is_chat_admin(context, chat.id, user_id)
+    return False
+
 async def is_chat_admin(context, chat_id: int, user_id: int) -> bool:
     """Check if user is admin or creator in a specific chat."""
     try:
