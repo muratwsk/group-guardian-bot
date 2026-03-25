@@ -85,6 +85,7 @@ def normalize_data(data):
         "bots": False,
     })
     data.setdefault("freed_users", [])
+    data.setdefault("protokoll_channels", {})  # { "channel_id": { "name": "...", "groups": ["all"] or [group_id, ...] } }
     return data
 
 def is_freed(user_id: int) -> bool:
