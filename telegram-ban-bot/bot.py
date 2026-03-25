@@ -4289,6 +4289,7 @@ async def track_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                             )
                         elif lc_punishment == "ban":
                             await context.bot.ban_chat_member(chat_id=chat_id_as, user_id=user_id_as, revoke_messages=True)
+                            remember_group_ban([chat_id_as], user_id_as, user_name_as, update.message.from_user.username)
                             await context.bot.send_message(
                                 chat_id=chat_id_as,
                                 text=f"{uname_as}[<code>{user_id_as}</code>] hat ohne Genehmigung einen 🔗 Link gesendet.\n<b>Aktion:</b> Gebannt 🚫",
