@@ -3094,9 +3094,10 @@ async def kick_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("⛔ Dieser User ist ein Administrator — Kick ist nicht möglich.")
         return
 
-    reason = " ".join(context.args) if context.args else None
-    if update.message.reply_to_message and context.args:
-        reason = " ".join(context.args)
+    args = list(context.args) if context.args else []
+    if update.message.reply_to_message and args and args[0].startswith("@"):
+        args = args[1:]
+    reason = " ".join(args) if args else None
 
     try:
         # Ban and immediately unban = kick (user can rejoin)
