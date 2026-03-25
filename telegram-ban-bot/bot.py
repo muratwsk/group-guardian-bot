@@ -1965,51 +1965,29 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         skipped_count = 0
 
         if "unban" in action:
-            # Collect ALL known user IDs from tracking
-            all_users = load_users()
-            all_user_ids = set()
-            for key, udata in all_users.items():
-                uid = udata.get("id")
-                if uid:
-                    all_user_ids.add(int(uid))
-            # Also add tracked banned users
-            bot_data = load_data()
             for gid in selected:
-                group_bans = bot_data.get("banned_users", {}).get(str(gid), {})
-                for uid_str in group_bans.keys():
-                    try:
-                        all_user_ids.add(int(uid_str))
-                    except (TypeError, ValueError):
-                        continue
+                # Try fast Pyrogram scan first
+                banned_ids = await get_banned_members_pyrogram(gid)
 
-            total_users = len(all_user_ids)
-            logger.info(f"Mass unban: checking {total_users} tracked users across {len(selected)} groups")
+                if banned_ids is None:
+                    # Fallback: use local tracking only
+                    logger.warning(f"Pyrogram unavailable, using tracked bans for {gid}")
+                    banned_ids = get_tracked_banned_user_ids(gid)
 
-            # Update progress periodically
-            checked = 0
-            for gid in selected:
-                banned_in_group = []
-                for uid in all_user_ids:
-                    try:
-                        member = await context.bot.get_chat_member(chat_id=gid, user_id=uid)
-                        if member.status == "kicked":
-                            banned_in_group.append(uid)
-                    except Exception:
-                        pass  # User never interacted with group or other error
-                    checked += 1
-                    # Update progress every 50 checks
-                    if checked % 50 == 0:
-                        try:
-                            await query.edit_message_text(
-                                f"⏳ Wird ausgeführt... {checked}/{total_users * len(selected)} geprüft\n"
-                                f"🔍 Bisher {len(banned_in_group)} gebannte gefunden"
-                            )
-                        except Exception:
-                            pass
+                group_obj = next((g for g in (await get_bot_groups(context)) if g["id"] == gid), None)
+                group_title = group_obj["title"] if group_obj else str(gid)
 
-                logger.info(f"Mass unban: found {len(banned_in_group)} actually banned users in {gid}")
+                logger.info(f"Mass unban: {len(banned_ids)} banned users in {group_title}")
 
-                for uid in banned_in_group:
+                try:
+                    await query.edit_message_text(
+                        f"⏳ Entbanne {len(banned_ids)} User in <b>{html.escape(group_title)}</b>...",
+                        parse_mode="HTML",
+                    )
+                except Exception:
+                    pass
+
+                for uid in banned_ids:
                     try:
                         await context.bot.unban_chat_member(chat_id=gid, user_id=uid, only_if_banned=True)
                         success_count += 1
