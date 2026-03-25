@@ -2087,13 +2087,19 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Re-render menu
         enabled_count = sum(1 for g in groups if auto_approve.get(str(g["id"]), False))
         text = (
-            "🚪 <b>Freigabemodus</b>\n\n"
-            "In diesem Menü kannst du entscheiden, ob der Bot "
-            "Gruppenbeitritts-Anfragen <b>automatisch genehmigt</b>.\n\n"
-            "👤 Wenn ein Benutzer über einen <b>freigabepflichtigen Link</b> "
-            "beitritt, wird er automatisch angenommen – sofern er nicht gebannt ist.\n\n"
-            "🚫 Gebannte User werden weiterhin <b>automatisch abgelehnt</b>.\n\n"
-            f"📊 <b>Status:</b> {enabled_count}/{len(groups)} Gruppen aktiv"
+            "📬 <b>Freigabemodus</b>\n\n"
+            "In diesem Menü kannst du entscheiden, ob du die Verwaltung der "
+            "Gruppenbeitritts-Freigabe an den Bot delegieren möchtest, sobald "
+            "ein Benutzer den Beitritt über einen freigabepflichtigen Link beantragt.\n\n"
+            "🧠 Da das Captcha nicht aktiv ist und du die Auto-Freigabe aktivierst, "
+            "werden die <b>Nutzer automatisch in die Gruppe aufgenommen</b>, "
+            "sobald sie die Anfrage stellen (es sei denn, es wird eine andere Prüfung durchgeführt).\n\n"
+            "🔦 Falls die automatische Genehmigung aktiviert ist, werden alle Prüfungen "
+            "(Namenssperre, Gebannt...) durchgeführt, bevor der Nutzer der Gruppe beitritt – "
+            "falls nicht bestanden, wird der Benutzer <b>nicht genehmigt</b>.\n\n"
+            "👥 Wenn ein Benutzer über einen Link beitritt, der <u>nicht genehmigungspflichtig</u> ist, "
+            "erfolgt die Prozedur ganz normal <b>in der Gruppe</b>.\n\n"
+            f"💡 <b>Status:</b> {enabled_count}/{len(groups)} Gruppen aktiv"
         )
         keyboard = []
         for g in groups:
