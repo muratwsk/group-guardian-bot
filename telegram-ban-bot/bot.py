@@ -4607,15 +4607,34 @@ async def block_banned_join_request(update: Update, context: ContextTypes.DEFAUL
             logger.error(f"Decline join request failed for {member.id} in {chat_id}: {e}")
         return
 
-    # Auto-approve if Freigabemodus is enabled for this group
+    # Check if Freigabemodus is enabled for this group
     bot_data = load_data()
     auto_approve = bot_data.get("auto_approve", {})
-    if auto_approve.get(str(chat_id), False):
-        try:
-            await context.bot.approve_chat_join_request(chat_id=chat_id, user_id=member.id)
-            logger.info(f"Auto-approved join request: {member.full_name} ({member.id}) in {request.chat.title}")
-        except Exception as e:
-            logger.error(f"Auto-approve join request failed for {member.id} in {chat_id}: {e}")
+    if not auto_approve.get(str(chat_id), False):
+        return  # Freigabemodus not active, let Telegram handle it
+
+    # --- Pre-approval checks ---
+
+    # Check badwords in user's name
+    badwords = bot_data.get("badwords", [])
+    bw_config = bot_data.get("badwords_config", {"punishment": "aus"})
+    if bw_config.get("punishment", "aus") != "aus" and badwords:
+        user_name_lower = (member.full_name or "").lower()
+        for word in badwords:
+            if word.lower() in user_name_lower:
+                try:
+                    await context.bot.decline_chat_join_request(chat_id=chat_id, user_id=member.id)
+                    await log_action(context, f"🚫 JOIN-REQUEST ABGELEHNT (Namenssperre '{word}'): {member.full_name} ({member.id}) in {request.chat.title}")
+                except Exception as e:
+                    logger.error(f"Decline join request (name ban) failed for {member.id} in {chat_id}: {e}")
+                return
+
+    # All checks passed → auto-approve
+    try:
+        await context.bot.approve_chat_join_request(chat_id=chat_id, user_id=member.id)
+        logger.info(f"✅ Auto-approved join request: {member.full_name} ({member.id}) in {request.chat.title}")
+    except Exception as e:
+        logger.error(f"Auto-approve join request failed for {member.id} in {chat_id}: {e}")
 
 # --- Media handler (photos, videos, stickers for scheduled messages + JSON import) ---
 
