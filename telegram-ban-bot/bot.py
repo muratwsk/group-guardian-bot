@@ -1881,6 +1881,11 @@ async def info_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     premium_icon = "⭐ Ja" if is_premium else "Nein"
     ban_status = f"🚫 {banned_in}/{len(groups)} Gruppen" if banned_in > 0 else "✅ Nicht gebannt"
 
+    # Message count and first seen from tracking
+    tracked_data = lookup_user(str(target_id))
+    msg_count = tracked_data.get("msg_count", 0) if tracked_data else 0
+    first_seen = tracked_data.get("first_seen", "—") if tracked_data else "—"
+
     info_text = (
         f"━━━━━━━━━━━━━━━━━━\n"
         f"🆔 <b>ID:</b> <code>{target_id}</code> <code>#id{target_id}</code>\n"
@@ -1890,6 +1895,8 @@ async def info_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"📷 <b>Profilbild:</b> {photo_icon}\n"
         f"⭐ <b>Premium:</b> {premium_icon}\n"
         f"📝 <b>Bio:</b> {html.escape(bio[:100]) if bio != '—' else '—'}\n"
+        f"💬 <b>Nachrichten:</b> {msg_count}\n"
+        f"📅 <b>Erste Nachricht:</b> {first_seen}\n"
         f"🚫 <b>Ban-Status:</b> {ban_status}\n"
         f"━━━━━━━━━━━━━━━━━━"
     )
