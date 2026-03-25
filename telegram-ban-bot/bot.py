@@ -1038,8 +1038,11 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             except Exception as e:
                 logger.error(f"Info ban failed for {target_id} in {g['id']}: {e}")
         remember_group_ban([g["id"] for g in groups], target_id, target_name, target_username)
+        uname = f"@{target_username} " if target_username else ""
+        keyboard = [[InlineKeyboardButton("✅ Entsperren", callback_data=f"info_unban_{target_id}")]]
         await query.edit_message_text(
-            f"🚫 <code>{target_id}</code> wurde in {success_count}/{len(groups)} Gruppen gebannt ✅",
+            f"{uname}[<code>{target_id}</code>] verbannt.",
+            reply_markup=InlineKeyboardMarkup(keyboard),
             parse_mode="HTML",
         )
         await log_action(context, f"BANALL (via /info): {target_name} ({target_id}) von {query.from_user.full_name}")
@@ -1052,6 +1055,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
         tracked = lookup_user(str(target_id))
         target_name = tracked.get("name", str(target_id)) if tracked else str(target_id)
+        target_username = tracked.get("username") if tracked else None
         success_count = 0
         for g in groups:
             try:
@@ -1060,8 +1064,11 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             except Exception as e:
                 logger.error(f"Info unban failed for {target_id} in {g['id']}: {e}")
         forget_group_ban([g["id"] for g in groups], target_id)
+        uname = f"@{target_username} " if target_username else ""
+        keyboard = [[InlineKeyboardButton("🚫 BanALL", callback_data=f"info_ban_{target_id}")]]
         await query.edit_message_text(
-            f"✅ <code>{target_id}</code> wurde in {success_count}/{len(groups)} Gruppen entbannt ✅",
+            f"{uname}[<code>{target_id}</code>] entsperrt ✅",
+            reply_markup=InlineKeyboardMarkup(keyboard),
             parse_mode="HTML",
         )
         await log_action(context, f"UNBANALL (via /info): {target_name} ({target_id}) von {query.from_user.full_name}")
