@@ -235,6 +235,19 @@ async def ban_user_in_groups(context: ContextTypes.DEFAULT_TYPE, groups: list, t
 
     return successful_groups, failed_groups
 
+
+def get_tracked_banned_user_ids(group_id: int) -> list[int]:
+    """Return all tracked banned user IDs for one group."""
+    data = load_data()
+    group_bans = data.get("banned_users", {}).get(str(group_id), {})
+    result = []
+    for uid_str in group_bans.keys():
+        try:
+            result.append(int(uid_str))
+        except (TypeError, ValueError):
+            continue
+    return result
+
 def load_users():
     return _safe_load_json(USERS_FILE, {})
 
