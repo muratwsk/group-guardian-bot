@@ -1873,7 +1873,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         result_text = ""
         # Admin-Schutz
         if await is_chat_admin(context, chat_id_val, target_id):
-            await query.answer("⚠️ Administratoren können nicht bestraft werden.", show_alert=True)
+            await query.answer("⛔ Dieser User ist ein Administrator und kann nicht bestraft werden.", show_alert=True)
             return
 
         try:
