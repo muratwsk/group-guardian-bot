@@ -4677,11 +4677,26 @@ async def show_scheduled_detail(query, context, user_id, sched_id):
     group_names = [g["title"] for g in all_groups if g["id"] in sched_group_ids]
     groups_str = ", ".join(group_names) if group_names else "Keine"
     
+    # Calculate next fire time
+    next_fire_str = "—"
+    if sched.get("active"):
+        jq = _get_job_queue(context)
+        if jq:
+            jobs = jq.get_jobs_by_name(f"sched_{sched_id}")
+            if jobs:
+                job = jobs[0]
+                if job.next_t:
+                    next_fire_str = job.next_t.astimezone(BERLIN_TZ).strftime("%d.%m.%Y %H:%M")
+    
+    last_sent = sched.get("last_sent", "—")
+    
     text = (
         f"🕐 <b>Wiederholte Mitteilungen</b>\n\n"
         f"💡 <b>Status</b>: {status}\n"
         f"🕐 <b>Zeit</b>: {time_str}\n"
         f"🔁 <b>Wiederholung</b>: {interval}\n"
+        f"⏭ <b>Nächster Versand</b>: {next_fire_str}\n"
+        f"📤 <b>Letzter Versand</b>: {last_sent}\n"
         f"👥 <b>Gruppen</b>: {groups_str}\n"
         f"📌 <b>Mitteilung anheften:</b>  {pin}\n"
         f"♻️ <b>Letzte Nachricht löschen:</b>  {del_prev}"
