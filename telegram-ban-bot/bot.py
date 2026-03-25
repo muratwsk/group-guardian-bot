@@ -4766,6 +4766,8 @@ def main():
     app.add_handler(CommandHandler("unbanall", unbanall))
     app.add_handler(CommandHandler("befehl", personal_command))
     app.add_handler(CommandHandler("unbefehl", unpersonal_command))
+    app.add_handler(CommandHandler("mute", mute_command))
+    app.add_handler(CommandHandler("unmute", unmute_command))
     app.add_handler(CommandHandler("kick", kick_command))
     app.add_handler(CommandHandler("warn", warn_command))
     app.add_handler(CommandHandler("unwarn", unwarn_command))
