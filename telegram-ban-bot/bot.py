@@ -5853,6 +5853,7 @@ async def execute_scheduled_message(context: ContextTypes.DEFAULT_TYPE):
         
         # Update last sent info
         sched["last_sent"] = now_de().strftime("%d.%m.%Y %H:%M")
+        sched["next_run_at"] = (now_de() + datetime.timedelta(minutes=sched.get("interval_minutes", 60))).strftime("%d.%m.%Y %H:%M")
         sched["last_sent_messages"] = sent_msgs
         save_data(bot_data)
         
