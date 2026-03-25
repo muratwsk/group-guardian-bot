@@ -1615,7 +1615,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
              InlineKeyboardButton("❗ Kick", callback_data="warn_set_kick")],
             [InlineKeyboardButton("📛 Mute", callback_data="warn_set_mute"),
              InlineKeyboardButton("🚫 Ban", callback_data="warn_set_ban")],
-            [InlineKeyboardButton("📛 🕐 Dauer der Schreibsperre", callback_data="noop")],
+            [InlineKeyboardButton("📛 🕐 Dauer der Schreibsperre", callback_data="warn_mute_dur_menu")],
         ]
         # Max warns row
         warn_row = []
