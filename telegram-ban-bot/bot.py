@@ -1925,7 +1925,7 @@ async def resolve_target(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # --- /info ---
 
 async def info_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Show user info card with ban/unban buttons. Usage: /info @user or /info ID or reply."""
+    """Show user info card with group-specific moderation buttons and separate BanALL."""
     user_id = update.effective_user.id
     if not is_authorized(user_id):
         await update.message.reply_text("⛔ Kein Zugriff.")
@@ -1935,11 +1935,9 @@ async def info_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if target_id is None:
         return
 
-    # Get additional info from tracked users
     tracked = lookup_user(str(target_id))
     username = tracked.get("username") if tracked else None
 
-    # Try to get full user info from Telegram API
     try:
         chat_info = await context.bot.get_chat(target_id)
         bio = chat_info.bio or "—"
@@ -1954,54 +1952,31 @@ async def info_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         has_photo = False
         full_name = target_name
 
-    # Check ban status across groups
     bot_data = load_data()
     groups = bot_data.get("groups", [])
-    banned_in = 0
-    for g in groups:
-        if is_banned_in_group(g["id"], target_id):
-            banned_in += 1
+    banned_in = sum(1 for g in groups if is_banned_in_group(g["id"], target_id))
+    is_banned_all = bool(groups) and banned_in == len(groups)
 
-    # Try to get chat member info from groups
-    situation = "Unbekannt"
-    join_date = None
-    member_status_raw = None
-    is_premium = False
-    is_muted = False
-    is_banned_status = False
-    for g in groups:
-        try:
-            member = await context.bot.get_chat_member(chat_id=g["id"], user_id=target_id)
-            member_status_raw = member.status
-            if member.status == "restricted":
-                # Check if actually muted (can't send messages)
-                if hasattr(member, 'can_send_messages') and not member.can_send_messages:
-                    is_muted = True
-            if member.status == "kicked":
-                is_banned_status = True
-            # Check premium
-            if hasattr(member, 'user') and member.user:
-                is_premium = getattr(member.user, 'is_premium', False) or False
-            break
-        except Exception:
-            continue
+    scope_chat_id = get_info_scope_chat_id(update)
+    group_state = await get_info_group_state(context, scope_chat_id, target_id)
+    is_muted = group_state["is_muted"]
+    is_banned_local = group_state["is_banned_local"]
+    is_premium = group_state["is_premium"]
 
-    # Build info text like the screenshot
     name_display = f"<a href='tg://user?id={target_id}'>{html.escape(full_name)}</a>"
     username_display = f"@{username}" if username else "—"
     photo_icon = "✅" if has_photo else "❌"
     premium_icon = "⭐ Ja" if is_premium else "Nein"
-    ban_status = f"🚫 {banned_in}/{len(groups)} Gruppen" if banned_in > 0 else "✅ Nicht gebannt"
+    ban_status = "🚫 In dieser Gruppe gebannt" if is_banned_local else "✅ Nicht gebannt in dieser Gruppe"
+    if not scope_chat_id:
+        ban_status = f"🚫 {banned_in}/{len(groups)} Gruppen" if banned_in > 0 else "✅ Nicht gebannt"
 
-    # Message count and first seen from tracking (per-group if in a group)
     tracked_data = lookup_user(str(target_id))
-    chat_id = update.effective_chat.id
-    if tracked_data and str(chat_id) in tracked_data.get("group_stats", {}):
-        gs = tracked_data["group_stats"][str(chat_id)]
+    if scope_chat_id and tracked_data and str(scope_chat_id) in tracked_data.get("group_stats", {}):
+        gs = tracked_data["group_stats"][str(scope_chat_id)]
         msg_count = gs.get("msg_count", 0)
         first_seen = gs.get("first_seen", "—")
     else:
-        # Sum all groups
         total = 0
         first_seen = "—"
         if tracked_data:
@@ -2009,16 +1984,13 @@ async def info_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 total += gs.get("msg_count", 0)
                 if first_seen == "—":
                     first_seen = gs.get("first_seen", "—")
-            msg_count = total
-        else:
-            msg_count = 0
+        msg_count = total
 
     info_text = (
         f"━━━━━━━━━━━━━━━━━━\n"
         f"🆔 <b>ID:</b> <code>{target_id}</code> <code>#id{target_id}</code>\n"
         f"👤 <b>Name:</b> {name_display}\n"
         f"🔗 <b>Username:</b> {username_display}\n"
-        
         f"📷 <b>Profilbild:</b> {photo_icon}\n"
         f"⭐ <b>Premium:</b> {premium_icon}\n"
         f"📝 <b>Bio:</b> {html.escape(bio[:100]) if bio != '—' else '—'}\n"
@@ -2028,22 +2000,9 @@ async def info_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"━━━━━━━━━━━━━━━━━━"
     )
 
-    # Dynamic buttons based on user status
-    keyboard = []
-    # Mute/Unmute row
-    if is_muted:
-        keyboard.append([InlineKeyboardButton("✅ Unmute", callback_data=f"info_unmute_{target_id}")])
-    else:
-        keyboard.append([InlineKeyboardButton("🔇 Mute", callback_data=f"info_mute_{target_id}")])
-    # Ban/Unban row
-    if is_banned_status or banned_in > 0:
-        keyboard.append([InlineKeyboardButton("✅ Entsperren", callback_data=f"info_unban_{target_id}")])
-    else:
-        keyboard.append([InlineKeyboardButton("🚫 BanALL", callback_data=f"info_ban_{target_id}")])
-
     await update.message.reply_text(
         info_text,
-        reply_markup=InlineKeyboardMarkup(keyboard),
+        reply_markup=build_info_keyboard(scope_chat_id, target_id, is_muted, is_banned_local, is_banned_all),
         parse_mode="HTML",
     )
 
