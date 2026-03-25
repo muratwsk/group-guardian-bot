@@ -4425,6 +4425,7 @@ async def track_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                             )
                         elif bw_punishment == "ban":
                             await context.bot.ban_chat_member(chat_id=chat_id, user_id=user_id_bw, revoke_messages=True)
+                            remember_group_ban([chat_id], user_id_bw, user_name, sender.username)
                             await context.bot.send_message(
                                 chat_id=chat_id,
                                 text=f"🚫 {html.escape(user_name)} wurde gebannt — Verbotenes Wort: <code>{html.escape(matched)}</code>",
