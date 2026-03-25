@@ -5015,9 +5015,10 @@ def schedule_job(context, sched):
         except Exception:
             h, m = 0, 0
         first_run = now.replace(hour=h, minute=m, second=0, microsecond=0)
-        if first_run <= now:
-            first_run += datetime.timedelta(minutes=sched.get("interval_minutes", 60))
-        delay = max(0, (first_run - now).total_seconds())
+        interval_td = datetime.timedelta(minutes=sched.get("interval_minutes", 60))
+        while first_run <= now:
+            first_run += interval_td
+        delay = (first_run - now).total_seconds()
     else:
         # No time set – start immediately, only interval matters
         delay = 0
