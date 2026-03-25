@@ -2599,6 +2599,35 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode="HTML",
         )
 
+    elif state == WAITING_BADWORD_ADD:
+        text_input = update.message.text.strip()
+        words = [w.strip() for w in text_input.split(",") if w.strip()]
+        if not words:
+            await update.message.reply_text("⚠️ Bitte sende mindestens ein Wort.")
+            return
+        bot_data = load_data()
+        word_list = bot_data.setdefault("badwords", [])
+        added = []
+        for w in words:
+            if w.lower() not in [x.lower() for x in word_list]:
+                word_list.append(w)
+                added.append(w)
+        save_data(bot_data)
+        context.user_data["state"] = None
+        keyboard = [[InlineKeyboardButton("🔙 Zurück", callback_data="menu_badwords")]]
+        if added:
+            await update.message.reply_text(
+                f"✅ Hinzugefügt: <code>{html.escape(', '.join(added))}</code>\n"
+                f"Insgesamt: {len(word_list)} verbotene Worte",
+                reply_markup=InlineKeyboardMarkup(keyboard),
+                parse_mode="HTML",
+            )
+        else:
+            await update.message.reply_text(
+                "⚠️ Alle Worte waren bereits vorhanden.",
+                reply_markup=InlineKeyboardMarkup(keyboard),
+            )
+
 # --- /registergroup - run in a group to add it ---
 
 async def register_group(update: Update, context: ContextTypes.DEFAULT_TYPE):
