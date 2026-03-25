@@ -1128,7 +1128,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         # Admin-Schutz: Prüfe ob target Admin in irgendeiner Gruppe ist
         if scope_chat_id and await is_chat_admin(context, scope_chat_id, target_id):
-            await query.answer("⚠️ Administratoren können nicht gebannt werden.", show_alert=True)
+            await query.answer("⛔ Dieser User ist ein Administrator und kann nicht gebannt werden.", show_alert=True)
             return
 
         successful_groups, failed_groups = await ban_user_in_groups(context, groups, target_id)
@@ -1202,7 +1202,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         # Admin-Schutz
         if await is_chat_admin(context, scope_chat_id, target_id):
-            await query.answer("⚠️ Administratoren können nicht gebannt werden.", show_alert=True)
+            await query.answer("⛔ Dieser User ist ein Administrator und kann nicht gebannt werden.", show_alert=True)
             return
 
         await context.bot.ban_chat_member(chat_id=scope_chat_id, user_id=target_id, revoke_messages=True)
@@ -1254,7 +1254,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         # Admin-Schutz
         if await is_chat_admin(context, scope_chat_id, target_id):
-            await query.answer("⚠️ Administratoren können nicht gemutet werden.", show_alert=True)
+            await query.answer("⛔ Dieser User ist ein Administrator und kann nicht gemutet werden.", show_alert=True)
             return
 
         await context.bot.restrict_chat_member(
@@ -1873,7 +1873,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         result_text = ""
         # Admin-Schutz
         if await is_chat_admin(context, chat_id_val, target_id):
-            await query.answer("⚠️ Administratoren können nicht bestraft werden.", show_alert=True)
+            await query.answer("⛔ Dieser User ist ein Administrator und kann nicht bestraft werden.", show_alert=True)
             return
 
         try:
@@ -2484,7 +2484,7 @@ async def warn_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # Admins/Creators dürfen nicht verwarnt werden
     if await is_chat_admin(context, chat.id, target_id):
-        await update.message.reply_text("⚠️ Administratoren können nicht verwarnt werden.")
+        await update.message.reply_text("⛔ Dieser User ist ein Administrator — Warn, Mute und Ban sind nicht möglich.")
         return
 
     reason = " ".join(context.args) if context.args else None
