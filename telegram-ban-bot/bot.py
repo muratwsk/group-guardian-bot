@@ -2948,7 +2948,41 @@ async def show_scheduled_list(query, context, user_id, page=0):
 
 
 async def show_sched_group_selection(query, context, user_id, groups):
-    """Show group selection grid for scheduled messages."""
+
+
+async def show_pcmd_group_selection(query, context, user_id, groups):
+    """Show group selection grid for personal commands."""
+    selected = user_data_store.get(user_id, {}).get("selected", set())
+    keyboard = []
+    row = []
+    for g in groups:
+        check = "✅" if g["id"] in selected else "⬜"
+        row.append(InlineKeyboardButton(f"{check} {g['title']}", callback_data=f"pcmd_grp_toggle_{g['id']}"))
+        if len(row) == 2:
+            keyboard.append(row)
+            row = []
+    if row:
+        keyboard.append(row)
+    keyboard.append([
+        InlineKeyboardButton("☑️ Alle", callback_data="pcmd_grp_all"),
+        InlineKeyboardButton("◻️ Keine", callback_data="pcmd_grp_none"),
+    ])
+    keyboard.append([InlineKeyboardButton(f"✅ Weiter ({len(selected)} gewählt)", callback_data="pcmd_grp_confirm")])
+    keyboard.append([InlineKeyboardButton("🔙 Zurück", callback_data="pcmd_menu")])
+    await query.edit_message_text(
+        "🏗 <b>Befehl hinzufügen</b>\nWähle die Gruppen, in denen der Befehl gelten soll:",
+        reply_markup=InlineKeyboardMarkup(keyboard),
+        parse_mode="HTML",
+    )
+
+
+async def show_sched_group_selection_original(query, context, user_id, groups):
+    """Placeholder to keep indentation."""
+    pass
+
+
+async def show_sched_group_selection_real(query, context, user_id, groups):
+    """Show group selection grid for scheduled messages (real)."""
     selected = user_data_store.get(user_id, {}).get("selected", set())
     keyboard = []
     row = []
