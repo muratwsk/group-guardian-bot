@@ -1038,8 +1038,11 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             except Exception as e:
                 logger.error(f"Info ban failed for {target_id} in {g['id']}: {e}")
         remember_group_ban([g["id"] for g in groups], target_id, target_name, target_username)
+        uname = f"@{target_username} " if target_username else ""
+        keyboard = [[InlineKeyboardButton("✅ Entsperren", callback_data=f"info_unban_{target_id}")]]
         await query.edit_message_text(
-            f"🚫 <code>{target_id}</code> wurde in {success_count}/{len(groups)} Gruppen gebannt ✅",
+            f"{uname}[<code>{target_id}</code>] verbannt.",
+            reply_markup=InlineKeyboardMarkup(keyboard),
             parse_mode="HTML",
         )
         await log_action(context, f"BANALL (via /info): {target_name} ({target_id}) von {query.from_user.full_name}")
@@ -1052,6 +1055,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
         tracked = lookup_user(str(target_id))
         target_name = tracked.get("name", str(target_id)) if tracked else str(target_id)
+        target_username = tracked.get("username") if tracked else None
         success_count = 0
         for g in groups:
             try:
@@ -1060,8 +1064,11 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             except Exception as e:
                 logger.error(f"Info unban failed for {target_id} in {g['id']}: {e}")
         forget_group_ban([g["id"] for g in groups], target_id)
+        uname = f"@{target_username} " if target_username else ""
+        keyboard = [[InlineKeyboardButton("🚫 BanALL", callback_data=f"info_ban_{target_id}")]]
         await query.edit_message_text(
-            f"✅ <code>{target_id}</code> wurde in {success_count}/{len(groups)} Gruppen entbannt ✅",
+            f"{uname}[<code>{target_id}</code>] entsperrt ✅",
+            reply_markup=InlineKeyboardMarkup(keyboard),
             parse_mode="HTML",
         )
         await log_action(context, f"UNBANALL (via /info): {target_name} ({target_id}) von {query.from_user.full_name}")
@@ -1074,6 +1081,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
         tracked = lookup_user(str(target_id))
         target_name = tracked.get("name", str(target_id)) if tracked else str(target_id)
+        target_username = tracked.get("username") if tracked else None
         from telegram import ChatPermissions
         mute_perms = ChatPermissions(can_send_messages=False, can_send_media_messages=False, can_send_other_messages=False)
         success_count = 0
@@ -1083,8 +1091,11 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 success_count += 1
             except Exception as e:
                 logger.error(f"Info mute failed for {target_id} in {g['id']}: {e}")
+        uname = f"@{target_username} " if target_username else ""
+        keyboard = [[InlineKeyboardButton("✅ Unmute", callback_data=f"info_unmute_{target_id}")]]
         await query.edit_message_text(
-            f"🔇 <code>{target_id}</code> wurde in {success_count}/{len(groups)} Gruppen gemutet ✅",
+            f"{uname}[<code>{target_id}</code>] wurde 🔇 stummgeschaltet.",
+            reply_markup=InlineKeyboardMarkup(keyboard),
             parse_mode="HTML",
         )
         await log_action(context, f"MUTE (via /info): {target_name} ({target_id}) von {query.from_user.full_name}")
@@ -1097,6 +1108,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
         tracked = lookup_user(str(target_id))
         target_name = tracked.get("name", str(target_id)) if tracked else str(target_id)
+        target_username = tracked.get("username") if tracked else None
         from telegram import ChatPermissions
         unmute_perms = ChatPermissions(can_send_messages=True, can_send_media_messages=True, can_send_other_messages=True, can_add_web_page_previews=True)
         success_count = 0
@@ -1106,8 +1118,11 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 success_count += 1
             except Exception as e:
                 logger.error(f"Info unmute failed for {target_id} in {g['id']}: {e}")
+        uname = f"@{target_username} " if target_username else ""
+        keyboard = [[InlineKeyboardButton("🔇 Mute", callback_data=f"info_mute_{target_id}")]]
         await query.edit_message_text(
-            f"🔊 <code>{target_id}</code> wurde in {success_count}/{len(groups)} Gruppen entmutet ✅",
+            f"{uname}[<code>{target_id}</code>] wurde ✅ entmutet.",
+            reply_markup=InlineKeyboardMarkup(keyboard),
             parse_mode="HTML",
         )
         await log_action(context, f"UNMUTE (via /info): {target_name} ({target_id}) von {query.from_user.full_name}")
@@ -1854,19 +1869,18 @@ async def info_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     join_date = None
     member_status_raw = None
     is_premium = False
+    is_muted = False
+    is_banned_status = False
     for g in groups:
         try:
             member = await context.bot.get_chat_member(chat_id=g["id"], user_id=target_id)
             member_status_raw = member.status
-            status_map = {
-                "creator": "👑 Ersteller",
-                "administrator": "🛡️ Admin",
-                "member": "👤 Mitglied",
-                "restricted": "⚠️ Eingeschränkt",
-                "left": "📤 Verlassen",
-                "kicked": "🚫 Gebannt",
-            }
-            situation = status_map.get(member.status, member.status)
+            if member.status == "restricted":
+                # Check if actually muted (can't send messages)
+                if hasattr(member, 'can_send_messages') and not member.can_send_messages:
+                    is_muted = True
+            if member.status == "kicked":
+                is_banned_status = True
             # Check premium
             if hasattr(member, 'user') and member.user:
                 is_premium = getattr(member.user, 'is_premium', False) or False
@@ -1916,13 +1930,18 @@ async def info_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"━━━━━━━━━━━━━━━━━━"
     )
 
-    # Inline buttons - 2 column grid like screenshot
-    keyboard = [
-        [InlineKeyboardButton("🚫 BanALL", callback_data=f"info_ban_{target_id}"),
-         InlineKeyboardButton("✅ UnbanALL", callback_data=f"info_unban_{target_id}")],
-        [InlineKeyboardButton("🔇 Mute", callback_data=f"info_mute_{target_id}"),
-         InlineKeyboardButton("🔊 Unmute", callback_data=f"info_unmute_{target_id}")],
-    ]
+    # Dynamic buttons based on user status
+    keyboard = []
+    # Mute/Unmute row
+    if is_muted:
+        keyboard.append([InlineKeyboardButton("✅ Unmute", callback_data=f"info_unmute_{target_id}")])
+    else:
+        keyboard.append([InlineKeyboardButton("🔇 Mute", callback_data=f"info_mute_{target_id}")])
+    # Ban/Unban row
+    if is_banned_status or banned_in > 0:
+        keyboard.append([InlineKeyboardButton("✅ Entsperren", callback_data=f"info_unban_{target_id}")])
+    else:
+        keyboard.append([InlineKeyboardButton("🚫 BanALL", callback_data=f"info_ban_{target_id}")])
 
     await update.message.reply_text(
         info_text,
