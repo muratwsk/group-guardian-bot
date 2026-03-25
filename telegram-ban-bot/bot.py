@@ -4751,7 +4751,7 @@ async def track_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                                 )
                         except Exception as e:
                             logger.error(f"Link punishment failed: {e}")
-                        await log_action(context, f"LINK-SPAM: {user_name_as} ({user_id_as}) in {update.effective_chat.title} — Strafe: {lc_punishment}")
+                        await log_action(context, f"LINK-SPAM: {user_name_as} ({user_id_as}) in {update.effective_chat.title} — Strafe: {lc_punishment}", group_id=chat_id_as, group_name=update.effective_chat.title)
                         return
 
     # --- Anti-Spam: Forward check ---
