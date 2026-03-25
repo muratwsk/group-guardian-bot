@@ -504,7 +504,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
              InlineKeyboardButton("⚠️ Warns", callback_data="menu_warns")],
             [InlineKeyboardButton("🔤 Verbotene Worte", callback_data="menu_badwords"),
              InlineKeyboardButton("🗑 Nachrichten", callback_data="menu_msgdelete")],
-            [InlineKeyboardButton("⚙️ Einstellungen", callback_data="menu_settings")],
+            [InlineKeyboardButton("🛡 Anti-Spam", callback_data="menu_antispam"),
+             InlineKeyboardButton("⚙️ Einstellungen", callback_data="menu_settings")],
         ]
         role = "👑 Owner" if is_owner(user_id) else "🛡️ Admin"
         # Clear any pending state
