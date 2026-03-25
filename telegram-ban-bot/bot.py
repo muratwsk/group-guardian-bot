@@ -3727,6 +3727,85 @@ async def track_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 except Exception as e:
                     logger.error(f"Cmd delete failed: {e}")
 
+    # --- Anti-Spam: Link check ---
+    if update.message.from_user and not is_authorized(update.message.from_user.id):
+        if not await is_chat_admin(context, update.effective_chat.id, update.message.from_user.id):
+            bot_data_as = load_data()
+            lc = bot_data_as.get("antispam_links", {"punishment": "aus", "delete": True})
+            lc_punishment = lc.get("punishment", "aus")
+            lc_delete = lc.get("delete", True)
+            has_link = False
+            # Check entities for URLs
+            for ent in (update.message.entities or []) + (update.message.caption_entities or []):
+                if ent.type in ("url", "text_link"):
+                    has_link = True
+                    break
+            if has_link and (lc_punishment != "aus" or lc_delete):
+                chat_id_as = update.effective_chat.id
+                user_id_as = update.message.from_user.id
+                user_name_as = update.message.from_user.full_name
+                if lc_delete:
+                    try:
+                        await update.message.delete()
+                    except Exception as e:
+                        logger.error(f"Link delete failed: {e}")
+                try:
+                    if lc_punishment == "warn":
+                        wc = bot_data_as.get("warn_config", {"max_warns": 3})
+                        max_w = wc.get("max_warns", 3)
+                        warnings = bot_data_as.setdefault("warnings", {})
+                        key = f"{chat_id_as}_{user_id_as}"
+                        warn_entry = warnings.get(key, {"count": 0, "name": user_name_as})
+                        warn_entry["count"] = warn_entry.get("count", 0) + 1
+                        warn_entry["name"] = user_name_as
+                        warnings[key] = warn_entry
+                        save_data(bot_data_as)
+                        await context.bot.send_message(chat_id=chat_id_as, text=f"⚠️ {html.escape(user_name_as)} verwarnt ({warn_entry['count']}/{max_w}) — Link gesendet", parse_mode="HTML")
+                    elif lc_punishment == "kick":
+                        await context.bot.ban_chat_member(chat_id=chat_id_as, user_id=user_id_as)
+                        await context.bot.unban_chat_member(chat_id=chat_id_as, user_id=user_id_as)
+                        await context.bot.send_message(chat_id=chat_id_as, text=f"👢 {html.escape(user_name_as)} gekickt — Link gesendet", parse_mode="HTML")
+                    elif lc_punishment == "mute":
+                        await context.bot.restrict_chat_member(chat_id=chat_id_as, user_id=user_id_as, permissions=ChatPermissions.no_permissions())
+                        await context.bot.send_message(chat_id=chat_id_as, text=f"🔇 {html.escape(user_name_as)} gemutet — Link gesendet", parse_mode="HTML")
+                    elif lc_punishment == "ban":
+                        await context.bot.ban_chat_member(chat_id=chat_id_as, user_id=user_id_as, revoke_messages=True)
+                        await context.bot.send_message(chat_id=chat_id_as, text=f"🚫 {html.escape(user_name_as)} gebannt — Link gesendet", parse_mode="HTML")
+                except Exception as e:
+                    logger.error(f"Link punishment failed: {e}")
+                await log_action(context, f"LINK-SPAM: {user_name_as} ({user_id_as}) in {update.effective_chat.title} — Strafe: {lc_punishment}")
+                return
+
+    # --- Anti-Spam: Forward check ---
+    if update.message.forward_origin and update.message.from_user:
+        if not is_authorized(update.message.from_user.id):
+            if not await is_chat_admin(context, update.effective_chat.id, update.message.from_user.id):
+                bot_data_fw = load_data()
+                fw = bot_data_fw.get("antispam_forward", {})
+                origin = update.message.forward_origin
+                should_delete = False
+                origin_type = getattr(origin, "type", "")
+                if origin_type == "channel" and fw.get("channels"):
+                    should_delete = True
+                elif origin_type == "chat" and fw.get("groups"):
+                    should_delete = True
+                elif origin_type == "user":
+                    fwd_user = getattr(origin, "sender_user", None)
+                    if fwd_user and fwd_user.is_bot and fw.get("bots"):
+                        should_delete = True
+                    elif fwd_user and not fwd_user.is_bot and fw.get("users"):
+                        should_delete = True
+                elif origin_type == "hidden_user" and fw.get("users"):
+                    should_delete = True
+                if should_delete:
+                    try:
+                        await update.message.delete()
+                        logger.info(f"Deleted forwarded msg from {update.message.from_user.id} in {update.effective_chat.id} (origin: {origin_type})")
+                    except Exception as e:
+                        logger.error(f"Forward delete failed: {e}")
+                    await log_action(context, f"FORWARD-SPAM: {update.message.from_user.full_name} ({update.message.from_user.id}) in {update.effective_chat.title} — Typ: {origin_type}")
+                    return
+
     # --- Forbidden words check ---
     msg_text = update.message.text or update.message.caption or ""
     if msg_text and update.message.from_user:
