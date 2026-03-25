@@ -1250,8 +1250,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if s["id"] == sched_id:
                 s["interval_minutes"] = minutes
                 s["interval_label"] = f"Alle {get_interval_label(minutes)}"
-                # Reset last_sent so next fire = now + new interval
-                s["last_sent"] = now_de().strftime("%d.%m.%Y %H:%M")
+                s["next_run_at"] = (now_de() + datetime.timedelta(minutes=minutes)).strftime("%d.%m.%Y %H:%M")
                 save_data(bot_data)
                 if s.get("active"):
                     schedule_job(context, s)
