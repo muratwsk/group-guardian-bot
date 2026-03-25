@@ -4722,6 +4722,34 @@ async def show_sched_group_selection(query, context, user_id, groups):
     )
 
 
+async def show_members_group_selection(query, context, user_id, groups, action):
+    """Show group selection grid for mass unban/unmute."""
+    selected = user_data_store.get(user_id, {}).get("selected", set())
+    action_label = "Unban" if "unban" in action else "Unmute"
+    action_emoji = "✅" if "unban" in action else "🔊"
+    keyboard = []
+    row = []
+    for g in groups:
+        check = "✅" if g["id"] in selected else "⬜"
+        row.append(InlineKeyboardButton(f"{check} {g['title']}", callback_data=f"memgrp_toggle_{g['id']}_{action}"))
+        if len(row) == 2:
+            keyboard.append(row)
+            row = []
+    if row:
+        keyboard.append(row)
+    keyboard.append([
+        InlineKeyboardButton("☑️ Alle", callback_data=f"memgrp_all_{action}"),
+        InlineKeyboardButton("◻️ Keine", callback_data=f"memgrp_none_{action}"),
+    ])
+    keyboard.append([InlineKeyboardButton(f"⚡ Weiter ({len(selected)} gewählt)", callback_data=f"memgrp_confirm_{action}")])
+    keyboard.append([InlineKeyboardButton("🔙 Zurück", callback_data="menu_members")])
+    await query.edit_message_text(
+        f"{action_emoji} <b>All {action_label}</b>\nWähle die Gruppen:",
+        reply_markup=InlineKeyboardMarkup(keyboard),
+        parse_mode="HTML",
+    )
+
+
 async def show_pcmd_group_selection(query, context, user_id, groups):
     """Show group selection grid for personal commands."""
     selected = user_data_store.get(user_id, {}).get("selected", set())
