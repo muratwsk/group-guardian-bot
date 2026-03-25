@@ -1816,18 +1816,46 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         max_w = wc.get("max_warns", 3)
         current_count = warn_entry["count"]
         if current_count >= max_w:
-            # Show punishment choice
-            keyboard = [
-                [InlineKeyboardButton("🚫 Ban", callback_data=f"warn_punish_ban_{chat_id_str}_{target_id_str}"),
-                 InlineKeyboardButton("❗ Kick", callback_data=f"warn_punish_kick_{chat_id_str}_{target_id_str}"),
-                 InlineKeyboardButton("📛 Mute", callback_data=f"warn_punish_mute_{chat_id_str}_{target_id_str}")],
-                [InlineKeyboardButton("-1", callback_data=f"warn_undo_{chat_id_str}_{target_id_str}")],
-                [InlineKeyboardButton("Verwarnungen auf Null setzen", callback_data=f"warn_reset_{chat_id_str}_{target_id_str}")],
-            ]
-            await query.edit_message_text(
-                f" [{target_id}] hat das Limit von {max_w} Verwarnungen erreicht. Was willst Du tun?",
-                reply_markup=InlineKeyboardMarkup(keyboard),
-            )
+            punishment = wc.get("punishment", "aus")
+            if punishment and punishment != "aus":
+                # Auto-execute configured punishment
+                chat_id_val = int(chat_id_str)
+                result_text = ""
+                try:
+                    if punishment == "ban":
+                        await context.bot.ban_chat_member(chat_id=chat_id_val, user_id=target_id, revoke_messages=True)
+                        remember_group_ban([chat_id_val], target_id, t_name, t_username)
+                        result_text = f"🚫 {uname} [{target_id}] wurde nach {max_w} Verwarnungen automatisch gebannt."
+                    elif punishment == "kick":
+                        await context.bot.ban_chat_member(chat_id=chat_id_val, user_id=target_id)
+                        await context.bot.unban_chat_member(chat_id=chat_id_val, user_id=target_id)
+                        result_text = f"❗ {uname} [{target_id}] wurde nach {max_w} Verwarnungen automatisch gekickt."
+                    elif punishment == "mute":
+                        await context.bot.restrict_chat_member(
+                            chat_id=chat_id_val, user_id=target_id,
+                            permissions=ChatPermissions.no_permissions(),
+                        )
+                        result_text = f"📛 {uname} [{target_id}] wurde nach {max_w} Verwarnungen automatisch gemutet."
+                except Exception as e:
+                    result_text = f"⚠️ Fehler: {e}"
+                # Reset warns
+                warnings.pop(f"{chat_id_str}_{target_id_str}", None)
+                save_data(bot_data)
+                await query.edit_message_text(result_text)
+                await log_action(context, f"WARN AUTO-PUNISH ({punishment}): {t_name} ({target_id}) von {query.from_user.full_name}")
+            else:
+                # No punishment configured — show choice
+                keyboard = [
+                    [InlineKeyboardButton("🚫 Ban", callback_data=f"warn_punish_ban_{chat_id_str}_{target_id_str}"),
+                     InlineKeyboardButton("❗ Kick", callback_data=f"warn_punish_kick_{chat_id_str}_{target_id_str}"),
+                     InlineKeyboardButton("📛 Mute", callback_data=f"warn_punish_mute_{chat_id_str}_{target_id_str}")],
+                    [InlineKeyboardButton("-1", callback_data=f"warn_undo_{chat_id_str}_{target_id_str}")],
+                    [InlineKeyboardButton("Verwarnungen auf Null setzen", callback_data=f"warn_reset_{chat_id_str}_{target_id_str}")],
+                ]
+                await query.edit_message_text(
+                    f" [{target_id}] hat das Limit von {max_w} Verwarnungen erreicht. Was willst Du tun?",
+                    reply_markup=InlineKeyboardMarkup(keyboard),
+                )
         else:
             keyboard = [
                 [InlineKeyboardButton("-1", callback_data=f"warn_undo_{chat_id_str}_{target_id_str}"),
@@ -2518,16 +2546,47 @@ async def warn_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # Check if max warns reached
     if current_count >= max_warns:
-        text = f" [{target_id}] hat das Limit von {max_warns} Verwarnungen erreicht. Was willst Du tun?"
-        if reason:
-            text += f"\n<b>Grund:</b> {html.escape(reason)}"
-        keyboard = [
-            [InlineKeyboardButton("🚫 Ban", callback_data=f"warn_punish_ban_{chat.id}_{target_id}"),
-             InlineKeyboardButton("❗ Kick", callback_data=f"warn_punish_kick_{chat.id}_{target_id}"),
-             InlineKeyboardButton("📛 Mute", callback_data=f"warn_punish_mute_{chat.id}_{target_id}")],
-            [InlineKeyboardButton("-1", callback_data=f"warn_undo_{chat.id}_{target_id}")],
-            [InlineKeyboardButton("Verwarnungen auf Null setzen", callback_data=f"warn_reset_{chat.id}_{target_id}")],
-        ]
+        punishment = warn_config.get("punishment", "aus")
+        if punishment and punishment != "aus":
+            # Auto-execute configured punishment
+            result_text = ""
+            try:
+                if punishment == "ban":
+                    await context.bot.ban_chat_member(chat_id=chat.id, user_id=target_id, revoke_messages=True)
+                    remember_group_ban([chat.id], target_id, target_name, target_username)
+                    result_text = f"🚫 {uname} [{target_id}] wurde nach {max_warns} Verwarnungen automatisch gebannt."
+                elif punishment == "kick":
+                    await context.bot.ban_chat_member(chat_id=chat.id, user_id=target_id)
+                    await context.bot.unban_chat_member(chat_id=chat.id, user_id=target_id)
+                    result_text = f"❗ {uname} [{target_id}] wurde nach {max_warns} Verwarnungen automatisch gekickt."
+                elif punishment == "mute":
+                    await context.bot.restrict_chat_member(
+                        chat_id=chat.id, user_id=target_id,
+                        permissions=ChatPermissions.no_permissions(),
+                    )
+                    result_text = f"📛 {uname} [{target_id}] wurde nach {max_warns} Verwarnungen automatisch gemutet."
+            except Exception as e:
+                result_text = f"⚠️ Fehler bei automatischer Bestrafung: {e}"
+            if reason:
+                result_text += f"\n<b>Grund:</b> {html.escape(reason)}"
+            # Reset warns after punishment
+            warnings.pop(f"{chat.id}_{target_id}", None)
+            save_data(bot_data)
+            await update.message.reply_text(result_text, parse_mode="HTML")
+            await log_action(context, f"WARN AUTO-PUNISH ({punishment}): {target_name} ({target_id}) in {chat.title} — {current_count}/{max_warns}" + (f" Grund: {reason}" if reason else ""))
+            return
+        else:
+            # No punishment configured — show choice
+            text = f" [{target_id}] hat das Limit von {max_warns} Verwarnungen erreicht. Was willst Du tun?"
+            if reason:
+                text += f"\n<b>Grund:</b> {html.escape(reason)}"
+            keyboard = [
+                [InlineKeyboardButton("🚫 Ban", callback_data=f"warn_punish_ban_{chat.id}_{target_id}"),
+                 InlineKeyboardButton("❗ Kick", callback_data=f"warn_punish_kick_{chat.id}_{target_id}"),
+                 InlineKeyboardButton("📛 Mute", callback_data=f"warn_punish_mute_{chat.id}_{target_id}")],
+                [InlineKeyboardButton("-1", callback_data=f"warn_undo_{chat.id}_{target_id}")],
+                [InlineKeyboardButton("Verwarnungen auf Null setzen", callback_data=f"warn_reset_{chat.id}_{target_id}")],
+            ]
     else:
         keyboard = [
             [InlineKeyboardButton("-1", callback_data=f"warn_undo_{chat.id}_{target_id}"),
