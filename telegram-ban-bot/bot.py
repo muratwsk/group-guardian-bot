@@ -2081,7 +2081,10 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         new_state = "aktiviert ✅" if not current else "deaktiviert ❌"
         groups = await get_bot_groups(context)
         group_title = next((g["title"] for g in groups if g["id"] == gid), str(gid))
-        await query.answer(f"Auto-Freigabe für {group_title} {new_state}")
+        try:
+            await query.answer(f"Auto-Freigabe für {group_title} {new_state}", show_alert=False)
+        except Exception:
+            pass
         await log_action(context, f"Freigabemodus {new_state} für {group_title} von {query.from_user.full_name}")
 
         # Re-render menu
