@@ -4795,18 +4795,8 @@ async def handle_custom_command(update: Update, context: ContextTypes.DEFAULT_TY
     if not isinstance(entries, list):
         entries = [entries]
 
-    # Find matching entry: first check group-specific, then fallback to global (empty groups)
-    cmd_data = None
-    for e in entries:
-        grps = e.get("groups", [])
-        if grps and chat_id in grps:
-            cmd_data = e
-            break
-    if cmd_data is None:
-        for e in entries:
-            if not e.get("groups", []):
-                cmd_data = e
-                break
+    # Befehle gelten für alle Gruppen – nimm den ersten Eintrag
+    cmd_data = entries[0] if entries else None
     if cmd_data is None:
         return
 
