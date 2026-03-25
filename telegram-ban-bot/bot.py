@@ -49,6 +49,11 @@ def normalize_data(data):
     data.setdefault("broadcasts", {})
     data.setdefault("scheduled", [])
     data.setdefault("personal_commands", {})
+    data.setdefault("warnings", {})
+    data.setdefault("warn_config", {
+        "max_warns": 3,
+        "punishment": "mute",
+    })
     data.setdefault("open_close", {
         "open_sticker": None,
         "close_sticker": None,
@@ -234,7 +239,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton("🔁 Wiederholte", callback_data="menu_scheduled"),
          InlineKeyboardButton("🔓 Open/Close", callback_data="menu_openclose")],
         [InlineKeyboardButton("🏗 Befehle", callback_data="pcmd_menu"),
-         InlineKeyboardButton("⚙️ Einstellungen", callback_data="menu_settings")],
+         InlineKeyboardButton("⚠️ Warns", callback_data="menu_warns")],
+        [InlineKeyboardButton("⚙️ Einstellungen", callback_data="menu_settings")],
     ]
 
     role = "👑 Owner" if is_owner(user_id) else "🛡️ Admin"
@@ -384,7 +390,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             [InlineKeyboardButton("🔁 Wiederholte", callback_data="menu_scheduled"),
              InlineKeyboardButton("🔓 Open/Close", callback_data="menu_openclose")],
             [InlineKeyboardButton("🏗 Befehle", callback_data="pcmd_menu"),
-             InlineKeyboardButton("⚙️ Einstellungen", callback_data="menu_settings")],
+             InlineKeyboardButton("⚠️ Warns", callback_data="menu_warns")],
+            [InlineKeyboardButton("⚙️ Einstellungen", callback_data="menu_settings")],
         ]
         role = "👑 Owner" if is_owner(user_id) else "🛡️ Admin"
         # Clear any pending state
@@ -1550,6 +1557,125 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # === SETTINGS ===
     elif data == "menu_settings":
+        pass
+
+    # === WARN CONFIG MENU ===
+    elif data == "menu_warns":
+        bot_data = load_data()
+        wc = bot_data.get("warn_config", {"max_warns": 3, "punishment": "mute"})
+        max_w = wc.get("max_warns", 3)
+        punishment = wc.get("punishment", "mute")
+        warned_count = sum(len(v) for v in bot_data.get("warnings", {}).values())
+        punishment_labels = {"aus": "❌ Aus", "kick": "❗ Kick", "mute": "📛 Mute", "ban": "🚫 Ban"}
+        p_label = punishment_labels.get(punishment, punishment)
+        keyboard = [
+            [InlineKeyboardButton("📋 Liste der verwarnten Nutzer", callback_data="warn_list")],
+            [InlineKeyboardButton("❌ Aus", callback_data="warn_set_aus"),
+             InlineKeyboardButton("❗ Kick", callback_data="warn_set_kick")],
+            [InlineKeyboardButton("📛 Mute", callback_data="warn_set_mute"),
+             InlineKeyboardButton("🚫 Ban", callback_data="warn_set_ban")],
+            [InlineKeyboardButton("📛 🕐 Dauer der Schreibsperre", callback_data="noop")],
+        ]
+        # Max warns row
+        warn_row = []
+        for n in range(2, 7):
+            label = f"{n} ✅" if n == max_w else str(n)
+            warn_row.append(InlineKeyboardButton(label, callback_data=f"warn_max_{n}"))
+        keyboard.append(warn_row)
+        keyboard.append([InlineKeyboardButton("🔙 Zurück", callback_data="back_main")])
+        await query.edit_message_text(
+            f"❗ <b>Verwarnungen von Benutzern</b>\n\n"
+            f"Das Verwarnungssystem ermöglicht es, Verwarnungen an Benutzer für "
+            f"unangemessenes Verhalten in der Gruppe zu erteilen, und zwar noch vor der eigentlichen Bestrafung.\n\n"
+            f"In diesem Menü kann folgendes eingestellt werden:\n"
+            f"• die Art der <b>Bestrafung</b> für jene Benutzer, die die maximal zulässige Anzahl von Verwarnungen überschreiten\n"
+            f"• die <b>maximale Anzahl</b> der zugelassenen Verwarnungen\n\n"
+            f"<b>Bestrafung:</b> {p_label}\n"
+            f"<b>Erlaubte Verwarnungen:</b> {max_w}\n"
+            f"<b>Verwarnte Nutzer:</b> {warned_count}",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode="HTML",
+        )
+
+    elif data.startswith("warn_set_"):
+        punishment = data.replace("warn_set_", "")
+        bot_data = load_data()
+        bot_data.setdefault("warn_config", {})["punishment"] = punishment
+        save_data(bot_data)
+        # Re-show menu
+        await query.answer(f"Bestrafung auf {punishment} gesetzt ✅")
+        # Trigger menu refresh
+        query.data = "menu_warns"
+        await button_handler(update, context)
+
+    elif data.startswith("warn_max_"):
+        max_w = int(data.replace("warn_max_", ""))
+        bot_data = load_data()
+        bot_data.setdefault("warn_config", {})["max_warns"] = max_w
+        save_data(bot_data)
+        await query.answer(f"Max Warns auf {max_w} gesetzt ✅")
+        query.data = "menu_warns"
+        await button_handler(update, context)
+
+    elif data == "warn_list":
+        bot_data = load_data()
+        warnings = bot_data.get("warnings", {})
+        if not warnings:
+            keyboard = [[InlineKeyboardButton("🔙 Zurück", callback_data="menu_warns")]]
+            await query.edit_message_text(
+                "📋 <b>Keine verwarnten Nutzer.</b>",
+                reply_markup=InlineKeyboardMarkup(keyboard),
+                parse_mode="HTML",
+            )
+            return
+        text = "📋 <b>Verwarnte Nutzer:</b>\n\n"
+        wc = bot_data.get("warn_config", {"max_warns": 3})
+        max_w = wc.get("max_warns", 3)
+        for uid, warn_data in list(warnings.items())[:20]:
+            count = warn_data.get("count", 0)
+            name = warn_data.get("name", uid)
+            text += f"• <b>{html.escape(name)}</b> (<code>{uid}</code>) — {count}/{max_w}\n"
+        if len(warnings) > 20:
+            text += f"\n… und {len(warnings) - 20} weitere"
+        keyboard = [
+            [InlineKeyboardButton("🗑 Alle Warns löschen", callback_data="warn_clear_confirm")],
+            [InlineKeyboardButton("🔙 Zurück", callback_data="menu_warns")],
+        ]
+        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
+
+    elif data == "warn_clear_confirm":
+        keyboard = [
+            [InlineKeyboardButton("✅ Ja, alle löschen", callback_data="warn_clear"),
+             InlineKeyboardButton("❌ Abbrechen", callback_data="warn_list")],
+        ]
+        await query.edit_message_text("⚠️ Wirklich ALLE Verwarnungen löschen?", reply_markup=InlineKeyboardMarkup(keyboard))
+
+    elif data == "warn_clear":
+        bot_data = load_data()
+        bot_data["warnings"] = {}
+        save_data(bot_data)
+        keyboard = [[InlineKeyboardButton("🔙 Zurück", callback_data="menu_warns")]]
+        await query.edit_message_text("✅ Alle Verwarnungen gelöscht.", reply_markup=InlineKeyboardMarkup(keyboard))
+
+    elif data.startswith("warn_undo_"):
+        parts = data.replace("warn_undo_", "").split("_")
+        chat_id_str = parts[0]
+        target_id_str = parts[1]
+        target_id = int(target_id_str)
+        bot_data = load_data()
+        warnings = bot_data.get("warnings", {})
+        key = f"{chat_id_str}_{target_id_str}"
+        if key in warnings:
+            warnings[key]["count"] = max(0, warnings[key].get("count", 1) - 1)
+            if warnings[key]["count"] == 0:
+                warnings.pop(key)
+            save_data(bot_data)
+        try:
+            await query.edit_message_text("↩️ Verwarnung zurückgenommen.")
+        except Exception:
+            pass
+
+    elif data == "menu_settings":
         if not is_owner(user_id):
             await query.edit_message_text("⛔ Nur für Owner.")
             return
@@ -2133,6 +2259,122 @@ async def info_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 # --- /banall ---
+
+# --- /warn ---
+
+async def warn_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Warn a user. Usage: /warn [reason] (reply to a message)."""
+    user_id = update.effective_user.id
+    if not is_authorized(user_id):
+        return
+
+    chat = update.effective_chat
+    if not chat or chat.type not in ("group", "supergroup"):
+        await update.message.reply_text("⚠️ Dieser Befehl funktioniert nur in Gruppen.")
+        return
+
+    target_id, target_name = await resolve_target(update, context)
+    if target_id is None:
+        return
+
+    reason = " ".join(context.args) if context.args else None
+    # If target was resolved from reply, args might contain the reason
+    if update.message.reply_to_message and context.args:
+        reason = " ".join(context.args)
+
+    tracked = lookup_user(str(target_id))
+    target_username = tracked.get("username") if tracked else None
+
+    bot_data = load_data()
+    wc = bot_data.get("warn_config", {"max_warns": 3, "punishment": "mute"})
+    max_warns = wc.get("max_warns", 3)
+    punishment = wc.get("punishment", "mute")
+
+    warnings = bot_data.setdefault("warnings", {})
+    key = f"{chat.id}_{target_id}"
+    warn_entry = warnings.get(key, {"count": 0, "name": target_name, "username": target_username})
+    warn_entry["count"] = warn_entry.get("count", 0) + 1
+    warn_entry["name"] = target_name
+    warn_entry["username"] = target_username
+    warnings[key] = warn_entry
+    save_data(bot_data)
+
+    current_count = warn_entry["count"]
+    uname = f"@{target_username}" if target_username else target_name
+
+    text = f"{uname} [{target_id}] wurde verwarnt zum {current_count}. Mal (von {max_warns})."
+    if reason:
+        text += f"\n<b>Grund:</b> {html.escape(reason)}"
+
+    keyboard = [[InlineKeyboardButton("❌ Abbrechen", callback_data=f"warn_undo_{chat.id}_{target_id}")]]
+
+    # Check if max warns reached
+    if current_count >= max_warns:
+        punishment_text = ""
+        try:
+            if punishment == "kick":
+                await context.bot.ban_chat_member(chat_id=chat.id, user_id=target_id)
+                await context.bot.unban_chat_member(chat_id=chat.id, user_id=target_id)
+                punishment_text = "❗ Gekickt"
+            elif punishment == "mute":
+                await context.bot.restrict_chat_member(
+                    chat_id=chat.id, user_id=target_id,
+                    permissions=ChatPermissions.no_permissions(),
+                )
+                punishment_text = "📛 Gemutet"
+            elif punishment == "ban":
+                await context.bot.ban_chat_member(chat_id=chat.id, user_id=target_id, revoke_messages=True)
+                remember_group_ban([chat.id], target_id, target_name, target_username)
+                punishment_text = "🚫 Gebannt"
+            elif punishment == "aus":
+                punishment_text = ""
+        except Exception as e:
+            logger.error(f"Warn punishment failed for {target_id} in {chat.id}: {e}")
+            punishment_text = f"⚠️ Bestrafung fehlgeschlagen: {e}"
+
+        if punishment_text:
+            text += f"\n\n⚠️ <b>Max. Verwarnungen erreicht!</b>\n{punishment_text}"
+        # Reset warns
+        warnings.pop(key, None)
+        save_data(bot_data)
+
+    await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
+    await log_action(context, f"WARN: {target_name} ({target_id}) in {chat.title} — {current_count}/{max_warns}" + (f" Grund: {reason}" if reason else ""))
+
+
+async def unwarn_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Remove a warn from a user. Usage: /unwarn (reply to a message)."""
+    user_id = update.effective_user.id
+    if not is_authorized(user_id):
+        return
+
+    chat = update.effective_chat
+    if not chat or chat.type not in ("group", "supergroup"):
+        await update.message.reply_text("⚠️ Dieser Befehl funktioniert nur in Gruppen.")
+        return
+
+    target_id, target_name = await resolve_target(update, context)
+    if target_id is None:
+        return
+
+    bot_data = load_data()
+    warnings = bot_data.get("warnings", {})
+    key = f"{chat.id}_{target_id}"
+    if key not in warnings or warnings[key].get("count", 0) == 0:
+        await update.message.reply_text(f"ℹ️ {target_name} hat keine Verwarnungen in dieser Gruppe.")
+        return
+
+    warnings[key]["count"] = max(0, warnings[key]["count"] - 1)
+    new_count = warnings[key]["count"]
+    if new_count == 0:
+        warnings.pop(key)
+    save_data(bot_data)
+
+    wc = bot_data.get("warn_config", {"max_warns": 3})
+    max_w = wc.get("max_warns", 3)
+    await update.message.reply_text(f"✅ Verwarnung von {target_name} entfernt. ({new_count}/{max_w})")
+    await log_action(context, f"UNWARN: {target_name} ({target_id}) in {chat.title} — jetzt {new_count}/{max_w}")
+
 
 async def banall(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_authorized(update.effective_user.id):
@@ -3550,6 +3792,8 @@ def main():
     app.add_handler(CommandHandler("unbanall", unbanall))
     app.add_handler(CommandHandler("befehl", personal_command))
     app.add_handler(CommandHandler("unbefehl", unpersonal_command))
+    app.add_handler(CommandHandler("warn", warn_command))
+    app.add_handler(CommandHandler("unwarn", unwarn_command))
     app.add_handler(CommandHandler("open", handle_open_command))
     app.add_handler(CommandHandler("close", handle_close_command))
     app.add_handler(CallbackQueryHandler(button_handler))
