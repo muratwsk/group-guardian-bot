@@ -2483,37 +2483,24 @@ async def warn_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if reason:
         text += f"\n<b>Grund:</b> {html.escape(reason)}"
 
-    keyboard = [[InlineKeyboardButton("❌ Abbrechen", callback_data=f"warn_undo_{chat.id}_{target_id}")]]
-
     # Check if max warns reached
     if current_count >= max_warns:
-        punishment_text = ""
-        try:
-            if punishment == "kick":
-                await context.bot.ban_chat_member(chat_id=chat.id, user_id=target_id)
-                await context.bot.unban_chat_member(chat_id=chat.id, user_id=target_id)
-                punishment_text = "❗ Gekickt"
-            elif punishment == "mute":
-                await context.bot.restrict_chat_member(
-                    chat_id=chat.id, user_id=target_id,
-                    permissions=ChatPermissions.no_permissions(),
-                )
-                punishment_text = "📛 Gemutet"
-            elif punishment == "ban":
-                await context.bot.ban_chat_member(chat_id=chat.id, user_id=target_id, revoke_messages=True)
-                remember_group_ban([chat.id], target_id, target_name, target_username)
-                punishment_text = "🚫 Gebannt"
-            elif punishment == "aus":
-                punishment_text = ""
-        except Exception as e:
-            logger.error(f"Warn punishment failed for {target_id} in {chat.id}: {e}")
-            punishment_text = f"⚠️ Bestrafung fehlgeschlagen: {e}"
-
-        if punishment_text:
-            text += f"\n\n⚠️ <b>Max. Verwarnungen erreicht!</b>\n{punishment_text}"
-        # Reset warns
-        warnings.pop(key, None)
-        save_data(bot_data)
+        text = f" [{target_id}] hat das Limit von {max_warns} Verwarnungen erreicht. Was willst Du tun?"
+        if reason:
+            text += f"\n<b>Grund:</b> {html.escape(reason)}"
+        keyboard = [
+            [InlineKeyboardButton("🚫 Ban", callback_data=f"warn_punish_ban_{chat.id}_{target_id}"),
+             InlineKeyboardButton("❗ Kick", callback_data=f"warn_punish_kick_{chat.id}_{target_id}"),
+             InlineKeyboardButton("📛 Mute", callback_data=f"warn_punish_mute_{chat.id}_{target_id}")],
+            [InlineKeyboardButton("-1", callback_data=f"warn_undo_{chat.id}_{target_id}")],
+            [InlineKeyboardButton("Verwarnungen auf Null setzen", callback_data=f"warn_reset_{chat.id}_{target_id}")],
+        ]
+    else:
+        keyboard = [
+            [InlineKeyboardButton("-1", callback_data=f"warn_undo_{chat.id}_{target_id}"),
+             InlineKeyboardButton("+1", callback_data=f"warn_add1_{chat.id}_{target_id}")],
+            [InlineKeyboardButton("Verwarnungen auf Null setzen", callback_data=f"warn_reset_{chat.id}_{target_id}")],
+        ]
 
     await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
     await log_action(context, f"WARN: {target_name} ({target_id}) in {chat.title} — {current_count}/{max_warns}" + (f" Grund: {reason}" if reason else ""))
