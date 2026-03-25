@@ -1955,6 +1955,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         text = "📋 <b>Persönliche Befehle</b>\n\n"
         groups_list = bot_data.get("groups", [])
         gid_to_name = {g["id"]: g["title"] for g in groups_list}
+        keyboard = []
         for name, entries in cmds.items():
             if not isinstance(entries, list):
                 entries = [entries]
@@ -1970,7 +1971,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 else:
                     grp_label = " [Alle]"
                 text += f"• /<b>{html.escape(name)}</b>{grp_label} — {preview}{has_media}\n"
-        keyboard = [[InlineKeyboardButton("🔙 Zurück", callback_data="pcmd_menu")]]
+                keyboard.append([InlineKeyboardButton(f"✏️ /{name} Gruppen ändern", callback_data=f"pcmd_editgrp_{name}_{i}")])
+        keyboard.append([InlineKeyboardButton("🔙 Zurück", callback_data="pcmd_menu")])
         await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
 
     elif data == "pcmd_add":
@@ -2074,6 +2076,76 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif data == "pers_grp_cancel":
         user_data_store.pop(user_id, None)
         await query.edit_message_text("❌ Abgebrochen.")
+
+    # === EDIT GROUPS FOR EXISTING PERSONAL COMMAND ===
+    elif data.startswith("pcmd_editgrp_"):
+        parts = data.replace("pcmd_editgrp_", "").rsplit("_", 1)
+        cmd_name = parts[0]
+        idx = int(parts[1]) if len(parts) > 1 else 0
+        bot_data = load_data()
+        cmds = bot_data.get("personal_commands", {})
+        entries = cmds.get(cmd_name, [])
+        if not isinstance(entries, list):
+            entries = [entries]
+        if idx >= len(entries):
+            await query.answer("Befehl nicht gefunden.", show_alert=True)
+            return
+        current_groups = set(entries[idx].get("groups", []))
+        user_data_store[user_id] = {
+            "action": "pcmd_edit_groups",
+            "cmd_name": cmd_name,
+            "cmd_idx": idx,
+            "selected": current_groups,
+        }
+        await _render_pcmd_editgrp_menu(query, cmd_name, current_groups)
+
+    elif data.startswith("pcmd_egrp_") and data not in ("pcmd_egrp_all", "pcmd_egrp_none", "pcmd_egrp_save"):
+        gid = int(data.replace("pcmd_egrp_", ""))
+        pending = user_data_store.get(user_id, {})
+        selected = pending.get("selected", set())
+        if gid in selected:
+            selected.discard(gid)
+        else:
+            selected.add(gid)
+        pending["selected"] = selected
+        user_data_store[user_id] = pending
+        await _render_pcmd_editgrp_menu(query, pending["cmd_name"], selected)
+
+    elif data == "pcmd_egrp_all":
+        pending = user_data_store.get(user_id, {})
+        bot_data = load_data()
+        pending["selected"] = {g["id"] for g in bot_data.get("groups", [])}
+        user_data_store[user_id] = pending
+        await _render_pcmd_editgrp_menu(query, pending["cmd_name"], pending["selected"])
+
+    elif data == "pcmd_egrp_none":
+        pending = user_data_store.get(user_id, {})
+        pending["selected"] = set()
+        user_data_store[user_id] = pending
+        await _render_pcmd_editgrp_menu(query, pending["cmd_name"], pending["selected"])
+
+    elif data == "pcmd_egrp_save":
+        pending = user_data_store.get(user_id, {})
+        cmd_name = pending.get("cmd_name", "")
+        idx = pending.get("cmd_idx", 0)
+        selected = pending.get("selected", set())
+        bot_data = load_data()
+        cmds = bot_data.get("personal_commands", {})
+        entries = cmds.get(cmd_name, [])
+        if not isinstance(entries, list):
+            entries = [entries]
+        if idx < len(entries):
+            entries[idx]["groups"] = list(selected)
+            cmds[cmd_name] = entries
+            save_data(bot_data)
+        user_data_store.pop(user_id, None)
+        grp_text = f"{len(selected)} Gruppen" if selected else "alle Gruppen"
+        keyboard = [[InlineKeyboardButton("🔙 Zur Liste", callback_data="pcmd_list")]]
+        await query.edit_message_text(
+            f"✅ /<b>{html.escape(cmd_name)}</b> aktualisiert — gilt jetzt für {grp_text}.",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode="HTML",
+        )
 
     elif data == "pcmd_remove":
         bot_data = load_data()
@@ -6206,6 +6278,34 @@ async def _render_pers_grp_menu(query, pending):
     keyboard.append([InlineKeyboardButton("❌ Abbrechen", callback_data="pers_grp_cancel")])
     await query.edit_message_text(
         f"🏗 <b>/{html.escape(cmd_name)}</b> — Wähle Gruppen:\n\n"
+        f"<i>Keine Auswahl = gilt für alle Gruppen</i>",
+        reply_markup=InlineKeyboardMarkup(keyboard),
+        parse_mode="HTML",
+    )
+
+
+async def _render_pcmd_editgrp_menu(query, cmd_name, selected):
+    """Render group selection for editing existing personal command groups."""
+    bot_data = load_data()
+    groups = bot_data.get("groups", [])
+    keyboard = []
+    row = []
+    for g in groups:
+        check = "✅" if g["id"] in selected else "⬜"
+        row.append(InlineKeyboardButton(f"{check} {g['title']}", callback_data=f"pcmd_egrp_{g['id']}"))
+        if len(row) == 2:
+            keyboard.append(row)
+            row = []
+    if row:
+        keyboard.append(row)
+    keyboard.append([
+        InlineKeyboardButton("☑️ Alle", callback_data="pcmd_egrp_all"),
+        InlineKeyboardButton("◻️ Keine", callback_data="pcmd_egrp_none"),
+    ])
+    keyboard.append([InlineKeyboardButton(f"✅ Speichern ({len(selected)} gewählt)", callback_data="pcmd_egrp_save")])
+    keyboard.append([InlineKeyboardButton("🔙 Zurück", callback_data="pcmd_list")])
+    await query.edit_message_text(
+        f"✏️ <b>/{html.escape(cmd_name)}</b> — Gruppen bearbeiten:\n\n"
         f"<i>Keine Auswahl = gilt für alle Gruppen</i>",
         reply_markup=InlineKeyboardMarkup(keyboard),
         parse_mode="HTML",
