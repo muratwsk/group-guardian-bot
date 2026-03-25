@@ -122,6 +122,24 @@ def is_banned_in_group(group_id, user_id):
     group_bans = data.get("banned_users", {}).get(str(group_id), {})
     return str(user_id) in group_bans
 
+
+async def ban_user_in_groups(context: ContextTypes.DEFAULT_TYPE, groups: list, target_id: int):
+    """Ban user in multiple groups and return successful/failed groups."""
+    successful_groups = []
+    failed_groups = []
+
+    for g in groups:
+        gid = g["id"]
+        title = g.get("title", str(gid))
+        try:
+            await context.bot.ban_chat_member(chat_id=gid, user_id=target_id, revoke_messages=True)
+            successful_groups.append(g)
+        except Exception as e:
+            logger.error(f"Ban failed for {target_id} in {gid}: {e}")
+            failed_groups.append({"id": gid, "title": title, "error": str(e)})
+
+    return successful_groups, failed_groups
+
 def load_users():
     if not os.path.exists(USERS_FILE):
         return {}
@@ -1079,22 +1097,36 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         target_username = tracked.get("username") if tracked else None
         scope_chat_id = query.message.chat.id if query.message and query.message.chat else None
 
-        for g in groups:
-            try:
-                await context.bot.ban_chat_member(chat_id=g["id"], user_id=target_id, revoke_messages=True)
-            except Exception as e:
-                logger.error(f"Info banall failed for {target_id} in {g['id']}: {e}")
-        remember_group_ban([g["id"] for g in groups], target_id, target_name, target_username)
+        successful_groups, failed_groups = await ban_user_in_groups(context, groups, target_id)
+        if successful_groups:
+            remember_group_ban([g["id"] for g in successful_groups], target_id, target_name, target_username)
 
         group_state = await get_info_group_state(context, scope_chat_id, target_id)
-        keyboard = build_info_keyboard(scope_chat_id, target_id, group_state["is_muted"], group_state["is_banned_local"], True)
+        is_banned_all = len(successful_groups) == len(groups)
+        keyboard = build_info_keyboard(scope_chat_id, target_id, group_state["is_muted"], group_state["is_banned_local"], is_banned_all)
         uname = f"@{target_username} " if target_username else ""
+        failed_preview = ", ".join(html.escape(g["title"]) for g in failed_groups[:4])
+        if len(failed_groups) > 4:
+            failed_preview += f" +{len(failed_groups) - 4} weitere"
+
+        if successful_groups:
+            text = f"{uname}[<code>{target_id}</code>] in <b>{len(successful_groups)}/{len(groups)}</b> Gruppen gebannt."
+            if failed_groups:
+                text += f"\n❌ Fehlgeschlagen: {failed_preview}"
+        else:
+            text = f"⚠️ {uname}[<code>{target_id}</code>] konnte in keiner Gruppe gebannt werden."
+            if failed_groups:
+                text += f"\n❌ Fehlgeschlagen: {failed_preview}"
+
         await query.edit_message_text(
-            f"{uname}[<code>{target_id}</code>] in allen Gruppen verbannt.",
+            text,
             reply_markup=keyboard,
             parse_mode="HTML",
         )
-        await log_action(context, f"BANALL (via /info): {target_name} ({target_id}) von {query.from_user.full_name}")
+        await log_action(
+            context,
+            f"BANALL (via /info): {target_name} ({target_id}) von {query.from_user.full_name} — {len(successful_groups)} OK, {len(failed_groups)} Fehler",
+        )
 
     elif data.startswith("info_unbanall_"):
         target_id = int(data.replace("info_unbanall_", "", 1))
@@ -2025,22 +2057,26 @@ async def banall(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     tracked = lookup_user(str(target_id))
     target_username = tracked.get("username") if tracked else None
-    success_count = 0
-    fail_count = 0
-    for g in groups:
-        try:
-            await context.bot.ban_chat_member(chat_id=g["id"], user_id=target_id, revoke_messages=True)
-            success_count += 1
-        except Exception as e:
-            fail_count += 1
-            logger.error(f"Ban failed for {target_id} in {g['id']}: {e}")
+    successful_groups, failed_groups = await ban_user_in_groups(context, groups, target_id)
+    success_count = len(successful_groups)
+    fail_count = len(failed_groups)
 
-    remember_group_ban([g["id"] for g in groups], target_id, target_name, target_username)
+    if successful_groups:
+        remember_group_ban([g["id"] for g in successful_groups], target_id, target_name, target_username)
 
-    await update.message.reply_text(
-        f"`{target_id}` wurde erfolgreich gebannt✅",
-        parse_mode="Markdown",
-    )
+    lines = []
+    if success_count:
+        lines.append(f"✅ {target_id} in {success_count}/{len(groups)} Gruppen gebannt.")
+    else:
+        lines.append(f"⚠️ {target_id} konnte in keiner Gruppe gebannt werden.")
+
+    if fail_count:
+        for g in failed_groups[:8]:
+            lines.append(f"❌ {g['title']} ({g['id']})")
+        if fail_count > 8:
+            lines.append(f"… und {fail_count - 8} weitere Fehler")
+
+    await update.message.reply_text("\n".join(lines))
     await log_action(
         context,
         f"BANALL: {target_name} ({target_id}) von {update.effective_user.full_name} — {success_count} OK, {fail_count} Fehler",
