@@ -73,7 +73,10 @@ def normalize_data(data):
     data.setdefault("antispam_links", {
         "punishment": "aus",
         "delete": True,
+        "groups": [],
     })
+    if "groups" not in data.get("antispam_links", {}):
+        data["antispam_links"]["groups"] = []
     data.setdefault("antispam_forward", {
         "channels": False,
         "groups": False,
