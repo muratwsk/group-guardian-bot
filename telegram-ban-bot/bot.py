@@ -4504,9 +4504,24 @@ async def track_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # --- Anti-Spam: Link check ---
     if update.message.from_user:
         sender_as = update.message.from_user
-        # Check all entities for links
+        # Check all entities for links (filter out false positives like "." or short non-URLs)
         all_entities = list(update.message.entities or []) + list(update.message.caption_entities or [])
-        has_link = any(ent.type in ("url", "text_link") for ent in all_entities)
+        text_full = (update.message.text or "") + (update.message.caption or "")
+        real_links = []
+        for ent in all_entities:
+            if ent.type in ("url", "text_link"):
+                if ent.type == "text_link":
+                    real_links.append(ent)
+                else:
+                    # Extract the actual text Telegram marked as URL
+                    url_text = text_full[ent.offset:ent.offset + ent.length].strip()
+                    # Only count it if it has at least one dot with text on both sides (like "x.y")
+                    parts = url_text.split(".")
+                    if len(parts) >= 2 and all(len(p.strip()) > 0 for p in parts[:2]):
+                        real_links.append(ent)
+                    else:
+                        logger.info(f"Ignoring false-positive URL entity: '{url_text}'")
+        has_link = len(real_links) > 0
         if has_link:
             logger.info(f"LINK detected from {sender_as.id} in {update.effective_chat.id}")
             is_adm_as = is_authorized(sender_as.id) or await is_chat_admin(context, update.effective_chat.id, sender_as.id)
