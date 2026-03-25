@@ -5512,6 +5512,7 @@ def main():
     app.add_handler(CommandHandler("mute", mute_command))
     app.add_handler(CommandHandler("unmute", unmute_command))
     app.add_handler(CommandHandler("kick", kick_command))
+    app.add_handler(CommandHandler("ban", ban_command))
     app.add_handler(CommandHandler("warn", warn_command))
     app.add_handler(CommandHandler("unwarn", unwarn_command))
     app.add_handler(CommandHandler("free", free_command))
