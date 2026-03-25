@@ -2726,9 +2726,6 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
 
     elif data.startswith("warn_reset_"):
-        if not is_admin(query.from_user.id):
-            await query.answer("⚠️ Du hast keine Berechtigung, diesen Vorgang auszuführen\n\n💡 Falls du denkst, berechtigt zu sein, sende /reload und versuche es erneut.", show_alert=True)
-            return
         parts = data.replace("warn_reset_", "").split("_")
         chat_id_str = parts[0]
         target_id_str = parts[1]
