@@ -32,6 +32,7 @@ CONFIG_FILE = os.path.join(os.path.dirname(__file__), "config.json")
 DATA_FILE = os.path.join(os.path.dirname(__file__), "data.json")
 GROUPS_FILE = os.path.join(os.path.dirname(__file__), "groups.json")
 LOCK_FILE = os.path.join(os.path.dirname(__file__), "bot.lock")
+PROTOKOLL_FILE = os.path.join(os.path.dirname(__file__), "protokoll.json")
 
 
 
@@ -323,7 +324,41 @@ async def is_chat_admin(context, chat_id: int, user_id: int) -> bool:
     except Exception:
         return False
 
-async def log_action(context: ContextTypes.DEFAULT_TYPE, text: str):
+def load_protokoll():
+    return _safe_load_json(PROTOKOLL_FILE, {"global": [], "groups": {}})
+
+def save_protokoll(proto):
+    _safe_save_json(PROTOKOLL_FILE, proto)
+
+def add_protokoll_entry(text: str, group_id: int = None, group_name: str = None):
+    """Add an entry to the protokoll log."""
+    proto = load_protokoll()
+    entry = {
+        "time": now_de().strftime("%d.%m.%Y %H:%M:%S"),
+        "text": text,
+    }
+    # Always add to global
+    proto["global"].append(entry)
+    # Keep max 500 global entries
+    if len(proto["global"]) > 500:
+        proto["global"] = proto["global"][-500:]
+    # Add to specific group if provided
+    if group_id:
+        gkey = str(group_id)
+        if gkey not in proto["groups"]:
+            proto["groups"][gkey] = {"name": group_name or gkey, "entries": []}
+        if group_name:
+            proto["groups"][gkey]["name"] = group_name
+        proto["groups"][gkey]["entries"].append(entry)
+        # Keep max 200 per group
+        if len(proto["groups"][gkey]["entries"]) > 200:
+            proto["groups"][gkey]["entries"] = proto["groups"][gkey]["entries"][-200:]
+    save_protokoll(proto)
+
+async def log_action(context: ContextTypes.DEFAULT_TYPE, text: str, group_id: int = None, group_name: str = None):
+    # Save to protokoll file
+    add_protokoll_entry(text, group_id=group_id, group_name=group_name)
+    # Send to log channel
     cfg = load_config()
     channel = cfg.get("log_channel_id")
     if channel:
@@ -399,7 +434,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
          InlineKeyboardButton("🗑 Nachrichten", callback_data="menu_msgdelete")],
         [InlineKeyboardButton("🛡 Anti-Spam", callback_data="menu_antispam"),
          InlineKeyboardButton("👥 Mitglieder", callback_data="menu_members")],
-        [InlineKeyboardButton("🚪 Freigabemodus", callback_data="menu_freigabe")],
+        [InlineKeyboardButton("🚪 Freigabemodus", callback_data="menu_freigabe"),
+         InlineKeyboardButton("📋 Protokoll", callback_data="menu_protokoll")],
         [InlineKeyboardButton("⚙️ Einstellungen", callback_data="menu_settings")],
     ]
 
@@ -642,7 +678,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
              InlineKeyboardButton("🗑 Nachrichten", callback_data="menu_msgdelete")],
             [InlineKeyboardButton("🛡 Anti-Spam", callback_data="menu_antispam"),
              InlineKeyboardButton("👥 Mitglieder", callback_data="menu_members")],
-            [InlineKeyboardButton("🚪 Freigabemodus", callback_data="menu_freigabe")],
+            [InlineKeyboardButton("🚪 Freigabemodus", callback_data="menu_freigabe"),
+             InlineKeyboardButton("📋 Protokoll", callback_data="menu_protokoll")],
             [InlineKeyboardButton("⚙️ Einstellungen", callback_data="menu_settings")],
         ]
         role = "👑 Owner" if is_owner(user_id) else "🛡️ Admin"
@@ -2177,6 +2214,72 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )])
         keyboard.append([InlineKeyboardButton("🔙 Zurück", callback_data="back_main")])
         await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
+
+    # === PROTOKOLL ===
+    elif data == "menu_protokoll":
+        proto = load_protokoll()
+        groups_proto = proto.get("groups", {})
+        keyboard = []
+        # Show per-group buttons
+        bot_data = load_data()
+        for g in bot_data.get("groups", []):
+            gkey = str(g["id"])
+            count = len(groups_proto.get(gkey, {}).get("entries", []))
+            keyboard.append([InlineKeyboardButton(f"📋 {g['title']} ({count})", callback_data=f"proto_group_{g['id']}")])
+        global_count = len(proto.get("global", []))
+        keyboard.append([InlineKeyboardButton(f"📋 Alle Gruppen ({global_count})", callback_data="proto_global")])
+        keyboard.append([InlineKeyboardButton("🗑 Protokoll löschen", callback_data="proto_clear")])
+        keyboard.append([InlineKeyboardButton("🔙 Zurück", callback_data="back_main")])
+        await query.edit_message_text(
+            "📋 *Protokoll*\nWähle eine Gruppe oder zeige alle:",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode="Markdown",
+        )
+
+    elif data.startswith("proto_group_"):
+        gid = data.replace("proto_group_", "")
+        proto = load_protokoll()
+        group_data = proto.get("groups", {}).get(gid, {})
+        entries = group_data.get("entries", [])
+        group_name = group_data.get("name", gid)
+        if not entries:
+            text = f"📋 *Protokoll – {group_name}*\n\nKeine Einträge vorhanden."
+        else:
+            # Show last 20 entries
+            lines = []
+            for e in entries[-20:]:
+                lines.append(f"• `{e['time']}` – {e['text']}")
+            text = f"📋 *Protokoll – {group_name}*\n_Letzte {min(20, len(entries))} von {len(entries)} Einträgen:_\n\n" + "\n".join(lines)
+        # Truncate if too long for Telegram
+        if len(text) > 4000:
+            text = text[:3997] + "..."
+        keyboard = [[InlineKeyboardButton("🔙 Zurück", callback_data="menu_protokoll")]]
+        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
+
+    elif data == "proto_global":
+        proto = load_protokoll()
+        entries = proto.get("global", [])
+        if not entries:
+            text = "📋 *Protokoll – Alle Gruppen*\n\nKeine Einträge vorhanden."
+        else:
+            lines = []
+            for e in entries[-20:]:
+                lines.append(f"• `{e['time']}` – {e['text']}")
+            text = f"📋 *Protokoll – Alle Gruppen*\n_Letzte {min(20, len(entries))} von {len(entries)} Einträgen:_\n\n" + "\n".join(lines)
+        if len(text) > 4000:
+            text = text[:3997] + "..."
+        keyboard = [[InlineKeyboardButton("🔙 Zurück", callback_data="menu_protokoll")]]
+        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
+
+    elif data == "proto_clear":
+        if not is_owner(user_id):
+            await query.answer("⛔ Nur Owner können das Protokoll löschen.", show_alert=True)
+            return
+        save_protokoll({"global": [], "groups": {}})
+        await query.answer("✅ Protokoll gelöscht!", show_alert=True)
+        # Return to protokoll menu
+        keyboard = [[InlineKeyboardButton("🔙 Zurück", callback_data="back_main")]]
+        await query.edit_message_text("📋 *Protokoll*\n\n✅ Alle Einträge gelöscht.", reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
 
     # === SETTINGS ===
     elif data == "menu_settings":
@@ -3792,7 +3895,7 @@ async def mute_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=keyboard,
             parse_mode="HTML",
         )
-        await log_action(context, f"🔇 Mute: {target_name} [{target_id}] in {chat.title} von {update.effective_user.first_name}" + (f" | Grund: {reason}" if reason else ""))
+        await log_action(context, f"🔇 Mute: {target_name} [{target_id}] in {chat.title} von {update.effective_user.first_name}" + (f" | Grund: {reason}" if reason else ""), group_id=chat.id, group_name=chat.title)
     except Exception as e:
         await update.message.reply_text(f"❌ Mute fehlgeschlagen: {e}")
 
@@ -3827,7 +3930,7 @@ async def unmute_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"{uname}[<code>{target_id}</code>] wurde ✅ entmutet.",
             parse_mode="HTML",
         )
-        await log_action(context, f"✅ Unmute: {target_name} [{target_id}] in {chat.title} von {update.effective_user.first_name}")
+        await log_action(context, f"✅ Unmute: {target_name} [{target_id}] in {chat.title} von {update.effective_user.first_name}", group_id=chat.id, group_name=chat.title)
     except Exception as e:
         await update.message.reply_text(f"❌ Unmute fehlgeschlagen: {e}")
 
@@ -3871,7 +3974,7 @@ async def kick_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"ℹ️ Der User kann der Gruppe wieder beitreten.",
             parse_mode="HTML",
         )
-        await log_action(context, f"👢 Kick: {target_name} [{target_id}] aus {chat.title} von {update.effective_user.first_name}" + (f" | Grund: {reason}" if reason else ""))
+        await log_action(context, f"👢 Kick: {target_name} [{target_id}] aus {chat.title} von {update.effective_user.first_name}" + (f" | Grund: {reason}" if reason else ""), group_id=chat.id, group_name=chat.title)
     except Exception as e:
         await update.message.reply_text(f"❌ Kick fehlgeschlagen: {e}")
 
@@ -3921,7 +4024,7 @@ async def ban_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode="HTML",
             reply_markup=keyboard,
         )
-        await log_action(context, f"🚫 Ban: {target_name} [{target_id}] in {chat.title} von {update.effective_user.first_name}" + (f" | Grund: {reason}" if reason else ""))
+        await log_action(context, f"🚫 Ban: {target_name} [{target_id}] in {chat.title} von {update.effective_user.first_name}" + (f" | Grund: {reason}" if reason else ""), group_id=chat.id, group_name=chat.title)
     except Exception as e:
         await update.message.reply_text(f"❌ Ban fehlgeschlagen: {e}")
 
@@ -3954,7 +4057,7 @@ async def unban_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"✅ {uname}[<code>{target_id}</code>] wurde entsperrt.",
             parse_mode="HTML",
         )
-        await log_action(context, f"✅ Unban: {target_name} [{target_id}] in {chat.title} von {update.effective_user.first_name}")
+        await log_action(context, f"✅ Unban: {target_name} [{target_id}] in {chat.title} von {update.effective_user.first_name}", group_id=chat.id, group_name=chat.title)
     except Exception as e:
         await update.message.reply_text(f"❌ Unban fehlgeschlagen: {e}")
 
@@ -4048,7 +4151,7 @@ async def warn_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             warnings.pop(f"{chat.id}_{target_id}", None)
             save_data(bot_data)
             await update.message.reply_text(result_text, parse_mode="HTML")
-            await log_action(context, f"WARN AUTO-PUNISH ({punishment}): {target_name} ({target_id}) in {chat.title} — {current_count}/{max_warns}" + (f" Grund: {reason}" if reason else ""))
+            await log_action(context, f"WARN AUTO-PUNISH ({punishment}): {target_name} ({target_id}) in {chat.title} — {current_count}/{max_warns}" + (f" Grund: {reason}" if reason else ""), group_id=chat.id, group_name=chat.title)
             return
         else:
             # No punishment configured — show choice
@@ -4070,7 +4173,7 @@ async def warn_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ]
 
     await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
-    await log_action(context, f"WARN: {target_name} ({target_id}) in {chat.title} — {current_count}/{max_warns}" + (f" Grund: {reason}" if reason else ""))
+    await log_action(context, f"WARN: {target_name} ({target_id}) in {chat.title} — {current_count}/{max_warns}" + (f" Grund: {reason}" if reason else ""), group_id=chat.id, group_name=chat.title)
 
 
 async def unwarn_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -4605,7 +4708,7 @@ async def track_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                                         ),
                                         parse_mode="HTML",
                                     )
-                                    await log_action(context, f"LINK-WARN AUTO-PUNISH ({warn_punishment}): {user_name_as} ({user_id_as}) in {chat_id_as} — {max_w}/{max_w}")
+                                    await log_action(context, f"LINK-WARN AUTO-PUNISH ({warn_punishment}): {user_name_as} ({user_id_as}) in {chat_id_as} — {max_w}/{max_w}", group_id=chat_id_as, group_name=update.effective_chat.title)
                                 else:
                                     keyboard_as = InlineKeyboardMarkup([
                                         [InlineKeyboardButton("❌ Abbrechen", callback_data=f"link_warn_cancel_{chat_id_as}_{user_id_as}")]
@@ -4648,7 +4751,7 @@ async def track_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                                 )
                         except Exception as e:
                             logger.error(f"Link punishment failed: {e}")
-                        await log_action(context, f"LINK-SPAM: {user_name_as} ({user_id_as}) in {update.effective_chat.title} — Strafe: {lc_punishment}")
+                        await log_action(context, f"LINK-SPAM: {user_name_as} ({user_id_as}) in {update.effective_chat.title} — Strafe: {lc_punishment}", group_id=chat_id_as, group_name=update.effective_chat.title)
                         return
 
     # --- Anti-Spam: Forward check ---
@@ -4749,7 +4852,7 @@ async def track_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                                     text=f"⚠️ {html.escape(user_name)} wurde verwarnt ({max_w}/{max_w}) — Verbotenes Wort: <code>{html.escape(matched)}</code>\n{action_label_bw}",
                                     parse_mode="HTML",
                                 )
-                                await log_action(context, f"BADWORD-WARN AUTO-PUNISH ({warn_punishment}): {user_name} ({user_id_bw}) in {chat_id} — {max_w}/{max_w}")
+                                await log_action(context, f"BADWORD-WARN AUTO-PUNISH ({warn_punishment}): {user_name} ({user_id_bw}) in {chat_id} — {max_w}/{max_w}", group_id=chat_id, group_name=update.effective_chat.title)
                             else:
                                 await context.bot.send_message(
                                     chat_id=chat_id,
