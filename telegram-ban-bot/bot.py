@@ -304,6 +304,14 @@ def is_authorized(user_id: int) -> bool:
     """Check if user is owner or admin (can use ban/unban)."""
     return is_admin(user_id)
 
+async def is_group_authorized(context, user_id: int, chat=None) -> bool:
+    """Check if user is config-admin OR a Telegram admin in the given chat."""
+    if is_admin(user_id):
+        return True
+    if chat and chat.type in ("group", "supergroup"):
+        return await is_chat_admin(context, chat.id, user_id)
+    return False
+
 async def is_chat_admin(context, chat_id: int, user_id: int) -> bool:
     """Check if user is admin or creator in a specific chat."""
     try:
@@ -3518,7 +3526,7 @@ async def resolve_target(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def info_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Show user info card with group-specific moderation buttons and separate BanALL."""
     user_id = update.effective_user.id
-    if not is_authorized(user_id):
+    if not await is_group_authorized(context, user_id, update.effective_chat):
         await update.message.reply_text("⛔ Kein Zugriff.")
         return
 
@@ -3604,7 +3612,7 @@ async def info_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def mute_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Mute a user in the group. Usage: /mute [reason] (reply to a message)."""
     user_id = update.effective_user.id
-    if not is_authorized(user_id):
+    if not await is_group_authorized(context, user_id, update.effective_chat):
         return
 
     chat = update.effective_chat
@@ -3662,7 +3670,7 @@ async def mute_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def unmute_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Unmute a user in the group. Usage: /unmute (reply to a message)."""
     user_id = update.effective_user.id
-    if not is_authorized(user_id):
+    if not await is_group_authorized(context, user_id, update.effective_chat):
         return
 
     chat = update.effective_chat
@@ -3699,7 +3707,7 @@ async def unmute_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def kick_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Kick a user from the group (they can rejoin). Usage: /kick [reason] (reply to a message)."""
     user_id = update.effective_user.id
-    if not is_authorized(user_id):
+    if not await is_group_authorized(context, user_id, update.effective_chat):
         return
 
     chat = update.effective_chat
@@ -3743,7 +3751,7 @@ async def kick_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def ban_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Ban a user from the current group. Usage: /ban [reason] (reply to a message)."""
     user_id = update.effective_user.id
-    if not is_authorized(user_id):
+    if not await is_group_authorized(context, user_id, update.effective_chat):
         return
 
     chat = update.effective_chat
@@ -3795,7 +3803,7 @@ async def ban_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def warn_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Warn a user. Usage: /warn [reason] (reply to a message)."""
     user_id = update.effective_user.id
-    if not is_authorized(user_id):
+    if not await is_group_authorized(context, user_id, update.effective_chat):
         return
 
     chat = update.effective_chat
@@ -3906,7 +3914,7 @@ async def warn_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def unwarn_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Remove a warn from a user. Usage: /unwarn (reply to a message)."""
     user_id = update.effective_user.id
-    if not is_authorized(user_id):
+    if not await is_group_authorized(context, user_id, update.effective_chat):
         return
 
     chat = update.effective_chat
@@ -3942,7 +3950,7 @@ async def unwarn_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def free_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Grant a user the 'Befreiter' role — exempt from link filter, forward filter, forbidden words."""
     user_id = update.effective_user.id
-    if not is_authorized(user_id):
+    if not await is_group_authorized(context, user_id, update.effective_chat):
         await update.message.reply_text("⛔ Kein Zugriff.")
         return
 
@@ -3979,7 +3987,7 @@ async def free_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def unfree_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Revoke the 'Befreiter' role from a user."""
     user_id = update.effective_user.id
-    if not is_authorized(user_id):
+    if not await is_group_authorized(context, user_id, update.effective_chat):
         await update.message.reply_text("⛔ Kein Zugriff.")
         return
 
