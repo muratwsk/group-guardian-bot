@@ -678,7 +678,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
              InlineKeyboardButton("🗑 Nachrichten", callback_data="menu_msgdelete")],
             [InlineKeyboardButton("🛡 Anti-Spam", callback_data="menu_antispam"),
              InlineKeyboardButton("👥 Mitglieder", callback_data="menu_members")],
-            [InlineKeyboardButton("🚪 Freigabemodus", callback_data="menu_freigabe")],
+            [InlineKeyboardButton("🚪 Freigabemodus", callback_data="menu_freigabe"),
+             InlineKeyboardButton("📋 Protokoll", callback_data="menu_protokoll")],
             [InlineKeyboardButton("⚙️ Einstellungen", callback_data="menu_settings")],
         ]
         role = "👑 Owner" if is_owner(user_id) else "🛡️ Admin"
