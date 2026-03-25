@@ -1536,6 +1536,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         try:
             await context.bot.unban_chat_member(chat_id=scope_chat_id, user_id=target_id, only_if_banned=True)
+            forget_group_ban([scope_chat_id], target_id)
             uname = f"@{target_username} " if target_username else ""
             await query.edit_message_text(
                 f"{uname}[<code>{target_id}</code>] wurde ✅ entbannt.",
