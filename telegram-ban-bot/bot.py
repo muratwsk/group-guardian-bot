@@ -258,7 +258,7 @@ def track_user(user, group_id=None):
     if not changed:
         return
 
-    USERS_CACHE["data"] = users
+    # Update cache and persist periodically
     now_ts = datetime.datetime.now().timestamp()
     last_save = USER_TRACK_LAST_SAVE.get(group_save_key, 0)
     if should_persist or (now_ts - last_save) >= USER_TRACK_SAVE_INTERVAL_SEC:
