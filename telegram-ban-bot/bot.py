@@ -5137,16 +5137,71 @@ async def track_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     for member in update.message.new_chat_members or []:
         track_user(member)
-        if is_banned_in_group(update.effective_chat.id, member.id):
+        chat_id = update.effective_chat.id
+
+        # --- Bot Sperren: block bots added by non-admins ---
+        if member.is_bot and member.id != context.bot.id:
+            bot_data_sb = load_data()
+            sb = bot_data_sb.get("sperr_bots", {"enabled": False})
+            if sb.get("enabled", False):
+                sb_groups = [str(g) for g in sb.get("groups", [])]
+                applies = not sb_groups or str(chat_id) in sb_groups
+                if applies:
+                    adder = update.message.from_user
+                    is_adm = await is_chat_admin(context, chat_id, adder.id) if adder else False
+                    if not is_adm:
+                        # Remove the bot
+                        try:
+                            await context.bot.ban_chat_member(chat_id=chat_id, user_id=member.id, revoke_messages=True)
+                            await context.bot.unban_chat_member(chat_id=chat_id, user_id=member.id, only_if_banned=True)
+                        except Exception as e:
+                            logger.error(f"Bot-Sperren: Could not remove bot {member.id}: {e}")
+                        # Delete service message
+                        if sb.get("delete", True):
+                            try:
+                                await update.message.delete()
+                            except Exception:
+                                pass
+                        # Punish the adder
+                        punishment = sb.get("punishment", "ban")
+                        adder_name = adder.full_name if adder else "Unknown"
+                        adder_id = adder.id if adder else 0
+                        try:
+                            if punishment == "ban":
+                                await context.bot.ban_chat_member(chat_id=chat_id, user_id=adder_id, revoke_messages=False)
+                                remember_group_ban([chat_id], adder_id)
+                            elif punishment == "kick":
+                                await context.bot.ban_chat_member(chat_id=chat_id, user_id=adder_id, revoke_messages=False)
+                                await context.bot.unban_chat_member(chat_id=chat_id, user_id=adder_id, only_if_banned=True)
+                            elif punishment == "mute":
+                                await context.bot.restrict_chat_member(chat_id=chat_id, user_id=adder_id, permissions=ChatPermissions.no_permissions())
+                            elif punishment == "warn":
+                                # Add a warning
+                                warnings_sb = bot_data_sb.setdefault("warnings", {})
+                                key = f"{chat_id}_{adder_id}"
+                                warnings_sb[key] = warnings_sb.get(key, 0) + 1
+                                save_data(bot_data_sb)
+                        except Exception as e:
+                            logger.error(f"Bot-Sperren punishment failed for {adder_id}: {e}")
+                        await log_action(
+                            context,
+                            f"🤖 BOT-SPERREN: Bot {member.full_name} ({member.id}) entfernt aus {update.effective_chat.title}. "
+                            f"Hinzugefügt von {adder_name} ({adder_id}) — Strafe: {punishment}",
+                            group_id=chat_id,
+                            group_name=update.effective_chat.title,
+                        )
+                        continue
+
+        if is_banned_in_group(chat_id, member.id):
             try:
-                await context.bot.ban_chat_member(chat_id=update.effective_chat.id, user_id=member.id, revoke_messages=True)
+                await context.bot.ban_chat_member(chat_id=chat_id, user_id=member.id, revoke_messages=True)
                 try:
                     await update.message.delete()
                 except Exception:
                     pass
                 await log_action(context, f"AUTO-REBANNED: {member.full_name} ({member.id}) in {update.effective_chat.title}")
             except Exception as e:
-                logger.error(f"Auto-reban via new_chat_members failed for {member.id} in {update.effective_chat.id}: {e}")
+                logger.error(f"Auto-reban via new_chat_members failed for {member.id} in {chat_id}: {e}")
 
 async def enforce_ban_on_chat_member(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.chat_member:
