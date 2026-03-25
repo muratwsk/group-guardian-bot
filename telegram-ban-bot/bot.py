@@ -76,7 +76,13 @@ def normalize_data(data):
         "users": False,
         "bots": False,
     })
+    data.setdefault("freed_users", [])
     return data
+
+def is_freed(user_id: int) -> bool:
+    """Check if a user has the 'Befreiter' role (exempt from all restrictions)."""
+    bot_data = load_data()
+    return user_id in bot_data.get("freed_users", [])
 
 def _safe_load_json(filepath, default):
     """Load JSON with automatic backup recovery if file is empty/corrupt."""
@@ -3681,6 +3687,76 @@ async def unwarn_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await log_action(context, f"UNWARN: {target_name} ({target_id}) in {chat.title} — jetzt {new_count}/{max_w}")
 
 
+# --- /free & /unfree ---
+
+async def free_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Grant a user the 'Befreiter' role — exempt from link filter, forward filter, forbidden words."""
+    user_id = update.effective_user.id
+    if not is_authorized(user_id):
+        await update.message.reply_text("⛔ Kein Zugriff.")
+        return
+
+    target_id, target_name = await resolve_target(update, context)
+    if target_id is None:
+        return
+
+    bot_data = load_data()
+    freed = bot_data.setdefault("freed_users", [])
+    if target_id in freed:
+        await update.message.reply_text(f"ℹ️ {target_name} ist bereits befreit.")
+        return
+
+    freed.append(target_id)
+    save_data(bot_data)
+
+    tracked = lookup_user(str(target_id))
+    target_username = tracked.get("username") if tracked else None
+    uname = f"@{target_username} " if target_username else ""
+
+    chat = update.effective_chat
+    keyboard = InlineKeyboardMarkup([
+        [InlineKeyboardButton("🕹 Rechte", url=f"tg://resolve?domain={chat.username}&admin={target_id}" if chat.username else f"tg://chat_permissions?chat_id={str(chat.id).replace('-100', '')}")]
+    ])
+
+    await update.message.reply_text(
+        f"{uname}[<code>{target_id}</code>] wurde die Rolle 🔓 <b>Befreiter</b> erteilt.",
+        reply_markup=keyboard,
+        parse_mode="HTML",
+    )
+    await log_action(context, f"🔓 FREE: {target_name} [{target_id}] von {update.effective_user.first_name}")
+
+
+async def unfree_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Revoke the 'Befreiter' role from a user."""
+    user_id = update.effective_user.id
+    if not is_authorized(user_id):
+        await update.message.reply_text("⛔ Kein Zugriff.")
+        return
+
+    target_id, target_name = await resolve_target(update, context)
+    if target_id is None:
+        return
+
+    bot_data = load_data()
+    freed = bot_data.setdefault("freed_users", [])
+    if target_id not in freed:
+        await update.message.reply_text(f"ℹ️ {target_name} ist nicht befreit.")
+        return
+
+    freed.remove(target_id)
+    save_data(bot_data)
+
+    tracked = lookup_user(str(target_id))
+    target_username = tracked.get("username") if tracked else None
+    uname = f"@{target_username} " if target_username else ""
+
+    await update.message.reply_text(
+        f"{uname}[<code>{target_id}</code>] wurde die Rolle 🔒 <b>Befreiter</b> widerrufen.",
+        parse_mode="HTML",
+    )
+    await log_action(context, f"🔒 UNFREE: {target_name} [{target_id}] von {update.effective_user.first_name}")
+
+
 async def banall(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_authorized(update.effective_user.id):
         await update.message.reply_text("⛔ Kein Zugriff.")
@@ -3976,7 +4052,7 @@ async def track_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if has_link:
             logger.info(f"LINK detected from {sender_as.id} in {update.effective_chat.id}")
             is_adm_as = is_authorized(sender_as.id) or await is_chat_admin(context, update.effective_chat.id, sender_as.id)
-            if not is_adm_as:
+            if not is_adm_as and not is_freed(sender_as.id):
                 bot_data_as = load_data()
                 lc = bot_data_as.get("antispam_links", {"punishment": "aus", "delete": True})
                 lc_punishment = lc.get("punishment", "aus")
@@ -4048,7 +4124,7 @@ async def track_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # --- Anti-Spam: Forward check ---
     if update.message.forward_origin and update.message.from_user:
-        if not is_authorized(update.message.from_user.id):
+        if not is_authorized(update.message.from_user.id) and not is_freed(update.message.from_user.id):
             if not await is_chat_admin(context, update.effective_chat.id, update.message.from_user.id):
                 bot_data_fw = load_data()
                 fw = bot_data_fw.get("antispam_forward", {})
@@ -4080,7 +4156,7 @@ async def track_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg_text = update.message.text or update.message.caption or ""
     if msg_text and update.message.from_user:
         sender = update.message.from_user
-        if not is_authorized(sender.id):
+        if not is_authorized(sender.id) and not is_freed(sender.id):
             bot_data = load_data()
             bw_config = bot_data.get("badwords_config", {"punishment": "aus", "delete": True})
             bw_punishment = bw_config.get("punishment", "aus")
@@ -5363,6 +5439,8 @@ def main():
     app.add_handler(CommandHandler("kick", kick_command))
     app.add_handler(CommandHandler("warn", warn_command))
     app.add_handler(CommandHandler("unwarn", unwarn_command))
+    app.add_handler(CommandHandler("free", free_command))
+    app.add_handler(CommandHandler("unfree", unfree_command))
     app.add_handler(CommandHandler("open", handle_open_command))
     app.add_handler(CommandHandler("close", handle_close_command))
     app.add_handler(CallbackQueryHandler(button_handler))
