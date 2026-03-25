@@ -3410,6 +3410,23 @@ async def track_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.message.from_user:
         track_user(update.message.from_user, group_id=update.effective_chat.id)
 
+    # --- Command delete check ---
+    msg_text_raw = update.message.text or ""
+    if msg_text_raw and update.message.from_user:
+        first_char = msg_text_raw[0] if msg_text_raw else ""
+        if first_char in ["/", "!", ";", "."]:
+            bot_data_cd = load_data()
+            cd = bot_data_cd.get("cmd_delete", {"admin_prefixes": [], "user_prefixes": []})
+            sender_cd = update.message.from_user
+            is_adm = await is_chat_admin(context, update.effective_chat.id, sender_cd.id)
+            prefixes = cd.get("admin_prefixes", []) if is_adm else cd.get("user_prefixes", [])
+            if first_char in prefixes:
+                try:
+                    await update.message.delete()
+                    logger.info(f"Auto-deleted command '{msg_text_raw[:30]}' from {'admin' if is_adm else 'user'} {sender_cd.id} in {update.effective_chat.id}")
+                except Exception as e:
+                    logger.error(f"Cmd delete failed: {e}")
+
     # --- Forbidden words check ---
     msg_text = update.message.text or update.message.caption or ""
     if msg_text and update.message.from_user:
