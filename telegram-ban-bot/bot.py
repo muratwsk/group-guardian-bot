@@ -3687,6 +3687,76 @@ async def unwarn_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await log_action(context, f"UNWARN: {target_name} ({target_id}) in {chat.title} — jetzt {new_count}/{max_w}")
 
 
+# --- /free & /unfree ---
+
+async def free_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Grant a user the 'Befreiter' role — exempt from link filter, forward filter, forbidden words."""
+    user_id = update.effective_user.id
+    if not is_authorized(user_id):
+        await update.message.reply_text("⛔ Kein Zugriff.")
+        return
+
+    target_id, target_name = await resolve_target(update, context)
+    if target_id is None:
+        return
+
+    bot_data = load_data()
+    freed = bot_data.setdefault("freed_users", [])
+    if target_id in freed:
+        await update.message.reply_text(f"ℹ️ {target_name} ist bereits befreit.")
+        return
+
+    freed.append(target_id)
+    save_data(bot_data)
+
+    tracked = lookup_user(str(target_id))
+    target_username = tracked.get("username") if tracked else None
+    uname = f"@{target_username} " if target_username else ""
+
+    chat = update.effective_chat
+    keyboard = InlineKeyboardMarkup([
+        [InlineKeyboardButton("🕹 Rechte", url=f"tg://resolve?domain={chat.username}&admin={target_id}" if chat.username else f"tg://chat_permissions?chat_id={str(chat.id).replace('-100', '')}")]
+    ])
+
+    await update.message.reply_text(
+        f"{uname}[<code>{target_id}</code>] wurde die Rolle 🔓 <b>Befreiter</b> erteilt.",
+        reply_markup=keyboard,
+        parse_mode="HTML",
+    )
+    await log_action(context, f"🔓 FREE: {target_name} [{target_id}] von {update.effective_user.first_name}")
+
+
+async def unfree_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Revoke the 'Befreiter' role from a user."""
+    user_id = update.effective_user.id
+    if not is_authorized(user_id):
+        await update.message.reply_text("⛔ Kein Zugriff.")
+        return
+
+    target_id, target_name = await resolve_target(update, context)
+    if target_id is None:
+        return
+
+    bot_data = load_data()
+    freed = bot_data.setdefault("freed_users", [])
+    if target_id not in freed:
+        await update.message.reply_text(f"ℹ️ {target_name} ist nicht befreit.")
+        return
+
+    freed.remove(target_id)
+    save_data(bot_data)
+
+    tracked = lookup_user(str(target_id))
+    target_username = tracked.get("username") if tracked else None
+    uname = f"@{target_username} " if target_username else ""
+
+    await update.message.reply_text(
+        f"{uname}[<code>{target_id}</code>] wurde die Rolle 🔒 <b>Befreiter</b> widerrufen.",
+        parse_mode="HTML",
+    )
+    await log_action(context, f"🔒 UNFREE: {target_name} [{target_id}] von {update.effective_user.first_name}")
+
+
 async def banall(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_authorized(update.effective_user.id):
         await update.message.reply_text("⛔ Kein Zugriff.")
