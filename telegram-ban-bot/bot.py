@@ -278,6 +278,37 @@ WAITING_PCMD_NAME = 16
 WAITING_PCMD_TEXT = 17
 WAITING_PCMD_GROUPS = 18
 WAITING_WARN_MUTE_DUR = 19
+WAITING_BADWORD_ADD = 20
+
+# --- Smart text normalizer for forbidden word evasion detection ---
+LEET_MAP = {
+    '0': 'o', '1': 'i', '2': 'z', '3': 'e', '4': 'a', '5': 's',
+    '6': 'g', '7': 't', '8': 'b', '9': 'g',
+    '@': 'a', '$': 's', '!': 'i', '|': 'l',
+    '€': 'e', '£': 'l', '¥': 'y',
+}
+
+def normalize_text(text):
+    """Normalize text to catch evasion tricks like C.P, c p, c=p, leet speak etc."""
+    text = text.lower()
+    # Replace leet speak characters
+    normalized = []
+    for ch in text:
+        if ch in LEET_MAP:
+            normalized.append(LEET_MAP[ch])
+        elif ch.isalpha():
+            normalized.append(ch)
+        # Skip all non-alpha characters (dots, spaces, special chars)
+    return ''.join(normalized)
+
+def check_forbidden_words(text, word_list):
+    """Check if any forbidden word appears in normalized text. Returns matched word or None."""
+    norm = normalize_text(text)
+    for word in word_list:
+        norm_word = normalize_text(word)
+        if norm_word and norm_word in norm:
+            return word
+    return None
 
 import re as _re
 
