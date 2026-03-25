@@ -3247,7 +3247,74 @@ async def track_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.message.from_user:
         track_user(update.message.from_user, group_id=update.effective_chat.id)
 
-    if update.message.left_chat_member:
+    # --- Forbidden words check ---
+    msg_text = update.message.text or update.message.caption or ""
+    if msg_text and update.message.from_user:
+        sender = update.message.from_user
+        if not is_authorized(sender.id):
+            bot_data = load_data()
+            bw_config = bot_data.get("badwords_config", {"punishment": "aus", "delete": True})
+            bw_punishment = bw_config.get("punishment", "aus")
+            if bw_punishment != "aus":
+                word_list = bot_data.get("badwords", [])
+                if word_list:
+                    matched = check_forbidden_words(msg_text, word_list)
+                    if matched:
+                        chat_id = update.effective_chat.id
+                        user_id_bw = sender.id
+                        user_name = sender.full_name
+                        if bw_config.get("delete", True):
+                            try:
+                                await update.message.delete()
+                            except Exception:
+                                pass
+                        try:
+                            if bw_punishment == "warn":
+                                wc = bot_data.get("warn_config", {"max_warns": 3})
+                                max_w = wc.get("max_warns", 3)
+                                warnings = bot_data.setdefault("warnings", {})
+                                key = f"{chat_id}_{user_id_bw}"
+                                warn_entry = warnings.get(key, {"count": 0, "name": user_name})
+                                warn_entry["count"] = warn_entry.get("count", 0) + 1
+                                warn_entry["name"] = user_name
+                                warnings[key] = warn_entry
+                                save_data(bot_data)
+                                await context.bot.send_message(
+                                    chat_id=chat_id,
+                                    text=f"⚠️ {html.escape(user_name)} wurde verwarnt ({warn_entry['count']}/{max_w}) — Verbotenes Wort: <code>{html.escape(matched)}</code>",
+                                    parse_mode="HTML",
+                                )
+                            elif bw_punishment == "mute":
+                                await context.bot.restrict_chat_member(
+                                    chat_id=chat_id, user_id=user_id_bw,
+                                    permissions=ChatPermissions.no_permissions(),
+                                )
+                                await context.bot.send_message(
+                                    chat_id=chat_id,
+                                    text=f"🤫 {html.escape(user_name)} wurde gemutet — Verbotenes Wort: <code>{html.escape(matched)}</code>",
+                                    parse_mode="HTML",
+                                )
+                            elif bw_punishment == "kick":
+                                await context.bot.ban_chat_member(chat_id=chat_id, user_id=user_id_bw)
+                                await context.bot.unban_chat_member(chat_id=chat_id, user_id=user_id_bw)
+                                await context.bot.send_message(
+                                    chat_id=chat_id,
+                                    text=f"❗ {html.escape(user_name)} wurde gekickt — Verbotenes Wort: <code>{html.escape(matched)}</code>",
+                                    parse_mode="HTML",
+                                )
+                            elif bw_punishment == "ban":
+                                await context.bot.ban_chat_member(chat_id=chat_id, user_id=user_id_bw, revoke_messages=True)
+                                await context.bot.send_message(
+                                    chat_id=chat_id,
+                                    text=f"🚫 {html.escape(user_name)} wurde gebannt — Verbotenes Wort: <code>{html.escape(matched)}</code>",
+                                    parse_mode="HTML",
+                                )
+                        except Exception as e:
+                            logger.error(f"Badword punishment failed: {e}")
+                        await log_action(context, f"BADWORD: {user_name} ({user_id_bw}) in {update.effective_chat.title} — Wort: {matched} — Strafe: {bw_punishment}")
+                        return
+
+
         left_member = update.message.left_chat_member
         if is_banned_in_group(update.effective_chat.id, left_member.id):
             try:
