@@ -383,6 +383,31 @@ async def render_protokoll_channel_config(query, ch_id: str):
     )
 
 
+async def render_sperr_bot_groups(query, context: ContextTypes.DEFAULT_TYPE):
+    bot_data = load_data()
+    sb = bot_data.get("sperr_bots", {"groups": []})
+    selected = [str(g) for g in sb.get("groups", [])]
+    groups = await get_bot_groups(context)
+
+    keyboard = []
+    all_check = "✅" if not selected else "⬜"
+    keyboard.append([InlineKeyboardButton(f"{all_check} Alle Gruppen", callback_data="sperr_bot_tga")])
+    for g in groups:
+        gid_str = str(g["id"])
+        check = "✅" if gid_str in selected else "⬜"
+        keyboard.append([InlineKeyboardButton(f"{check} {g['title']}", callback_data=f"sperr_bot_tgg_{gid_str}")])
+    keyboard.append([InlineKeyboardButton("🔙 Zurück", callback_data="sperr_bot_menu")])
+    grp_info = f"{len(selected)} ausgewählt" if selected else "Alle Gruppen"
+    await query.edit_message_text(
+        f"🤖 <b>Bot Sperren — Gruppen</b>\n\n"
+        f"Wähle die Gruppen, in denen Bot Sperren aktiv sein soll.\n"
+        f"Wenn keine Gruppe ausgewählt ist, gilt es für <b>alle</b> Gruppen.\n\n"
+        f"<b>Aktuell:</b> {grp_info}",
+        reply_markup=InlineKeyboardMarkup(keyboard),
+        parse_mode="HTML",
+    )
+
+
 # --- Get bot's groups ---
 
 async def get_bot_groups(context: ContextTypes.DEFAULT_TYPE) -> list:
