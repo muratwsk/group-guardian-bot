@@ -3830,6 +3830,39 @@ async def ban_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         await update.message.reply_text(f"❌ Ban fehlgeschlagen: {e}")
 
+# --- /unban (single group) ---
+
+async def unban_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Unban a user from the current group. Usage: /unban (reply to a message or /unban @username or /unban user_id)."""
+    user_id = update.effective_user.id
+    if not await is_group_authorized(context, user_id, update.effective_chat):
+        return
+
+    chat = update.effective_chat
+    if not chat or chat.type not in ("group", "supergroup"):
+        await update.message.reply_text("⚠️ Dieser Befehl funktioniert nur in Gruppen.")
+        return
+
+    target_id, target_name = await resolve_target(update, context)
+    if target_id is None:
+        return
+
+    tracked = lookup_user(str(target_id))
+    target_username = tracked.get("username") if tracked else None
+
+    try:
+        await context.bot.unban_chat_member(chat_id=chat.id, user_id=target_id, only_if_banned=True)
+        forget_group_ban([chat.id], target_id)
+
+        uname = f"@{target_username} " if target_username else ""
+        await update.message.reply_text(
+            f"✅ {uname}[<code>{target_id}</code>] wurde entsperrt.",
+            parse_mode="HTML",
+        )
+        await log_action(context, f"✅ Unban: {target_name} [{target_id}] in {chat.title} von {update.effective_user.first_name}")
+    except Exception as e:
+        await update.message.reply_text(f"❌ Unban fehlgeschlagen: {e}")
+
 # --- /banall ---
 
 # --- /warn ---
@@ -5948,6 +5981,7 @@ def main():
     app.add_handler(CommandHandler("unmute", unmute_command))
     app.add_handler(CommandHandler("kick", kick_command))
     app.add_handler(CommandHandler("ban", ban_command))
+    app.add_handler(CommandHandler("unban", unban_command))
     app.add_handler(CommandHandler("warn", warn_command))
     app.add_handler(CommandHandler("unwarn", unwarn_command))
     app.add_handler(CommandHandler("free", free_command))
