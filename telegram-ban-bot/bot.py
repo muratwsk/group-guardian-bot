@@ -2215,6 +2215,72 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         keyboard.append([InlineKeyboardButton("🔙 Zurück", callback_data="back_main")])
         await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
 
+    # === PROTOKOLL ===
+    elif data == "menu_protokoll":
+        proto = load_protokoll()
+        groups_proto = proto.get("groups", {})
+        keyboard = []
+        # Show per-group buttons
+        bot_data = load_data()
+        for g in bot_data.get("groups", []):
+            gkey = str(g["id"])
+            count = len(groups_proto.get(gkey, {}).get("entries", []))
+            keyboard.append([InlineKeyboardButton(f"📋 {g['title']} ({count})", callback_data=f"proto_group_{g['id']}")])
+        global_count = len(proto.get("global", []))
+        keyboard.append([InlineKeyboardButton(f"📋 Alle Gruppen ({global_count})", callback_data="proto_global")])
+        keyboard.append([InlineKeyboardButton("🗑 Protokoll löschen", callback_data="proto_clear")])
+        keyboard.append([InlineKeyboardButton("🔙 Zurück", callback_data="back_main")])
+        await query.edit_message_text(
+            "📋 *Protokoll*\nWähle eine Gruppe oder zeige alle:",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode="Markdown",
+        )
+
+    elif data.startswith("proto_group_"):
+        gid = data.replace("proto_group_", "")
+        proto = load_protokoll()
+        group_data = proto.get("groups", {}).get(gid, {})
+        entries = group_data.get("entries", [])
+        group_name = group_data.get("name", gid)
+        if not entries:
+            text = f"📋 *Protokoll – {group_name}*\n\nKeine Einträge vorhanden."
+        else:
+            # Show last 20 entries
+            lines = []
+            for e in entries[-20:]:
+                lines.append(f"• `{e['time']}` – {e['text']}")
+            text = f"📋 *Protokoll – {group_name}*\n_Letzte {min(20, len(entries))} von {len(entries)} Einträgen:_\n\n" + "\n".join(lines)
+        # Truncate if too long for Telegram
+        if len(text) > 4000:
+            text = text[:3997] + "..."
+        keyboard = [[InlineKeyboardButton("🔙 Zurück", callback_data="menu_protokoll")]]
+        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
+
+    elif data == "proto_global":
+        proto = load_protokoll()
+        entries = proto.get("global", [])
+        if not entries:
+            text = "📋 *Protokoll – Alle Gruppen*\n\nKeine Einträge vorhanden."
+        else:
+            lines = []
+            for e in entries[-20:]:
+                lines.append(f"• `{e['time']}` – {e['text']}")
+            text = f"📋 *Protokoll – Alle Gruppen*\n_Letzte {min(20, len(entries))} von {len(entries)} Einträgen:_\n\n" + "\n".join(lines)
+        if len(text) > 4000:
+            text = text[:3997] + "..."
+        keyboard = [[InlineKeyboardButton("🔙 Zurück", callback_data="menu_protokoll")]]
+        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
+
+    elif data == "proto_clear":
+        if not is_owner(user_id):
+            await query.answer("⛔ Nur Owner können das Protokoll löschen.", show_alert=True)
+            return
+        save_protokoll({"global": [], "groups": {}})
+        await query.answer("✅ Protokoll gelöscht!", show_alert=True)
+        # Return to protokoll menu
+        keyboard = [[InlineKeyboardButton("🔙 Zurück", callback_data="back_main")]]
+        await query.edit_message_text("📋 *Protokoll*\n\n✅ Alle Einträge gelöscht.", reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
+
     # === SETTINGS ===
     elif data == "menu_settings":
         if not is_owner(user_id):
