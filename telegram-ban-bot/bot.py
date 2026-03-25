@@ -6007,6 +6007,7 @@ def main():
     app.add_handler(CommandHandler("unfree", unfree_command))
     app.add_handler(CommandHandler("open", handle_open_command))
     app.add_handler(CommandHandler("close", handle_close_command))
+    app.add_handler(CommandHandler("multidel", multidel_command))
     app.add_handler(CallbackQueryHandler(button_handler))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & filters.ChatType.PRIVATE, text_handler))
     app.add_handler(MessageHandler((filters.PHOTO | filters.VIDEO | filters.Sticker.ALL | filters.ANIMATION | filters.Document.ALL) & filters.ChatType.PRIVATE, media_handler))
