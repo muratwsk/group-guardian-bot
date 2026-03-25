@@ -5264,7 +5264,13 @@ async def handle_open_command(update: Update, context: ContextTypes.DEFAULT_TYPE
     
     bot_data = load_data()
     oc = bot_data.get("open_close", {})
-    notify_groups = oc.get("notify_groups", [])
+    # Get notify groups for THIS source group (per-group config)
+    per_group = oc.get("per_group_notify", {})
+    notify_groups = per_group.get(str(chat.id), [])
+    
+    # Fallback to old global notify_groups if per_group not configured
+    if not notify_groups and not per_group:
+        notify_groups = oc.get("notify_groups", [])
     
     if not notify_groups:
         await update.message.reply_text("⚠️ Keine Benachrichtigungs-Gruppen konfiguriert. Richte sie im Bot-Menü ein.")
