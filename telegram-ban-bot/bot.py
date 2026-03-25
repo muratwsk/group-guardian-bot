@@ -1661,33 +1661,45 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         save_data(bot_data)
         await show_openclose_menu(query, context, user_id)
 
-    elif data == "oc_notify_groups":
-        await show_openclose_group_selection(query, context, user_id)
+    elif data == "oc_notify_groups" or data == "oc_source_groups":
+        await show_oc_source_groups(query, context)
 
-    elif data.startswith("oc_grp_toggle_"):
-        gid = int(data.replace("oc_grp_toggle_", ""))
-        bot_data = load_data()
-        notify = set(bot_data["open_close"].get("notify_groups", []))
-        if gid in notify:
-            notify.discard(gid)
-        else:
-            notify.add(gid)
-        bot_data["open_close"]["notify_groups"] = list(notify)
-        save_data(bot_data)
-        await show_openclose_group_selection(query, context, user_id)
+    elif data.startswith("oc_src_"):
+        source_gid = int(data.replace("oc_src_", ""))
+        await show_oc_notify_for_source(query, context, source_gid)
 
-    elif data == "oc_grp_all":
+    elif data.startswith("oc_ntfy_all_"):
+        source_gid = int(data.replace("oc_ntfy_all_", ""))
         groups = await get_bot_groups(context)
         bot_data = load_data()
-        bot_data["open_close"]["notify_groups"] = [g["id"] for g in groups]
+        per_group = bot_data["open_close"].setdefault("per_group_notify", {})
+        per_group[str(source_gid)] = [g["id"] for g in groups if g["id"] != source_gid]
         save_data(bot_data)
-        await show_openclose_group_selection(query, context, user_id)
+        await show_oc_notify_for_source(query, context, source_gid)
 
-    elif data == "oc_grp_none":
+    elif data.startswith("oc_ntfy_none_"):
+        source_gid = int(data.replace("oc_ntfy_none_", ""))
         bot_data = load_data()
-        bot_data["open_close"]["notify_groups"] = []
+        per_group = bot_data["open_close"].setdefault("per_group_notify", {})
+        per_group[str(source_gid)] = []
         save_data(bot_data)
-        await show_openclose_group_selection(query, context, user_id)
+        await show_oc_notify_for_source(query, context, source_gid)
+
+    elif data.startswith("oc_ntfy_"):
+        # Format: oc_ntfy_{source_gid}_{target_gid}
+        parts = data.replace("oc_ntfy_", "").split("_")
+        source_gid = int(parts[0])
+        target_gid = int(parts[1])
+        bot_data = load_data()
+        per_group = bot_data["open_close"].setdefault("per_group_notify", {})
+        notify = set(per_group.get(str(source_gid), []))
+        if target_gid in notify:
+            notify.discard(target_gid)
+        else:
+            notify.add(target_gid)
+        per_group[str(source_gid)] = list(notify)
+        save_data(bot_data)
+        await show_oc_notify_for_source(query, context, source_gid)
 
     elif data == "oc_edit_open_text":
         user_data_store[user_id] = {"action": "oc_edit_open_text"}
