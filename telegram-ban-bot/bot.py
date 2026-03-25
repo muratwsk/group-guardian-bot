@@ -317,7 +317,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton("🔤 Verbotene Worte", callback_data="menu_badwords"),
          InlineKeyboardButton("🗑 Nachrichten", callback_data="menu_msgdelete")],
         [InlineKeyboardButton("🛡 Anti-Spam", callback_data="menu_antispam"),
-         InlineKeyboardButton("⚙️ Einstellungen", callback_data="menu_settings")],
+         InlineKeyboardButton("👥 Mitglieder", callback_data="menu_members")],
+        [InlineKeyboardButton("⚙️ Einstellungen", callback_data="menu_settings")],
     ]
 
     role = "👑 Owner" if is_owner(user_id) else "🛡️ Admin"
