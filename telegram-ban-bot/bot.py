@@ -132,32 +132,32 @@ def save_users(users):
     with open(USERS_FILE, "w") as f:
         json.dump(users, f, indent=2)
 
-def track_user(user):
-    """Track a user's username → ID mapping, message count, and first seen date."""
+def track_user(user, group_id=None):
+    """Track a user's username → ID mapping, per-group message count, and first seen date."""
     if not user or user.is_bot:
         return
     users = load_users()
     now_str = now_de().strftime("%d.%m.%Y %H:%M")
-    if user.username:
-        key = user.username.lower()
+
+    def _update_entry(key):
         existing = users.get(key, {})
-        users[key] = {
+        entry = {
             "id": user.id,
             "name": user.full_name,
             "username": user.username,
-            "msg_count": existing.get("msg_count", 0) + 1,
             "first_seen": existing.get("first_seen", now_str),
+            "group_stats": existing.get("group_stats", {}),
         }
-    # Also store by ID for reverse lookup
-    id_key = str(user.id)
-    existing_id = users.get(id_key, {})
-    users[id_key] = {
-        "id": user.id,
-        "name": user.full_name,
-        "username": user.username,
-        "msg_count": existing_id.get("msg_count", 0) + 1,
-        "first_seen": existing_id.get("first_seen", now_str),
-    }
+        if group_id:
+            gkey = str(group_id)
+            gs = entry["group_stats"].get(gkey, {"msg_count": 0, "first_seen": now_str})
+            gs["msg_count"] = gs.get("msg_count", 0) + 1
+            entry["group_stats"][gkey] = gs
+        users[key] = entry
+
+    if user.username:
+        _update_entry(user.username.lower())
+    _update_entry(str(user.id))
     save_users(users)
 
 def lookup_user(identifier: str):
@@ -1881,10 +1881,25 @@ async def info_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     premium_icon = "⭐ Ja" if is_premium else "Nein"
     ban_status = f"🚫 {banned_in}/{len(groups)} Gruppen" if banned_in > 0 else "✅ Nicht gebannt"
 
-    # Message count and first seen from tracking
+    # Message count and first seen from tracking (per-group if in a group)
     tracked_data = lookup_user(str(target_id))
-    msg_count = tracked_data.get("msg_count", 0) if tracked_data else 0
-    first_seen = tracked_data.get("first_seen", "—") if tracked_data else "—"
+    chat_id = update.effective_chat.id
+    if tracked_data and str(chat_id) in tracked_data.get("group_stats", {}):
+        gs = tracked_data["group_stats"][str(chat_id)]
+        msg_count = gs.get("msg_count", 0)
+        first_seen = gs.get("first_seen", "—")
+    else:
+        # Sum all groups
+        total = 0
+        first_seen = "—"
+        if tracked_data:
+            for gs in tracked_data.get("group_stats", {}).values():
+                total += gs.get("msg_count", 0)
+                if first_seen == "—":
+                    first_seen = gs.get("first_seen", "—")
+            msg_count = total
+        else:
+            msg_count = 0
 
     info_text = (
         f"━━━━━━━━━━━━━━━━━━\n"
@@ -2143,7 +2158,7 @@ async def track_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     if update.message.from_user:
-        track_user(update.message.from_user)
+        track_user(update.message.from_user, group_id=update.effective_chat.id)
 
     if update.message.left_chat_member:
         left_member = update.message.left_chat_member
