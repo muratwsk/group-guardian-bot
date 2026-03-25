@@ -2042,13 +2042,19 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         enabled_count = sum(1 for g in groups if auto_approve.get(str(g["id"]), False))
 
         text = (
-            "🚪 <b>Freigabemodus</b>\n\n"
-            "In diesem Menü kannst du entscheiden, ob der Bot "
-            "Gruppenbeitritts-Anfragen <b>automatisch genehmigt</b>.\n\n"
-            "👤 Wenn ein Benutzer über einen <b>freigabepflichtigen Link</b> "
-            "beitritt, wird er automatisch angenommen – sofern er nicht gebannt ist.\n\n"
-            "🚫 Gebannte User werden weiterhin <b>automatisch abgelehnt</b>.\n\n"
-            f"📊 <b>Status:</b> {enabled_count}/{len(groups)} Gruppen aktiv"
+            "📬 <b>Freigabemodus</b>\n\n"
+            "In diesem Menü kannst du entscheiden, ob du die Verwaltung der "
+            "Gruppenbeitritts-Freigabe an den Bot delegieren möchtest, sobald "
+            "ein Benutzer den Beitritt über einen freigabepflichtigen Link beantragt.\n\n"
+            "🧠 Da das Captcha nicht aktiv ist und du die Auto-Freigabe aktivierst, "
+            "werden die <b>Nutzer automatisch in die Gruppe aufgenommen</b>, "
+            "sobald sie die Anfrage stellen (es sei denn, es wird eine andere Prüfung durchgeführt).\n\n"
+            "🔦 Falls die automatische Genehmigung aktiviert ist, werden alle Prüfungen "
+            "(Namenssperre, Gebannt...) durchgeführt, bevor der Nutzer der Gruppe beitritt – "
+            "falls nicht bestanden, wird der Benutzer <b>nicht genehmigt</b>.\n\n"
+            "👥 Wenn ein Benutzer über einen Link beitritt, der <u>nicht genehmigungspflichtig</u> ist, "
+            "erfolgt die Prozedur ganz normal <b>in der Gruppe</b>.\n\n"
+            f"💡 <b>Status:</b> {enabled_count}/{len(groups)} Gruppen aktiv"
         )
 
         keyboard = []
@@ -2081,13 +2087,19 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Re-render menu
         enabled_count = sum(1 for g in groups if auto_approve.get(str(g["id"]), False))
         text = (
-            "🚪 <b>Freigabemodus</b>\n\n"
-            "In diesem Menü kannst du entscheiden, ob der Bot "
-            "Gruppenbeitritts-Anfragen <b>automatisch genehmigt</b>.\n\n"
-            "👤 Wenn ein Benutzer über einen <b>freigabepflichtigen Link</b> "
-            "beitritt, wird er automatisch angenommen – sofern er nicht gebannt ist.\n\n"
-            "🚫 Gebannte User werden weiterhin <b>automatisch abgelehnt</b>.\n\n"
-            f"📊 <b>Status:</b> {enabled_count}/{len(groups)} Gruppen aktiv"
+            "📬 <b>Freigabemodus</b>\n\n"
+            "In diesem Menü kannst du entscheiden, ob du die Verwaltung der "
+            "Gruppenbeitritts-Freigabe an den Bot delegieren möchtest, sobald "
+            "ein Benutzer den Beitritt über einen freigabepflichtigen Link beantragt.\n\n"
+            "🧠 Da das Captcha nicht aktiv ist und du die Auto-Freigabe aktivierst, "
+            "werden die <b>Nutzer automatisch in die Gruppe aufgenommen</b>, "
+            "sobald sie die Anfrage stellen (es sei denn, es wird eine andere Prüfung durchgeführt).\n\n"
+            "🔦 Falls die automatische Genehmigung aktiviert ist, werden alle Prüfungen "
+            "(Namenssperre, Gebannt...) durchgeführt, bevor der Nutzer der Gruppe beitritt – "
+            "falls nicht bestanden, wird der Benutzer <b>nicht genehmigt</b>.\n\n"
+            "👥 Wenn ein Benutzer über einen Link beitritt, der <u>nicht genehmigungspflichtig</u> ist, "
+            "erfolgt die Prozedur ganz normal <b>in der Gruppe</b>.\n\n"
+            f"💡 <b>Status:</b> {enabled_count}/{len(groups)} Gruppen aktiv"
         )
         keyboard = []
         for g in groups:
@@ -4595,15 +4607,34 @@ async def block_banned_join_request(update: Update, context: ContextTypes.DEFAUL
             logger.error(f"Decline join request failed for {member.id} in {chat_id}: {e}")
         return
 
-    # Auto-approve if Freigabemodus is enabled for this group
+    # Check if Freigabemodus is enabled for this group
     bot_data = load_data()
     auto_approve = bot_data.get("auto_approve", {})
-    if auto_approve.get(str(chat_id), False):
-        try:
-            await context.bot.approve_chat_join_request(chat_id=chat_id, user_id=member.id)
-            logger.info(f"Auto-approved join request: {member.full_name} ({member.id}) in {request.chat.title}")
-        except Exception as e:
-            logger.error(f"Auto-approve join request failed for {member.id} in {chat_id}: {e}")
+    if not auto_approve.get(str(chat_id), False):
+        return  # Freigabemodus not active, let Telegram handle it
+
+    # --- Pre-approval checks ---
+
+    # Check badwords in user's name
+    badwords = bot_data.get("badwords", [])
+    bw_config = bot_data.get("badwords_config", {"punishment": "aus"})
+    if bw_config.get("punishment", "aus") != "aus" and badwords:
+        user_name_lower = (member.full_name or "").lower()
+        for word in badwords:
+            if word.lower() in user_name_lower:
+                try:
+                    await context.bot.decline_chat_join_request(chat_id=chat_id, user_id=member.id)
+                    await log_action(context, f"🚫 JOIN-REQUEST ABGELEHNT (Namenssperre '{word}'): {member.full_name} ({member.id}) in {request.chat.title}")
+                except Exception as e:
+                    logger.error(f"Decline join request (name ban) failed for {member.id} in {chat_id}: {e}")
+                return
+
+    # All checks passed → auto-approve
+    try:
+        await context.bot.approve_chat_join_request(chat_id=chat_id, user_id=member.id)
+        logger.info(f"✅ Auto-approved join request: {member.full_name} ({member.id}) in {request.chat.title}")
+    except Exception as e:
+        logger.error(f"Auto-approve join request failed for {member.id} in {chat_id}: {e}")
 
 # --- Media handler (photos, videos, stickers for scheduled messages + JSON import) ---
 
