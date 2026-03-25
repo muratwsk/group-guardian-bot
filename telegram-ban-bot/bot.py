@@ -3379,6 +3379,8 @@ async def info_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     first_seen = gs.get("first_seen", "—")
         msg_count = total
 
+    freed_icon = "🔓 Ja" if is_freed(target_id) else "Nein"
+
     info_text = (
         f"━━━━━━━━━━━━━━━━━━\n"
         f"🆔 <b>ID:</b> <code>{target_id}</code> <code>#id{target_id}</code>\n"
@@ -3386,6 +3388,7 @@ async def info_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"🔗 <b>Username:</b> {username_display}\n"
         f"📷 <b>Profilbild:</b> {photo_icon}\n"
         f"⭐ <b>Premium:</b> {premium_icon}\n"
+        f"🔓 <b>Befreiter:</b> {freed_icon}\n"
         f"📝 <b>Bio:</b> {html.escape(bio[:100]) if bio != '—' else '—'}\n"
         f"💬 <b>Nachrichten:</b> {msg_count}\n"
         f"📅 <b>Erste Nachricht:</b> {first_seen}\n"
