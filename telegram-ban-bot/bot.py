@@ -4478,6 +4478,7 @@ async def kick_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def ban_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Ban a user from the current group. Usage: /ban [reason] (reply to a message)."""
+    await auto_delete_command(update, context)
     user_id = update.effective_user.id
     if not await is_group_authorized(context, user_id, update.effective_chat):
         return
