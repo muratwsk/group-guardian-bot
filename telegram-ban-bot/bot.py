@@ -1641,6 +1641,15 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await query.answer("⛔ Dieser User ist ein Administrator und kann nicht gemutet werden.", show_alert=True)
             return
 
+        # Prüfen ob bereits gemutet
+        try:
+            member = await context.bot.get_chat_member(scope_chat_id, target_id)
+            if member.status == "restricted" and not member.can_send_messages:
+                await query.answer("ℹ️ Dieser User ist bereits stummgeschaltet.", show_alert=True)
+                return
+        except Exception:
+            pass
+
         await context.bot.restrict_chat_member(
             chat_id=scope_chat_id,
             user_id=target_id,
