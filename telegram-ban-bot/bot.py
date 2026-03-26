@@ -47,6 +47,7 @@ ADMIN_CACHE_TTL_SEC = 30
 USER_TRACK_LAST_SAVE = {}
 USER_TRACK_SAVE_INTERVAL_SEC = 20
 ACTION_DEDUPE_TTL_SEC = 4.0
+BOT_USERNAME_CACHE = None  # Cached bot username to avoid get_me() API calls
 
 UNMUTE_PERMISSIONS = ChatPermissions.all_permissions()
 
