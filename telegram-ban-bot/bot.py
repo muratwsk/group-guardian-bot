@@ -47,6 +47,18 @@ ADMIN_CACHE_TTL_SEC = 30
 USER_TRACK_LAST_SAVE = {}
 USER_TRACK_SAVE_INTERVAL_SEC = 20
 ACTION_DEDUPE_TTL_SEC = 4.0
+MUTE_PERMISSION_FIELDS = (
+    "can_send_messages",
+    "can_send_audios",
+    "can_send_documents",
+    "can_send_photos",
+    "can_send_videos",
+    "can_send_video_notes",
+    "can_send_voice_notes",
+    "can_send_polls",
+    "can_send_other_messages",
+    "can_add_web_page_previews",
+)
 
 # --- Duration parser for time-based mute/ban ---
 DURATION_PATTERN = re.compile(r"(\d+)\s*(m|min|h|std|d|t|w)\b", re.IGNORECASE)
@@ -226,21 +238,31 @@ async def is_user_currently_muted(context: ContextTypes.DEFAULT_TYPE, chat_id: i
         member = await context.bot.get_chat_member(chat_id, user_id)
         if member.status != "restricted":
             return False
-        send_flags = [
-            getattr(member, "can_send_messages", None),
-            getattr(member, "can_send_audios", None),
-            getattr(member, "can_send_documents", None),
-            getattr(member, "can_send_photos", None),
-            getattr(member, "can_send_videos", None),
-            getattr(member, "can_send_video_notes", None),
-            getattr(member, "can_send_voice_notes", None),
-            getattr(member, "can_send_polls", None),
-            getattr(member, "can_send_other_messages", None),
-        ]
-        explicit_flags = [flag for flag in send_flags if flag is not None]
-        return bool(explicit_flags) and all(flag is False for flag in explicit_flags)
+
+        chat = await context.bot.get_chat(chat_id)
+        default_permissions = getattr(chat, "permissions", None)
+
+        for field_name in MUTE_PERMISSION_FIELDS:
+            member_value = getattr(member, field_name, None)
+            default_value = getattr(default_permissions, field_name, None) if default_permissions else None
+            if member_value is False and default_value is not False:
+                return True
+
+        if default_permissions is None:
+            return getattr(member, "can_send_messages", None) is False
+
+        return False
     except Exception:
         return False
+
+
+async def wait_for_mute_state(context: ContextTypes.DEFAULT_TYPE, chat_id: int, user_id: int, expected_muted: bool, attempts: int = 5, delay: float = 0.4) -> bool:
+    for attempt in range(attempts):
+        if await is_user_currently_muted(context, chat_id, user_id) == expected_muted:
+            return True
+        if attempt < attempts - 1:
+            await asyncio.sleep(delay)
+    return False
 
 
 async def is_user_currently_banned(context: ContextTypes.DEFAULT_TYPE, chat_id: int, user_id: int) -> bool:
@@ -1735,8 +1757,9 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         # Prüfen ob bereits gemutet
         if await is_user_currently_muted(context, scope_chat_id, target_id):
-            await query.answer("ℹ️ Dieser User ist bereits stummgeschaltet.", show_alert=True)
-            return
+            if not await wait_for_mute_state(context, scope_chat_id, target_id, False, attempts=3, delay=0.5):
+                await query.answer("ℹ️ Dieser User ist bereits stummgeschaltet.", show_alert=True)
+                return
 
         await context.bot.restrict_chat_member(
             chat_id=scope_chat_id,
@@ -1777,6 +1800,10 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             permissions=chat.permissions or ChatPermissions.all_permissions(),
         )
 
+        if not await wait_for_mute_state(context, scope_chat_id, target_id, False):
+            await query.answer("⚠️ Telegram zeigt den User noch kurz als gemutet. Bitte direkt nochmal prüfen.", show_alert=True)
+            return
+
         is_banned_all = bool(groups) and all(is_banned_in_group(g["id"], target_id) for g in groups)
         group_state = await get_info_group_state(context, scope_chat_id, target_id)
         keyboard = build_info_keyboard(scope_chat_id, target_id, False, group_state["is_banned_local"], is_banned_all)
@@ -1809,6 +1836,9 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 user_id=target_id,
                 permissions=chat_obj.permissions or ChatPermissions.all_permissions(),
             )
+            if not await wait_for_mute_state(context, scope_chat_id, target_id, False):
+                await query.answer("⚠️ Telegram zeigt den User noch kurz als gemutet. Bitte direkt nochmal prüfen.", show_alert=True)
+                return
             uname = f"@{target_username} " if target_username else ""
             await query.edit_message_text(
                 f"{uname}[<code>{target_id}</code>] wurde ✅ entmutet.",
@@ -4504,8 +4534,9 @@ async def mute_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # Prüfen ob User bereits gemutet ist
     if await is_user_currently_muted(context, chat.id, target_id):
-        await update.message.reply_text("ℹ️ Dieser User ist bereits stummgeschaltet.")
-        return
+        if not await wait_for_mute_state(context, chat.id, target_id, False, attempts=3, delay=0.5):
+            await update.message.reply_text("ℹ️ Dieser User ist bereits stummgeschaltet.")
+            return
 
     args = list(context.args) if context.args else []
     # Strip the first arg if it was used to resolve the target (@username or numeric ID)
@@ -4583,6 +4614,10 @@ async def unmute_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             user_id=target_id,
             permissions=chat_obj.permissions or ChatPermissions.all_permissions(),
         )
+
+        if not await wait_for_mute_state(context, chat.id, target_id, False):
+            await update.message.reply_text("⚠️ Unmute wurde gesendet, aber Telegram zeigt den User noch kurz als gemutet. Bitte direkt nochmal prüfen.")
+            return
 
         tracked = lookup_user(str(target_id))
         target_username = tracked.get("username") if tracked else None
