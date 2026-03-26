@@ -208,17 +208,18 @@ def get_tracked_banned_user_ids(group_id: int) -> list[int]:
 
 
 
-async def _delete_message_later(message, delay: float = 1.0):
-    """Delete a message shortly after command handling finished."""
+async def _delete_message_later(bot, chat_id: int, message_id: int, preview: str = "", delay: float = 1.0):
+    """Delete a command message shortly after handler execution finished."""
     try:
         await asyncio.sleep(delay)
-        await message.delete()
-    except Exception:
-        pass
+        await bot.delete_message(chat_id=chat_id, message_id=message_id)
+        logger.info(f"Auto-deleted command '{preview}' in {chat_id}")
+    except Exception as e:
+        logger.error(f"Delayed cmd delete failed in {chat_id} for {message_id}: {e}")
 
 
 async def auto_delete_command(update: Update, context):
-    """Queue auto-delete for command-like messages in groups without breaking command replies."""
+    """Schedule command-like message deletion in groups without breaking command execution."""
     if not update.message or not update.message.text or not update.effective_chat:
         return
 
@@ -232,6 +233,10 @@ async def auto_delete_command(update: Update, context):
     if not (first_char in ["/", "!", ";", "."] and rest and rest[0].isalpha()):
         return
 
+    msg_id = update.message.message_id
+    if context.chat_data.get("_last_scheduled_cmd_delete") == msg_id:
+        return
+
     try:
         bot_data_cd = load_data()
         cd = bot_data_cd.get("cmd_delete", {"admin_prefixes": [], "user_prefixes": []})
@@ -242,10 +247,18 @@ async def auto_delete_command(update: Update, context):
         is_adm = await is_chat_admin(context, chat.id, sender.id)
         prefixes = cd.get("admin_prefixes", []) if is_adm else cd.get("user_prefixes", [])
         if first_char in prefixes:
-            asyncio.create_task(_delete_message_later(update.message))
-            logger.info(f"Queued auto-delete for command '{msg_text[:30]}' from {'admin' if is_adm else 'user'} {sender.id} in {chat.id}")
+            context.chat_data["_last_scheduled_cmd_delete"] = msg_id
+            context.application.create_task(
+                _delete_message_later(
+                    context.bot,
+                    chat.id,
+                    msg_id,
+                    msg_text[:30],
+                )
+            )
+            logger.info(f"Scheduled command delete '{msg_text[:30]}' from {'admin' if is_adm else 'user'} {sender.id} in {chat.id}")
     except Exception as e:
-        logger.error(f"Cmd auto-delete queue failed: {e}")
+        logger.error(f"Cmd delete scheduling failed: {e}")
 
 
 def track_user(user, group_id=None):
@@ -5141,24 +5154,7 @@ async def track_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         track_user(update.message.from_user, group_id=update.effective_chat.id)
 
     # --- Command delete check ---
-    msg_text_raw = update.message.text or ""
-    if msg_text_raw and update.message.from_user:
-        first_char = msg_text_raw[0] if msg_text_raw else ""
-        # Only treat as command if prefix is followed by a letter (not emoticons like ;) or ...)
-        rest_after_prefix = msg_text_raw[1:] if len(msg_text_raw) > 1 else ""
-        looks_like_command = rest_after_prefix and rest_after_prefix[0].isalpha()
-        if first_char in ["/", "!", ";", "."] and looks_like_command:
-            bot_data_cd = load_data()
-            cd = bot_data_cd.get("cmd_delete", {"admin_prefixes": [], "user_prefixes": []})
-            sender_cd = update.message.from_user
-            is_adm = await is_chat_admin(context, update.effective_chat.id, sender_cd.id)
-            prefixes = cd.get("admin_prefixes", []) if is_adm else cd.get("user_prefixes", [])
-            if first_char in prefixes:
-                try:
-                    await update.message.delete()
-                    logger.info(f"Auto-deleted command '{msg_text_raw[:30]}' from {'admin' if is_adm else 'user'} {sender_cd.id} in {update.effective_chat.id}")
-                except Exception as e:
-                    logger.error(f"Cmd delete failed: {e}")
+    await auto_delete_command(update, context)
 
     # --- Anti-Spam: Link check ---
     if update.message.from_user:
