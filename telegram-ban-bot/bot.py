@@ -6746,14 +6746,8 @@ async def show_minute_picker(query, context, user_id, hour, back_callback="menu_
     )
 
 
-def get_interval_label(minutes):
-    labels = {
-        1: "1 Min", 2: "2 Min", 3: "3 Min", 5: "5 Min",
-        10: "10 Min", 15: "15 Min", 20: "20 Min", 30: "30 Min",
-        60: "1 Stunde", 120: "2 Stunden", 180: "3 Stunden", 240: "4 Stunden",
-        360: "6 Stunden", 480: "8 Stunden", 720: "12 Stunden", 1440: "24 Stunden",
-    }
-    return labels.get(minutes, f"{minutes} Min")
+
+# get_interval_label is already defined at module top level (line ~638)
 
 
 async def show_interval_picker(query, context, user_id, back_callback="menu_scheduled", edit_sched_id=None, current_minutes=None):
