@@ -5904,10 +5904,6 @@ async def handle_open_command(update: Update, context: ContextTypes.DEFAULT_TYPE
     if not notify_groups and not per_group:
         notify_groups = oc.get("notify_groups", [])
     
-    if not notify_groups:
-        await update.message.reply_text("⚠️ Keine Benachrichtigungs-Gruppen konfiguriert. Richte sie im Bot-Menü ein.")
-        return
-    
     # Get invite link for this group
     try:
         invite_link = await context.bot.export_chat_invite_link(chat.id)
