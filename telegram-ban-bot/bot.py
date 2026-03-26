@@ -2902,7 +2902,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         cfg["admin_ids"] = [8394295062]
         save_config(cfg)
         await query.answer("✅ Adminliste wurde zurückgesetzt!", show_alert=True)
-        await log_action(context, f"Adminliste zurückgesetzt von {query.from_user.full_name} ({query.from_user.id})")
+        await log_action(context, f"Adminliste zurückgesetzt von {query.from_user.full_name}", category=LOG_CAT_ADMIN, action="Adminliste Reset", details={"von": f"{query.from_user.full_name} ({query.from_user.id})"})
 
         admins = cfg.get("admin_ids", [])
         owners = cfg.get("owner_ids", [])
