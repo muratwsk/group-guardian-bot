@@ -4862,7 +4862,7 @@ async def unbanall(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def personal_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Save a replied-to message as a personal command. Usage: /personal <name> (reply to a message)."""
     user_id = update.effective_user.id
-    if not is_authorized(user_id):
+    if not await is_group_authorized(context, user_id, update.effective_chat):
         await update.message.reply_text("⛔ Kein Zugriff.")
         return
 
@@ -4956,7 +4956,7 @@ async def personal_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def unpersonal_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Delete a personal command. Usage: /unpersonal <name>"""
     user_id = update.effective_user.id
-    if not is_authorized(user_id):
+    if not await is_group_authorized(context, user_id, update.effective_chat):
         await update.message.reply_text("⛔ Kein Zugriff.")
         return
 
@@ -5884,7 +5884,7 @@ async def show_oc_notify_for_source(query, context, source_gid):
 async def handle_open_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle /open command in a group."""
     user_id = update.effective_user.id
-    if not is_authorized(user_id):
+    if not await is_group_authorized(context, user_id, update.effective_chat):
         await update.message.reply_text("⛔ Kein Zugriff.")
         return
     
@@ -5972,7 +5972,7 @@ async def handle_open_command(update: Update, context: ContextTypes.DEFAULT_TYPE
 async def handle_close_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle /close command in a group - deletes the open notifications."""
     user_id = update.effective_user.id
-    if not is_authorized(user_id):
+    if not await is_group_authorized(context, user_id, update.effective_chat):
         await update.message.reply_text("⛔ Kein Zugriff.")
         return
     
@@ -6039,7 +6039,7 @@ async def handle_close_command(update: Update, context: ContextTypes.DEFAULT_TYP
 async def del_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Delete the message that was replied to."""
     user_id = update.effective_user.id
-    if not is_authorized(user_id):
+    if not await is_group_authorized(context, user_id, update.effective_chat):
         await update.message.reply_text("⛔ Kein Zugriff.")
         return
 
@@ -6066,7 +6066,7 @@ async def del_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def send_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Send an anonymous message through the bot in the current group."""
     user_id = update.effective_user.id
-    if not is_authorized(user_id):
+    if not await is_group_authorized(context, user_id, update.effective_chat):
         await update.message.reply_text("⛔ Kein Zugriff.")
         return
 
