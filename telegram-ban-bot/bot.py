@@ -5349,16 +5349,22 @@ async def unbanall(update: Update, context: ContextTypes.DEFAULT_TYPE):
         source_group_name = chat.title if source_group_id else None
         await log_action(
             context,
-            f"UNBANALL: {target_name} ({target_id}) von {update.effective_user.full_name} — {len(successful_groups)} OK, {len(failed_groups)} Fehler",
+            f"UNBANALL: {target_name} ({target_id})",
             group_id=source_group_id,
             group_name=source_group_name,
+            category=LOG_CAT_MOD,
+            action="UNBANALL",
+            details={"user": target_name, "user_id": str(target_id), "von": update.effective_user.full_name, "ergebnis": f"{len(successful_groups)} OK, {len(failed_groups)} Fehler"},
         )
         for group in successful_groups:
             await log_action(
                 context,
-                f"UNBANALL: {target_name} ({target_id}) in {group['title']} ({group['id']}) von {update.effective_user.full_name}",
+                f"UNBANALL: {target_name} ({target_id}) in {group['title']}",
                 group_id=group["id"],
                 group_name=group["title"],
+                category=LOG_CAT_MOD,
+                action="UNBANALL",
+                details={"user": target_name, "user_id": str(target_id), "gruppe": group["title"], "von": update.effective_user.full_name},
             )
     except Exception as e:
         logger.error(f"unbanall error: {e}")
