@@ -4451,82 +4451,89 @@ async def info_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.error(f"info_command init error: {e}")
         return
 
-    target_id, target_name = await resolve_target(update, context)
-    if target_id is None:
-        return
-
-    tracked = lookup_user(str(target_id))
-    username = tracked.get("username") if tracked else None
-
     try:
-        chat_info = await context.bot.get_chat(target_id)
-        bio = chat_info.bio or "—"
-        has_photo = chat_info.photo is not None
-        first_name = chat_info.first_name or ""
-        last_name = chat_info.last_name or ""
-        full_name = f"{first_name} {last_name}".strip() or target_name
-        if chat_info.username:
-            username = chat_info.username
-    except Exception:
-        bio = "—"
-        has_photo = False
-        full_name = target_name
+        target_id, target_name = await resolve_target(update, context)
+        if target_id is None:
+            return
 
-    scope_chat_id = get_info_scope_chat_id(update)
-    groups = await get_info_banall_groups(context, scope_chat_id)
-    banned_in = sum(1 for g in groups if is_banned_in_group(g["id"], target_id))
-    is_banned_all = bool(groups) and banned_in == len(groups)
+        tracked = lookup_user(str(target_id))
+        username = tracked.get("username") if tracked else None
 
-    group_state = await get_info_group_state(context, scope_chat_id, target_id)
-    is_muted = group_state["is_muted"]
-    is_banned_local = group_state["is_banned_local"]
-    is_premium = group_state["is_premium"]
+        try:
+            chat_info = await context.bot.get_chat(target_id)
+            bio = chat_info.bio or "—"
+            has_photo = chat_info.photo is not None
+            first_name = chat_info.first_name or ""
+            last_name = chat_info.last_name or ""
+            full_name = f"{first_name} {last_name}".strip() or target_name
+            if chat_info.username:
+                username = chat_info.username
+        except Exception:
+            bio = "—"
+            has_photo = False
+            full_name = target_name
 
-    name_display = f"<a href='tg://user?id={target_id}'>{html.escape(full_name)}</a>"
-    username_display = f"@{username}" if username else "—"
-    photo_icon = "✅" if has_photo else "❌"
-    premium_icon = "⭐ Ja" if is_premium else "Nein"
-    ban_status = "🚫 In dieser Gruppe gebannt" if is_banned_local else "✅ Nicht gebannt in dieser Gruppe"
-    if not scope_chat_id:
-        ban_status = f"🚫 {banned_in}/{len(groups)} Gruppen" if banned_in > 0 else "✅ Nicht gebannt"
+        scope_chat_id = get_info_scope_chat_id(update)
+        groups = await get_info_banall_groups(context, scope_chat_id)
+        banned_in = sum(1 for g in groups if is_banned_in_group(g["id"], target_id))
+        is_banned_all = bool(groups) and banned_in == len(groups)
 
-    tracked_data = lookup_user(str(target_id))
-    if scope_chat_id and tracked_data and str(scope_chat_id) in tracked_data.get("group_stats", {}):
-        gs = tracked_data["group_stats"][str(scope_chat_id)]
-        msg_count = gs.get("msg_count", 0)
-        first_seen = gs.get("first_seen", "—")
-    else:
-        total = 0
-        first_seen = "—"
-        if tracked_data:
-            for gs in tracked_data.get("group_stats", {}).values():
-                total += gs.get("msg_count", 0)
-                if first_seen == "—":
-                    first_seen = gs.get("first_seen", "—")
-        msg_count = total
+        group_state = await get_info_group_state(context, scope_chat_id, target_id)
+        is_muted = group_state["is_muted"]
+        is_banned_local = group_state["is_banned_local"]
+        is_premium = group_state["is_premium"]
 
-    freed_icon = "🔓 Ja" if is_freed(target_id) else "Nein"
+        name_display = f"<a href='tg://user?id={target_id}'>{html.escape(full_name)}</a>"
+        username_display = f"@{username}" if username else "—"
+        photo_icon = "✅" if has_photo else "❌"
+        premium_icon = "⭐ Ja" if is_premium else "Nein"
+        ban_status = "🚫 In dieser Gruppe gebannt" if is_banned_local else "✅ Nicht gebannt in dieser Gruppe"
+        if not scope_chat_id:
+            ban_status = f"🚫 {banned_in}/{len(groups)} Gruppen" if banned_in > 0 else "✅ Nicht gebannt"
 
-    info_text = (
-        f"━━━━━━━━━━━━━━━━━━\n"
-        f"🆔 <b>ID:</b> <code>{target_id}</code> <code>#id{target_id}</code>\n"
-        f"👤 <b>Name:</b> {name_display}\n"
-        f"🔗 <b>Username:</b> {username_display}\n"
-        f"📷 <b>Profilbild:</b> {photo_icon}\n"
-        f"⭐ <b>Premium:</b> {premium_icon}\n"
-        f"🔓 <b>Befreiter:</b> {freed_icon}\n"
-        f"📝 <b>Bio:</b> {html.escape(bio[:100]) if bio != '—' else '—'}\n"
-        f"💬 <b>Nachrichten:</b> {msg_count}\n"
-        f"📅 <b>Erste Nachricht:</b> {first_seen}\n"
-        f"🚫 <b>Ban-Status:</b> {ban_status}\n"
-        f"━━━━━━━━━━━━━━━━━━"
-    )
+        tracked_data = lookup_user(str(target_id))
+        if scope_chat_id and tracked_data and str(scope_chat_id) in tracked_data.get("group_stats", {}):
+            gs = tracked_data["group_stats"][str(scope_chat_id)]
+            msg_count = gs.get("msg_count", 0)
+            first_seen = gs.get("first_seen", "—")
+        else:
+            total = 0
+            first_seen = "—"
+            if tracked_data:
+                for gs in tracked_data.get("group_stats", {}).values():
+                    total += gs.get("msg_count", 0)
+                    if first_seen == "—":
+                        first_seen = gs.get("first_seen", "—")
+            msg_count = total
 
-    await update.message.reply_text(
-        info_text,
-        reply_markup=build_info_keyboard(scope_chat_id, target_id, is_muted, is_banned_local, is_banned_all),
-        parse_mode="HTML",
-    )
+        freed_icon = "🔓 Ja" if is_freed(target_id) else "Nein"
+
+        info_text = (
+            f"━━━━━━━━━━━━━━━━━━\n"
+            f"🆔 <b>ID:</b> <code>{target_id}</code> <code>#id{target_id}</code>\n"
+            f"👤 <b>Name:</b> {name_display}\n"
+            f"🔗 <b>Username:</b> {username_display}\n"
+            f"📷 <b>Profilbild:</b> {photo_icon}\n"
+            f"⭐ <b>Premium:</b> {premium_icon}\n"
+            f"🔓 <b>Befreiter:</b> {freed_icon}\n"
+            f"📝 <b>Bio:</b> {html.escape(bio[:100]) if bio != '—' else '—'}\n"
+            f"💬 <b>Nachrichten:</b> {msg_count}\n"
+            f"📅 <b>Erste Nachricht:</b> {first_seen}\n"
+            f"🚫 <b>Ban-Status:</b> {ban_status}\n"
+            f"━━━━━━━━━━━━━━━━━━"
+        )
+
+        await update.message.reply_text(
+            info_text,
+            reply_markup=build_info_keyboard(scope_chat_id, target_id, is_muted, is_banned_local, is_banned_all),
+            parse_mode="HTML",
+        )
+    except Exception as e:
+        logger.error(f"info_command error for user {update.effective_user.id}: {e}", exc_info=True)
+        try:
+            await update.message.reply_text("⚠️ Fehler beim Abrufen der Info. Bitte erneut versuchen.")
+        except Exception:
+            pass
 
 # --- /mute ---
 
