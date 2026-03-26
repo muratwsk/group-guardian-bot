@@ -679,9 +679,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = query.from_user.id
     data = query.data
 
-    # Group-context buttons (info_ban, info_unban, etc.) allow Telegram group admins
-    group_action_prefixes = ("info_ban_", "info_unban_", "info_banall_", "info_unbanall_", "info_mute_", "info_unmute_", "info_warn_", "info_kick_")
-    if data and any(data.startswith(p) for p in group_action_prefixes):
+    # Group-context /info buttons allow Telegram group admins
+    if data and data.startswith("info_"):
         chat = query.message.chat if query.message else None
         if not await is_group_authorized(context, user_id, chat):
             await query.answer("⚠️ Du hast keine Berechtigung.", show_alert=True)
