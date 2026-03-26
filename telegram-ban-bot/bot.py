@@ -5086,49 +5086,60 @@ async def multidel_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def banall(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await auto_delete_command(update, context)
-    if not is_authorized(update.effective_user.id):
-        return
+    try:
+        await auto_delete_command(update, context)
+        if not is_authorized(update.effective_user.id):
+            return
 
-    target_id, target_name = await resolve_target(update, context)
-    if target_id is None:
-        return
+        target_id, target_name = await resolve_target(update, context)
+        if target_id is None:
+            return
 
-    groups = await get_bot_groups(context)
-    if not groups:
-        await update.message.reply_text("Keine Gruppen registriert.")
-        return
+        chat_id = update.effective_chat.id
+        groups = await get_bot_groups(context)
+        if not groups:
+            try:
+                await context.bot.send_message(chat_id=chat_id, text="Keine Gruppen registriert.")
+            except Exception:
+                pass
+            return
 
-    tracked = lookup_user(str(target_id))
-    target_username = tracked.get("username") if tracked else None
-    successful_groups, failed_groups = await ban_user_in_groups(context, groups, target_id)
-    success_count = len(successful_groups)
-    fail_count = len(failed_groups)
+        tracked = lookup_user(str(target_id))
+        target_username = tracked.get("username") if tracked else None
+        successful_groups, failed_groups = await ban_user_in_groups(context, groups, target_id)
+        success_count = len(successful_groups)
+        fail_count = len(failed_groups)
 
-    if successful_groups:
-        remember_group_ban([g["id"] for g in successful_groups], target_id, target_name, target_username)
+        if successful_groups:
+            remember_group_ban([g["id"] for g in successful_groups], target_id, target_name, target_username)
 
-    lines = []
-    if success_count:
-        lines.append(f"✅ *{target_name}* (`{target_id}`) in {success_count}/{len(groups)} Gruppen gebannt.")
-    else:
-        lines.append(f"⚠️ {target_id} konnte in keiner Gruppe gebannt werden.")
+        lines = []
+        if success_count:
+            lines.append(f"✅ <b>{html.escape(target_name)}</b> (<code>{target_id}</code>) in {success_count}/{len(groups)} Gruppen gebannt.")
+        else:
+            lines.append(f"⚠️ {target_id} konnte in keiner Gruppe gebannt werden.")
 
-    if fail_count:
-        lines.append(f"❌ {fail_count} Gruppen fehlgeschlagen.")
+        if fail_count:
+            lines.append(f"❌ {fail_count} Gruppen fehlgeschlagen.")
 
-    await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
-    await log_action(
-        context,
-        f"BANALL: {target_name} ({target_id}) von {update.effective_user.full_name} — {success_count} OK, {fail_count} Fehler",
-    )
-    for group in successful_groups:
+        try:
+            await context.bot.send_message(chat_id=chat_id, text="\n".join(lines), parse_mode="HTML")
+        except Exception as e:
+            logger.error(f"banall send_message error: {e}")
+
         await log_action(
             context,
-            f"BANALL: {target_name} ({target_id}) in {group['title']} ({group['id']}) von {update.effective_user.full_name}",
-            group_id=group["id"],
-            group_name=group["title"],
+            f"BANALL: {target_name} ({target_id}) von {update.effective_user.full_name} — {success_count} OK, {fail_count} Fehler",
         )
+        for group in successful_groups:
+            await log_action(
+                context,
+                f"BANALL: {target_name} ({target_id}) in {group['title']} ({group['id']}) von {update.effective_user.full_name}",
+                group_id=group["id"],
+                group_name=group["title"],
+            )
+    except Exception as e:
+        logger.error(f"banall error: {e}")
 
 # --- /unbanall ---
 
@@ -5142,12 +5153,15 @@ async def unbanall(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if target_id is None:
             return
 
+        chat_id = update.effective_chat.id
         groups = await get_bot_groups(context)
         if not groups:
-            await update.message.reply_text("Keine Gruppen registriert.")
+            try:
+                await context.bot.send_message(chat_id=chat_id, text="Keine Gruppen registriert.")
+            except Exception:
+                pass
             return
 
-        results = []
         successful_groups = []
         failed_groups = []
         for g in groups:
@@ -5161,13 +5175,17 @@ async def unbanall(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         lines = []
         if successful_groups:
-            lines.append(f"✅ *{target_name}* (`{target_id}`) in {len(successful_groups)}/{len(groups)} Gruppen entbannt.")
+            lines.append(f"✅ <b>{html.escape(target_name)}</b> (<code>{target_id}</code>) in {len(successful_groups)}/{len(groups)} Gruppen entbannt.")
         else:
             lines.append(f"⚠️ {target_id} konnte in keiner Gruppe entbannt werden.")
         if failed_groups:
             lines.append(f"❌ {len(failed_groups)} Gruppen fehlgeschlagen.")
 
-        await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
+        try:
+            await context.bot.send_message(chat_id=chat_id, text="\n".join(lines), parse_mode="HTML")
+        except Exception as e:
+            logger.error(f"unbanall send_message error: {e}")
+
         await log_action(
             context,
             f"UNBANALL: {target_name} ({target_id}) von {update.effective_user.full_name} — {len(successful_groups)} OK, {len(failed_groups)} Fehler",
@@ -5181,10 +5199,6 @@ async def unbanall(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
     except Exception as e:
         logger.error(f"unbanall error: {e}")
-        try:
-            await update.message.reply_text(f"❌ Fehler bei /unbanall: {e}")
-        except Exception:
-            pass
 
 # --- /personal and /unpersonal commands (in groups) ---
 
