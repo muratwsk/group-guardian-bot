@@ -2645,7 +2645,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await query.answer(f"Auto-Freigabe für {group_title} {new_state}", show_alert=False)
         except Exception:
             pass
-        await log_action(context, f"Freigabemodus {new_state} für {group_title} von {query.from_user.full_name}")
+        await log_action(context, f"Freigabemodus {new_state} für {group_title} von {query.from_user.full_name}", category=LOG_CAT_ADMIN, action="Freigabemodus", details={"details": f"{new_state} für {group_title}", "von": query.from_user.full_name})
 
         # Re-render menu
         enabled_count = sum(1 for g in groups if auto_approve.get(str(g["id"]), False))
