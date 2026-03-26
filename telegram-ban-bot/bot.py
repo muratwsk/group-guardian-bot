@@ -859,7 +859,6 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not await is_group_authorized(context, user_id, chat):
             return
     elif not is_authorized(user_id):
-        await query.answer("⚠️ Du hast keine Berechtigung, diesen Vorgang auszuführen\n\n💡 Falls du denkst, berechtigt zu sein, sende /reload und versuche es erneut.", show_alert=True)
         return
 
     data = query.data
