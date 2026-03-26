@@ -5057,6 +5057,7 @@ async def unpersonal_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
 async def handle_custom_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle custom personal commands in groups."""
+    await auto_delete_command(update, context)
     if not update.message or not update.message.text:
         return
     text = update.message.text.strip()
