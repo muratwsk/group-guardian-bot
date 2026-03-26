@@ -8,6 +8,7 @@ Auto-migrates from existing JSON files on first run.
 import json
 import logging
 import os
+import shutil
 import sqlite3
 import threading
 import time
@@ -22,6 +23,10 @@ CONFIG_FILE = os.path.join(DB_DIR, "config.json")
 DATA_FILE = os.path.join(DB_DIR, "data.json")
 USERS_FILE = os.path.join(DB_DIR, "users.json")
 PROTOKOLL_FILE = os.path.join(DB_DIR, "protokoll.json")
+
+BACKUP_DIR = os.path.join(DB_DIR, "backups")
+BACKUP_INTERVAL_SEC = 3600  # 1 hour
+MAX_BACKUPS = 48  # keep last 48 hourly backups (2 days)
 
 KV_TABLE_SQL = """
     CREATE TABLE IF NOT EXISTS kv_store (
@@ -140,6 +145,71 @@ def _quarantine_corrupt_db():
 
 
 _recovery_lock = threading.Lock()
+_last_backup_time = 0.0
+_backup_lock = threading.Lock()
+
+
+def _run_periodic_backup():
+    """Create a timestamped backup of bot.db + all JSON snapshots every hour."""
+    global _last_backup_time
+    now = time.time()
+
+    if now - _last_backup_time < BACKUP_INTERVAL_SEC:
+        return
+
+    with _backup_lock:
+        if now - _last_backup_time < BACKUP_INTERVAL_SEC:
+            return
+        _last_backup_time = now
+
+    try:
+        os.makedirs(BACKUP_DIR, exist_ok=True)
+        timestamp = time.strftime("%Y%m%d-%H%M%S")
+        backup_subdir = os.path.join(BACKUP_DIR, timestamp)
+        os.makedirs(backup_subdir, exist_ok=True)
+
+        # Backup SQLite safely using .backup API
+        if os.path.exists(DB_FILE):
+            dst_db = os.path.join(backup_subdir, "bot.db")
+            try:
+                src_conn = sqlite3.connect(DB_FILE, timeout=5)
+                dst_conn = sqlite3.connect(dst_db)
+                src_conn.backup(dst_conn)
+                dst_conn.close()
+                src_conn.close()
+            except Exception as e:
+                logger.error(f"Backup: SQLite backup failed: {e}")
+                # Fallback: copy files
+                shutil.copy2(DB_FILE, dst_db)
+
+        # Backup JSON snapshots
+        for key, filepath in KEY_FILE_MAP.items():
+            if os.path.exists(filepath):
+                shutil.copy2(filepath, os.path.join(backup_subdir, os.path.basename(filepath)))
+
+        logger.info(f"Backup created: {backup_subdir}")
+
+        # Cleanup old backups
+        _cleanup_old_backups()
+
+    except Exception as e:
+        logger.error(f"Backup failed: {e}")
+
+
+def _cleanup_old_backups():
+    """Remove oldest backups if more than MAX_BACKUPS exist."""
+    try:
+        if not os.path.exists(BACKUP_DIR):
+            return
+        subdirs = sorted(
+            [d for d in os.listdir(BACKUP_DIR) if os.path.isdir(os.path.join(BACKUP_DIR, d))]
+        )
+        while len(subdirs) > MAX_BACKUPS:
+            oldest = subdirs.pop(0)
+            shutil.rmtree(os.path.join(BACKUP_DIR, oldest), ignore_errors=True)
+            logger.info(f"Backup cleanup: removed {oldest}")
+    except Exception as e:
+        logger.error(f"Backup cleanup failed: {e}")
 
 
 def _handle_db_corruption(exc: Exception):
@@ -262,7 +332,18 @@ def kv_save(key: str, data: dict):
     """Save a JSON value by key (atomic via SQLite transaction)."""
     conn = _get_conn()
     json_str = json.dumps(data, ensure_ascii=False, indent=None)
+
+    # Write JSON snapshot + .bak for recovery
     _write_snapshot_for_key(key, data)
+    bak_path = KEY_FILE_MAP.get(key)
+    if bak_path:
+        try:
+            shutil.copy2(bak_path, bak_path + ".bak")
+        except Exception:
+            pass
+
+    # Periodic full backup
+    _run_periodic_backup()
 
     try:
         conn.execute(
