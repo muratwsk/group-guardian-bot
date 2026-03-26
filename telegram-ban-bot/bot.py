@@ -1677,6 +1677,15 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         target_name = tracked.get("name", str(target_id)) if tracked else str(target_id)
         target_username = tracked.get("username") if tracked else None
 
+        # Prüfen ob tatsächlich gemutet
+        try:
+            member = await context.bot.get_chat_member(scope_chat_id, target_id)
+            if not (member.status == "restricted" and not member.can_send_messages):
+                await query.answer("ℹ️ Dieser User ist nicht stummgeschaltet.", show_alert=True)
+                return
+        except Exception:
+            pass
+
         chat = await context.bot.get_chat(scope_chat_id)
         await context.bot.restrict_chat_member(
             chat_id=scope_chat_id,
