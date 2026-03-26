@@ -6926,7 +6926,21 @@ def main():
         print("❌ Bitte trage deinen Bot-Token in config.json ein!")
         return
 
-    ensure_single_instance()
+    # Lock file to prevent multiple instances
+    lock_path = os.path.join(os.path.dirname(__file__), "bot.lock")
+    if os.path.exists(lock_path):
+        try:
+            with open(lock_path, "r") as f:
+                old_pid = int(f.read().strip())
+            os.kill(old_pid, 0)
+            logger.warning(f"Bot already running (PID {old_pid}), killing old instance...")
+            os.kill(old_pid, signal.SIGTERM)
+            import time; time.sleep(2)
+        except (ProcessLookupError, ValueError, OSError):
+            pass
+    with open(lock_path, "w") as f:
+        f.write(str(os.getpid()))
+    atexit.register(lambda: os.path.exists(lock_path) and os.remove(lock_path))
 
     # Simple webhook clear before polling starts
     try:
