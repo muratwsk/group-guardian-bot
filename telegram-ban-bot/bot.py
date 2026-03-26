@@ -5144,11 +5144,15 @@ async def unbanall(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
 
         results = []
+        successful_groups = []
+        failed_groups = []
         for g in groups:
             try:
                 await context.bot.unban_chat_member(chat_id=g["id"], user_id=target_id, only_if_banned=True)
+                successful_groups.append(g)
                 results.append(f"✅ {g['title']}")
             except Exception as e:
+                failed_groups.append(g)
                 results.append(f"❌ {g['title']}: {e}")
 
         forget_group_ban([g["id"] for g in groups], target_id)
@@ -5160,8 +5164,15 @@ async def unbanall(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         await log_action(
             context,
-            f"UNBANALL: {target_name} ({target_id}) von {update.effective_user.full_name}\n{result_text}",
+            f"UNBANALL: {target_name} ({target_id}) von {update.effective_user.full_name} — {len(successful_groups)} OK, {len(failed_groups)} Fehler",
         )
+        for group in successful_groups:
+            await log_action(
+                context,
+                f"UNBANALL: {target_name} ({target_id}) in {group['title']} ({group['id']}) von {update.effective_user.full_name}",
+                group_id=group["id"],
+                group_name=group["title"],
+            )
     except Exception as e:
         logger.error(f"unbanall error: {e}")
         try:
