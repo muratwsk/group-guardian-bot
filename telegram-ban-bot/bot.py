@@ -4050,6 +4050,37 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 reply_markup=InlineKeyboardMarkup(keyboard),
             )
 
+    elif state == WAITING_BADWORD_REMOVE:
+        text_input = update.message.text.strip()
+        words = [w.strip() for w in text_input.splitlines() if w.strip()]
+        if not words:
+            await update.message.reply_text("⚠️ Bitte sende mindestens ein Wort zum Entfernen.")
+            return
+        bot_data = load_data()
+        word_list = bot_data.get("badwords", [])
+        if not word_list:
+            context.user_data["state"] = None
+            await update.message.reply_text("⚠️ Keine verbotenen Worte vorhanden.")
+            return
+        remove_set = {w.lower() for w in words}
+        removed = [w for w in word_list if w.lower() in remove_set]
+        bot_data["badwords"] = [w for w in word_list if w.lower() not in remove_set]
+        save_data(bot_data)
+        context.user_data["state"] = None
+        keyboard = [[InlineKeyboardButton("🔙 Zurück", callback_data="menu_badwords")]]
+        if removed:
+            await update.message.reply_text(
+                f"✅ Entfernt: <code>{html.escape(', '.join(removed))}</code>\n"
+                f"Verbleibend: {len(bot_data['badwords'])} verbotene Worte",
+                reply_markup=InlineKeyboardMarkup(keyboard),
+                parse_mode="HTML",
+            )
+        else:
+            await update.message.reply_text(
+                "⚠️ Keines der gesendeten Worte wurde gefunden.",
+                reply_markup=InlineKeyboardMarkup(keyboard),
+            )
+
 # --- /registergroup - run in a group to add it ---
 
 async def register_group(update: Update, context: ContextTypes.DEFAULT_TYPE):
