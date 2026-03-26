@@ -5129,38 +5129,45 @@ async def banall(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # --- /unbanall ---
 
 async def unbanall(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await auto_delete_command(update, context)
-    if not is_authorized(update.effective_user.id):
-        return
+    try:
+        await auto_delete_command(update, context)
+        if not is_authorized(update.effective_user.id):
+            return
 
-    target_id, target_name = await resolve_target(update, context)
-    if target_id is None:
-        return
+        target_id, target_name = await resolve_target(update, context)
+        if target_id is None:
+            return
 
-    groups = await get_bot_groups(context)
-    if not groups:
-        await update.message.reply_text("Keine Gruppen registriert.")
-        return
+        groups = await get_bot_groups(context)
+        if not groups:
+            await update.message.reply_text("Keine Gruppen registriert.")
+            return
 
-    results = []
-    for g in groups:
+        results = []
+        for g in groups:
+            try:
+                await context.bot.unban_chat_member(chat_id=g["id"], user_id=target_id, only_if_banned=True)
+                results.append(f"✅ {g['title']}")
+            except Exception as e:
+                results.append(f"❌ {g['title']}: {e}")
+
+        forget_group_ban([g["id"] for g in groups], target_id)
+
+        result_text = "\n".join(results)
+        await update.message.reply_text(
+            f"✅ *{target_name}* (`{target_id}`) entbannt:\n\n{result_text}",
+            parse_mode="Markdown",
+        )
+        await log_action(
+            context,
+            f"UNBANALL: {target_name} ({target_id}) von {update.effective_user.full_name}\n{result_text}",
+        )
+    except Exception as e:
+        logger.error(f"unbanall error: {e}")
         try:
-            await context.bot.unban_chat_member(chat_id=g["id"], user_id=target_id, only_if_banned=True)
-            results.append(f"✅ {g['title']}")
-        except Exception as e:
-            results.append(f"❌ {g['title']}: {e}")
-
-    forget_group_ban([g["id"] for g in groups], target_id)
-
-    result_text = "\n".join(results)
-    await update.message.reply_text(
-        f"✅ *{target_name}* (`{target_id}`) entbannt:\n\n{result_text}",
-        parse_mode="Markdown",
-    )
-    await log_action(
-        context,
-        f"UNBANALL: {target_name} ({target_id}) von {update.effective_user.full_name}\n{result_text}",
-    )
+            await update.message.reply_text(f"❌ Fehler bei /unbanall: {e}")
+        except Exception:
+            pass
 
 # --- /personal and /unpersonal commands (in groups) ---
 
