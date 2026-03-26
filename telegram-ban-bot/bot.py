@@ -6034,7 +6034,65 @@ async def handle_close_command(update: Update, context: ContextTypes.DEFAULT_TYP
 
 # --- Main ---
 
-def ensure_single_instance():
+# --- /del - Delete a replied-to message ---
+
+async def del_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Delete the message that was replied to."""
+    user_id = update.effective_user.id
+    if not is_authorized(user_id):
+        await update.message.reply_text("⛔ Kein Zugriff.")
+        return
+
+    if not update.message.reply_to_message:
+        await update.message.reply_text("⚠️ Antworte auf eine Nachricht, die gelöscht werden soll.")
+        return
+
+    try:
+        await update.message.reply_to_message.delete()
+    except Exception as e:
+        logger.error(f"Delete message failed: {e}")
+        await update.message.reply_text("❌ Konnte die Nachricht nicht löschen.")
+        return
+
+    # Delete the /del command itself
+    try:
+        await update.message.delete()
+    except Exception:
+        pass
+
+
+# --- /send - Send anonymous message through bot ---
+
+async def send_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Send an anonymous message through the bot in the current group."""
+    user_id = update.effective_user.id
+    if not is_authorized(user_id):
+        await update.message.reply_text("⛔ Kein Zugriff.")
+        return
+
+    chat = update.effective_chat
+    if chat.type not in ("group", "supergroup"):
+        await update.message.reply_text("Dieser Befehl funktioniert nur in Gruppen.")
+        return
+
+    # Get text after /send
+    text = update.message.text.split(None, 1)
+    if len(text) < 2:
+        await update.message.reply_text("⚠️ Nutzung: /send <Nachricht>")
+        return
+
+    msg_text = text[1]
+
+    # Delete the /send command message
+    try:
+        await update.message.delete()
+    except Exception as e:
+        logger.error(f"Delete /send command failed: {e}")
+
+    # Send as bot
+    await context.bot.send_message(chat_id=chat.id, text=msg_text, parse_mode="HTML")
+
+
     # Kill ALL other bot.py processes (not just lock file PID)
     my_pid = os.getpid()
     try:
