@@ -7046,8 +7046,6 @@ def main():
     app.add_handler(CallbackQueryHandler(button_handler))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & filters.ChatType.PRIVATE, text_handler))
     app.add_handler(MessageHandler((filters.PHOTO | filters.VIDEO | filters.Sticker.ALL | filters.ANIMATION | filters.Document.ALL) & filters.ChatType.PRIVATE, media_handler))
-    # Early global command cleanup for all group users and prefixes (/ ! ; .)
-    app.add_handler(MessageHandler(filters.TEXT & (filters.ChatType.GROUP | filters.ChatType.SUPERGROUP), auto_delete_command), group=-1)
     # Custom command handler for groups (must be before track_message but after known commands)
     app.add_handler(MessageHandler(filters.COMMAND & (filters.ChatType.GROUP | filters.ChatType.SUPERGROUP), handle_custom_command), group=0)
     app.add_handler(MessageHandler(filters.ALL & (filters.ChatType.GROUP | filters.ChatType.SUPERGROUP), track_message), group=1)
