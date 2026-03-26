@@ -6977,31 +6977,40 @@ def remove_scheduled_job(context, sched_id):
 
 async def post_init(application):
     """Called after the application is initialized. Restore scheduled jobs."""
-    # Remove bot command menu in groups so normal users can't spam "/"
-    # But keep commands visible in private chat (for admins)
-    from telegram import BotCommandScopeAllGroupChats, BotCommandScopeAllPrivateChats, BotCommand
+    # Command menu: visible only for group admins + private chats, hidden for normal members
+    from telegram import BotCommandScopeAllGroupChats, BotCommandScopeAllPrivateChats, BotCommandScopeAllChatAdministrators, BotCommand
+    
+    admin_commands = [
+        BotCommand("ban", "Benutzer bannen"),
+        BotCommand("unban", "Benutzer entbannen"),
+        BotCommand("mute", "Benutzer muten"),
+        BotCommand("warn", "Benutzer verwarnen"),
+        BotCommand("kick", "Benutzer kicken"),
+        BotCommand("del", "Nachricht löschen"),
+        BotCommand("multidel", "Mehrere Nachrichten löschen"),
+        BotCommand("send", "Anonyme Nachricht senden"),
+        BotCommand("banall", "In allen Gruppen bannen"),
+    ]
+    
+    # 1) Delete commands for normal group members (they see nothing on "/")
     try:
         await application.bot.delete_my_commands(scope=BotCommandScopeAllGroupChats())
-        logger.info("Bot command menu cleared for group chats")
+        logger.info("Bot commands hidden for normal group members")
     except Exception as e:
-        logger.warning(f"Could not delete group bot commands: {e}")
+        logger.warning(f"Could not delete group commands: {e}")
     
-    # Set commands for private chats (admin usage)
+    # 2) Set commands for group ADMINS only (they see the menu on "/")
     try:
-        admin_commands = [
-            BotCommand("start", "Bot starten"),
-            BotCommand("settings", "Einstellungen"),
-            BotCommand("ban", "User bannen"),
-            BotCommand("unban", "User entbannen"),
-            BotCommand("warn", "User verwarnen"),
-            BotCommand("mute", "User muten"),
-            BotCommand("kick", "User kicken"),
-            BotCommand("del", "Nachricht löschen"),
-            BotCommand("send", "Anonyme Nachricht senden"),
-            BotCommand("banall", "User in allen Gruppen bannen"),
-        ]
-        await application.bot.set_my_commands(admin_commands, scope=BotCommandScopeAllPrivateChats())
-        logger.info("Bot commands set for private chats (admins)")
+        await application.bot.set_my_commands(admin_commands, scope=BotCommandScopeAllChatAdministrators())
+        logger.info("Bot commands set for group admins")
+    except Exception as e:
+        logger.warning(f"Could not set admin commands: {e}")
+    
+    # 3) Set commands for private chats
+    try:
+        private_commands = [BotCommand("start", "Bot starten"), BotCommand("settings", "Einstellungen")] + admin_commands
+        await application.bot.set_my_commands(private_commands, scope=BotCommandScopeAllPrivateChats())
+        logger.info("Bot commands set for private chats")
     except Exception as e:
         logger.warning(f"Could not set private chat commands: {e}")
 
