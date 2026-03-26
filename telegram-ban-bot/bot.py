@@ -4395,6 +4395,7 @@ async def mute_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def unmute_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Unmute a user in the group. Usage: /unmute (reply to a message)."""
+    await auto_delete_command(update, context)
     user_id = update.effective_user.id
     if not await is_group_authorized(context, user_id, update.effective_chat):
         return
