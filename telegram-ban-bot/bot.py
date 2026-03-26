@@ -5972,7 +5972,7 @@ async def handle_open_command(update: Update, context: ContextTypes.DEFAULT_TYPE
 async def handle_close_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle /close command in a group - deletes the open notifications."""
     user_id = update.effective_user.id
-    if not is_authorized(user_id):
+    if not await is_group_authorized(context, user_id, update.effective_chat):
         await update.message.reply_text("⛔ Kein Zugriff.")
         return
     
