@@ -1589,6 +1589,15 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await query.answer("⛔ Dieser User ist ein Administrator und kann nicht gebannt werden.", show_alert=True)
             return
 
+        # Prüfen ob bereits gebannt
+        try:
+            member = await context.bot.get_chat_member(scope_chat_id, target_id)
+            if member.status == "kicked":
+                await query.answer("ℹ️ Dieser User ist bereits gebannt.", show_alert=True)
+                return
+        except Exception:
+            pass
+
         await context.bot.ban_chat_member(chat_id=scope_chat_id, user_id=target_id, revoke_messages=True)
         remember_group_ban([scope_chat_id], target_id, target_name, target_username)
 
