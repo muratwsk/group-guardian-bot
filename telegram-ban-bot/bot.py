@@ -6210,45 +6210,6 @@ async def send_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await context.bot.send_message(chat_id=chat.id, text=msg_text, parse_mode="HTML")
 
 
-    # Kill ALL other bot.py processes (not just lock file PID)
-    my_pid = os.getpid()
-    try:
-        result = subprocess.run(
-            ["grep", "-rl", "bot.py", "/proc"],
-            capture_output=True, text=True, timeout=5,
-        )
-    except Exception:
-        pass
-
-    # Simple approach: read /proc/*/cmdline and kill matching PIDs
-    for entry in os.listdir("/proc"):
-        if not entry.isdigit():
-            continue
-        pid = int(entry)
-        if pid == my_pid:
-            continue
-        try:
-            with open(f"/proc/{pid}/cmdline", "rb") as f:
-                cmdline = f.read().decode("utf-8", errors="ignore")
-            if "bot.py" in cmdline and "python" in cmdline:
-                os.kill(pid, signal.SIGKILL)
-                logger.info(f"Killed old bot process {pid}")
-        except (FileNotFoundError, ProcessLookupError, PermissionError):
-            pass
-
-    with open(LOCK_FILE, "w") as f:
-        f.write(str(os.getpid()))
-
-    def cleanup_lock():
-        try:
-            if os.path.exists(LOCK_FILE):
-                os.remove(LOCK_FILE)
-        except OSError:
-            pass
-
-    atexit.register(cleanup_lock)
-
-
 # --- Scheduled messages helper functions ---
 
 async def show_scheduled_list(query, context, user_id, page=0):
