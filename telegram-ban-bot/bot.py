@@ -5904,10 +5904,6 @@ async def handle_open_command(update: Update, context: ContextTypes.DEFAULT_TYPE
     if not notify_groups and not per_group:
         notify_groups = oc.get("notify_groups", [])
     
-    if not notify_groups:
-        await update.message.reply_text("⚠️ Keine Benachrichtigungs-Gruppen konfiguriert. Richte sie im Bot-Menü ein.")
-        return
-    
     # Get invite link for this group
     try:
         invite_link = await context.bot.export_chat_invite_link(chat.id)
@@ -5965,9 +5961,10 @@ async def handle_open_command(update: Update, context: ContextTypes.DEFAULT_TYPE
     except Exception as e:
         logger.error(f"Delete /open command failed: {e}")
     
+    notify_text = f"\n📢 {len(sent_messages)} Gruppen benachrichtigt." if sent_messages else ""
     confirm_msg = await context.bot.send_message(
         chat_id=chat.id,
-        text=f"🔓 *{chat.title}* ist jetzt OPEN!\n📢 {len(sent_messages)} Gruppen benachrichtigt.",
+        text=f"🔓 *{chat.title}* ist jetzt OPEN!{notify_text}",
         parse_mode="Markdown",
     )
     await log_action(context, f"OPEN: {chat.title} von {update.effective_user.full_name} → {len(sent_messages)} Gruppen benachrichtigt")
