@@ -6024,16 +6024,11 @@ async def handle_close_command(update: Update, context: ContextTypes.DEFAULT_TYP
     
     # Always show close confirmation
     close_info = f"\n🗑 {deleted_count} Open-Nachrichten gelöscht." if deleted_count > 0 else ""
-    confirm_msg = await context.bot.send_message(
+    await context.bot.send_message(
         chat_id=chat.id,
         text=f"🔒 *{chat.title}* ist jetzt CLOSED!{close_info}",
         parse_mode="Markdown",
     )
-    await asyncio.sleep(5)
-    try:
-        await confirm_msg.delete()
-    except Exception:
-        pass
     
     await log_action(context, f"CLOSE: {chat.title} von {update.effective_user.full_name} → {deleted_count} Nachrichten gelöscht")
 
