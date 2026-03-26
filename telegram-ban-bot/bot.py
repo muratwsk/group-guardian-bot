@@ -4096,6 +4096,7 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data["state"] = None
 
     elif state == WAITING_PROTO_CHANNEL:
+        proto_type = context.user_data.get("proto_add_type", "mod")
         try:
             channel_id = int(text.strip())
             try:
@@ -4108,26 +4109,32 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
             bot_data = load_data()
             proto_channels = bot_data.setdefault("protokoll_channels", {})
-            proto_channels[str(channel_id)] = {
+            channel_cfg = {
                 "name": ch_name,
-                "groups": ["all"],
+                "type": proto_type,
             }
+            if proto_type == "mod":
+                channel_cfg["groups"] = ["all"]
+            else:
+                channel_cfg["groups"] = []
+            proto_channels[str(channel_id)] = channel_cfg
             save_data(bot_data)
             context.user_data["state"] = None
+            context.user_data.pop("proto_add_type", None)
 
+            type_label = "Admin-Log ⚙️" if proto_type == "admin" else "Moderations-Log 🛡"
             keyboard = [
-                [InlineKeyboardButton("🎯 Gruppen konfigurieren", callback_data=f"proto_cfg_{channel_id}")],
+                [InlineKeyboardButton("🎯 Konfigurieren", callback_data=f"proto_cfg_{channel_id}")],
                 [InlineKeyboardButton("🔙 Zum Protokoll-Menü", callback_data="menu_protokoll")],
             ]
+            extra = "\nStandardmäßig werden <b>alle Gruppen</b> protokolliert." if proto_type == "mod" else ""
             await update.message.reply_text(
-                f"✅ Protokoll-Kanal *{ch_name}* hinzugefügt!\n\n"
-                f"Standardmäßig werden *alle Gruppen* protokolliert.\n"
-                f"Klicke auf 'Gruppen konfigurieren' um dies anzupassen.",
+                f"✅ <b>{type_label}</b> — <code>{html.escape(ch_name)}</code> hinzugefügt!{extra}",
                 reply_markup=InlineKeyboardMarkup(keyboard),
-                parse_mode="Markdown",
+                parse_mode="HTML",
             )
         except ValueError:
-            await update.message.reply_text("⚠️ Bitte eine gültige numerische Kanal-ID senden (z.B. `-1001234567890`).")
+            await update.message.reply_text("⚠️ Bitte eine gültige numerische Kanal-ID senden (z.B. <code>-1001234567890</code>).", parse_mode="HTML")
         context.user_data["state"] = None
 
     elif state == WAITING_MESSENGER_INPUT:
