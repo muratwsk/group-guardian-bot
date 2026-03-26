@@ -580,23 +580,54 @@ async def log_action(context: ContextTypes.DEFAULT_TYPE, text: str, group_id: in
 async def render_protokoll_channel_config(query, ch_id: str):
     bot_data = load_data()
     ch_cfg = bot_data.get("protokoll_channels", {}).get(str(ch_id), {})
-    ch_groups = [str(x) for x in ch_cfg.get("groups", [])]
+    ch_type = ch_cfg.get("type", "mod")
     ch_name = ch_cfg.get("name", str(ch_id))
-    groups = bot_data.get("groups", [])
 
-    keyboard = []
-    all_check = "✅" if "all" in ch_groups else "⬜"
-    keyboard.append([InlineKeyboardButton(f"{all_check} Alle Gruppen", callback_data=f"proto_tga_{ch_id}")])
-    for g in groups:
-        gid = str(g["id"])
-        check = "✅" if gid in ch_groups else "⬜"
-        keyboard.append([InlineKeyboardButton(f"{check} {g['title']}", callback_data=f"proto_tgg_{gid}_{ch_id}")])
-    keyboard.append([InlineKeyboardButton("🔙 Zurück", callback_data="proto_what")])
-    await query.edit_message_text(
-        f"🎯 *Protokoll: {ch_name}*\nWähle welche Gruppen protokolliert werden:",
-        reply_markup=InlineKeyboardMarkup(keyboard),
-        parse_mode="Markdown",
-    )
+    if ch_type == "admin":
+        # Admin channels don't need group routing
+        type_icon = "⚙️"
+        keyboard = [
+            [InlineKeyboardButton("🔄 Zu Moderations-Log wechseln", callback_data=f"proto_switch_mod_{ch_id}")],
+            [InlineKeyboardButton("🔙 Zurück", callback_data="menu_protokoll")],
+        ]
+        await query.edit_message_text(
+            f"{type_icon} <b>Admin-Protokoll: {html.escape(ch_name)}</b>\n\n"
+            f"Dieser Kanal protokolliert alle <b>Bot-Einstellungen</b>:\n"
+            f"• Admin hinzufügen/entfernen\n"
+            f"• Einstellungen ändern\n"
+            f"• Wiederholte Nachrichten\n"
+            f"• Befehle erstellen/löschen\n"
+            f"• Freigabemodus\n"
+            f"• Sperr-Einstellungen",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode="HTML",
+        )
+    else:
+        # Mod channels have group routing
+        ch_groups = [str(x) for x in ch_cfg.get("groups", [])]
+        groups = bot_data.get("groups", [])
+        type_icon = "🛡"
+        keyboard = []
+        all_check = "✅" if "all" in ch_groups else "⬜"
+        keyboard.append([InlineKeyboardButton(f"{all_check} Alle Gruppen", callback_data=f"proto_tga_{ch_id}")])
+        for g in groups:
+            gid = str(g["id"])
+            check = "✅" if gid in ch_groups else "⬜"
+            keyboard.append([InlineKeyboardButton(f"{check} {g['title']}", callback_data=f"proto_tgg_{gid}_{ch_id}")])
+        keyboard.append([InlineKeyboardButton("🔄 Zu Admin-Log wechseln", callback_data=f"proto_switch_admin_{ch_id}")])
+        keyboard.append([InlineKeyboardButton("🔙 Zurück", callback_data="menu_protokoll")])
+        await query.edit_message_text(
+            f"{type_icon} <b>Moderations-Log: {html.escape(ch_name)}</b>\n\n"
+            f"Dieser Kanal protokolliert <b>Moderationsaktionen</b>:\n"
+            f"• Ban / Unban / BanAll / UnbanAll\n"
+            f"• Mute / Unmute / Kick\n"
+            f"• Warn / Unwarn\n"
+            f"• Verbotene Wörter / Links\n"
+            f"• Auto-Reban\n\n"
+            f"Wähle welche Gruppen protokolliert werden:",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode="HTML",
+        )
 
 
 async def render_sperr_bot_groups(query, context: ContextTypes.DEFAULT_TYPE):
