@@ -4367,11 +4367,22 @@ async def unregister_group(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def resolve_target(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Resolve target user from reply, mention entity, tracked username, or numeric ID."""
+    global BOT_USERNAME_CACHE
+
     # Option 1: Reply to a message
     if update.message.reply_to_message and update.message.reply_to_message.from_user:
         user = update.message.reply_to_message.from_user
         track_user(user)
         return user.id, user.full_name
+
+    # Ensure bot username is cached (fallback if post_init didn't cache it)
+    if BOT_USERNAME_CACHE is None:
+        try:
+            me = await context.bot.get_me()
+            BOT_USERNAME_CACHE = me.username
+        except Exception as e:
+            logger.error(f"get_me() failed in resolve_target: {e}")
+            BOT_USERNAME_CACHE = ""  # Set empty string to prevent repeated failures
 
     # Option 2: Check for mention entities (text_mention has user object)
     if update.message.entities:
@@ -4381,7 +4392,7 @@ async def resolve_target(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 return entity.user.id, entity.user.full_name or str(entity.user.id)
             if entity.type == "mention":
                 username = update.message.text[entity.offset + 1:entity.offset + entity.length]
-                if username == (await context.bot.get_me()).username:
+                if BOT_USERNAME_CACHE and username.lower() == BOT_USERNAME_CACHE.lower():
                     continue
                 # Look up in our tracked users database
                 tracked = lookup_user(username)
