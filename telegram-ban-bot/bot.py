@@ -2934,7 +2934,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             tracked = lookup_user(str(aid))
             name = tracked.get("name", str(aid)) if tracked else str(aid)
             await query.answer(f"✅ {name} entfernt!", show_alert=True)
-            await log_action(context, f"Admin entfernt (Menü): {name} ({aid}) von {query.from_user.full_name}")
+            await log_action(context, f"Admin entfernt (Menü): {name} ({aid})", category=LOG_CAT_ADMIN, action="Admin entfernt", details={"user": name, "user_id": str(aid), "von": query.from_user.full_name})
         else:
             await query.answer("Nicht in der Admin-Liste.", show_alert=True)
         # Re-render admin list
