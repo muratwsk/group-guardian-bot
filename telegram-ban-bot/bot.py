@@ -47,18 +47,6 @@ ADMIN_CACHE_TTL_SEC = 30
 USER_TRACK_LAST_SAVE = {}
 USER_TRACK_SAVE_INTERVAL_SEC = 20
 ACTION_DEDUPE_TTL_SEC = 4.0
-MUTE_PERMISSION_FIELDS = (
-    "can_send_messages",
-    "can_send_audios",
-    "can_send_documents",
-    "can_send_photos",
-    "can_send_videos",
-    "can_send_video_notes",
-    "can_send_voice_notes",
-    "can_send_polls",
-    "can_send_other_messages",
-    "can_add_web_page_previews",
-)
 
 UNMUTE_PERMISSIONS = ChatPermissions.all_permissions()
 
@@ -243,17 +231,22 @@ async def is_user_currently_muted(context: ContextTypes.DEFAULT_TYPE, chat_id: i
 
         chat = await context.bot.get_chat(chat_id)
         default_permissions = getattr(chat, "permissions", None)
+        member_can_send = getattr(member, "can_send_messages", None)
+        default_can_send = getattr(default_permissions, "can_send_messages", None) if default_permissions else None
 
-        for field_name in MUTE_PERMISSION_FIELDS:
-            member_value = getattr(member, field_name, None)
-            default_value = getattr(default_permissions, field_name, None) if default_permissions else None
-            if member_value is False and default_value is not False:
-                return True
+        if member_can_send is not None:
+            return member_can_send is False and default_can_send is not False
 
-        if default_permissions is None:
-            return getattr(member, "can_send_messages", None) is False
-
-        return False
+        media_flags = [
+            getattr(member, "can_send_audios", None),
+            getattr(member, "can_send_documents", None),
+            getattr(member, "can_send_photos", None),
+            getattr(member, "can_send_videos", None),
+            getattr(member, "can_send_video_notes", None),
+            getattr(member, "can_send_voice_notes", None),
+        ]
+        explicit_media_flags = [flag for flag in media_flags if flag is not None]
+        return bool(explicit_media_flags) and all(flag is False for flag in explicit_media_flags)
     except Exception:
         return False
 
