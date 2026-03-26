@@ -208,6 +208,32 @@ def get_tracked_banned_user_ids(group_id: int) -> list[int]:
 
 
 
+async def auto_delete_command(update: Update, context):
+    """Auto-delete the command message if cmd_delete is configured for the sender."""
+    if not update.message or not update.message.text or not update.effective_chat:
+        return
+    chat = update.effective_chat
+    if chat.type not in ("group", "supergroup"):
+        return
+    msg_text = update.message.text
+    first_char = msg_text[0] if msg_text else ""
+    rest = msg_text[1:] if len(msg_text) > 1 else ""
+    if not (first_char in ["/", "!", ";", "."] and rest and rest[0].isalpha()):
+        return
+    try:
+        bot_data_cd = load_data()
+        cd = bot_data_cd.get("cmd_delete", {"admin_prefixes": [], "user_prefixes": []})
+        sender = update.message.from_user
+        if not sender:
+            return
+        is_adm = await is_chat_admin(context, chat.id, sender.id)
+        prefixes = cd.get("admin_prefixes", []) if is_adm else cd.get("user_prefixes", [])
+        if first_char in prefixes:
+            await update.message.delete()
+            logger.info(f"Auto-deleted command '{msg_text[:30]}' from {'admin' if is_adm else 'user'} {sender.id} in {chat.id}")
+    except Exception as e:
+        logger.error(f"Cmd auto-delete failed: {e}")
+
 
 def track_user(user, group_id=None):
     """Track a user's username → ID mapping, per-group message count, and first seen date."""
