@@ -1621,6 +1621,15 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         target_name = tracked.get("name", str(target_id)) if tracked else str(target_id)
         target_username = tracked.get("username") if tracked else None
 
+        # Prüfen ob tatsächlich gebannt
+        try:
+            member = await context.bot.get_chat_member(scope_chat_id, target_id)
+            if member.status != "kicked":
+                await query.answer("ℹ️ Dieser User ist nicht gebannt.", show_alert=True)
+                return
+        except Exception:
+            pass
+
         await context.bot.unban_chat_member(chat_id=scope_chat_id, user_id=target_id, only_if_banned=True)
         forget_group_ban([scope_chat_id], target_id)
 
