@@ -598,7 +598,6 @@ async def reload_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     if not is_authorized(user_id):
-        await update.message.reply_text("⛔ Kein Zugriff.")
         return
 
     keyboard = [
@@ -858,10 +857,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if data and any(data.startswith(prefix) for prefix in group_button_prefixes):
         chat = query.message.chat if query.message else None
         if not await is_group_authorized(context, user_id, chat):
-            await query.answer("⚠️ Du hast keine Berechtigung.", show_alert=True)
             return
     elif not is_authorized(user_id):
-        await query.answer("⚠️ Du hast keine Berechtigung, diesen Vorgang auszuführen\n\n💡 Falls du denkst, berechtigt zu sein, sende /reload und versuche es erneut.", show_alert=True)
         return
 
     data = query.data
@@ -4348,7 +4345,6 @@ async def register_group(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def unregister_group(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_owner(update.effective_user.id):
-        await update.message.reply_text("⛔ Kein Zugriff.")
         return
 
     chat = update.effective_chat
@@ -4445,7 +4441,6 @@ async def info_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await auto_delete_command(update, context)
         user_id = update.effective_user.id
         if not await is_group_authorized(context, user_id, update.effective_chat):
-            await update.message.reply_text("⛔ Kein Zugriff.")
             return
     except Exception as e:
         logger.error(f"info_command init error: {e}")
@@ -4977,7 +4972,6 @@ async def free_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await auto_delete_command(update, context)
     user_id = update.effective_user.id
     if not await is_group_authorized(context, user_id, update.effective_chat):
-        await update.message.reply_text("⛔ Kein Zugriff.")
         return
 
     target_id, target_name = await resolve_target(update, context)
@@ -5015,7 +5009,6 @@ async def unfree_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await auto_delete_command(update, context)
     user_id = update.effective_user.id
     if not await is_group_authorized(context, user_id, update.effective_chat):
-        await update.message.reply_text("⛔ Kein Zugriff.")
         return
 
     target_id, target_name = await resolve_target(update, context)
@@ -5047,7 +5040,6 @@ async def multidel_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await auto_delete_command(update, context)
     user_id = update.effective_user.id
     if not await is_group_authorized(context, user_id, update.effective_chat):
-        await update.message.reply_text("⛔ Kein Zugriff.")
         return
 
     if update.effective_chat.type not in ("group", "supergroup"):
@@ -5096,7 +5088,6 @@ async def multidel_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def banall(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await auto_delete_command(update, context)
     if not is_authorized(update.effective_user.id):
-        await update.message.reply_text("⛔ Kein Zugriff.")
         return
 
     target_id, target_name = await resolve_target(update, context)
@@ -5140,7 +5131,6 @@ async def banall(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def unbanall(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await auto_delete_command(update, context)
     if not is_authorized(update.effective_user.id):
-        await update.message.reply_text("⛔ Kein Zugriff.")
         return
 
     target_id, target_name = await resolve_target(update, context)
@@ -5179,7 +5169,6 @@ async def personal_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await auto_delete_command(update, context)
     user_id = update.effective_user.id
     if not await is_group_authorized(context, user_id, update.effective_chat):
-        await update.message.reply_text("⛔ Kein Zugriff.")
         return
 
     if not context.args:
@@ -5274,7 +5263,6 @@ async def unpersonal_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
     await auto_delete_command(update, context)
     user_id = update.effective_user.id
     if not await is_group_authorized(context, user_id, update.effective_chat):
-        await update.message.reply_text("⛔ Kein Zugriff.")
         return
 
     if not context.args:
@@ -6197,7 +6185,6 @@ async def handle_open_command(update: Update, context: ContextTypes.DEFAULT_TYPE
     """Handle /open command in a group."""
     user_id = update.effective_user.id
     if not await is_group_authorized(context, user_id, update.effective_chat):
-        await update.message.reply_text("⛔ Kein Zugriff.")
         return
     
     chat = update.effective_chat
@@ -6285,7 +6272,6 @@ async def handle_close_command(update: Update, context: ContextTypes.DEFAULT_TYP
     """Handle /close command in a group - deletes the open notifications."""
     user_id = update.effective_user.id
     if not await is_group_authorized(context, user_id, update.effective_chat):
-        await update.message.reply_text("⛔ Kein Zugriff.")
         return
     
     chat = update.effective_chat
@@ -6352,7 +6338,6 @@ async def del_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Delete the message that was replied to."""
     user_id = update.effective_user.id
     if not await is_group_authorized(context, user_id, update.effective_chat):
-        await update.message.reply_text("⛔ Kein Zugriff.")
         return
 
     if not update.message.reply_to_message:
@@ -6379,7 +6364,6 @@ async def send_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Send an anonymous message through the bot in the current group."""
     user_id = update.effective_user.id
     if not await is_group_authorized(context, user_id, update.effective_chat):
-        await update.message.reply_text("⛔ Kein Zugriff.")
         return
 
     chat = update.effective_chat
