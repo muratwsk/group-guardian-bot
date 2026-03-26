@@ -4390,6 +4390,15 @@ async def mute_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("⛔ Dieser User ist ein Administrator — Mute ist nicht möglich.")
         return
 
+    # Prüfen ob User bereits gemutet ist
+    try:
+        member = await context.bot.get_chat_member(chat.id, target_id)
+        if member.status == "restricted" and not member.can_send_messages:
+            await update.message.reply_text("ℹ️ Dieser User ist bereits stummgeschaltet.")
+            return
+    except Exception:
+        pass
+
     args = list(context.args) if context.args else []
     # Strip the first arg if it was used to resolve the target (@username or numeric ID)
     if args and not update.message.reply_to_message:
