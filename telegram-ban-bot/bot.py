@@ -4062,7 +4062,7 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 cfg["admin_ids"].append(new_admin)
                 save_config(cfg)
                 await update.message.reply_text(f"✅ Admin `{new_admin}` hinzugefügt.", parse_mode="Markdown")
-                await log_action(context, f"Admin hinzugefügt: {new_admin} von {user_id}")
+                await log_action(context, f"Admin hinzugefügt: {new_admin} von {user_id}", category=LOG_CAT_ADMIN, action="Admin hinzugefügt", details={"user_id": str(new_admin), "von": str(user_id)})
             else:
                 await update.message.reply_text("Ist bereits Admin.")
         except ValueError:
