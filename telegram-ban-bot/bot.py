@@ -4453,6 +4453,16 @@ async def unmute_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if target_id is None:
         return
 
+    # Prüfen ob User tatsächlich gemutet ist
+    try:
+        member = await context.bot.get_chat_member(chat.id, target_id)
+        is_actually_muted = (member.status == "restricted" and not member.can_send_messages)
+        if not is_actually_muted:
+            await update.message.reply_text("ℹ️ Dieser User ist nicht stummgeschaltet.")
+            return
+    except Exception:
+        pass
+
     try:
         chat_obj = await context.bot.get_chat(chat.id)
         await context.bot.restrict_chat_member(
