@@ -4565,6 +4565,7 @@ async def unban_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def warn_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Warn a user. Usage: /warn [reason] (reply to a message)."""
+    await auto_delete_command(update, context)
     user_id = update.effective_user.id
     if not await is_group_authorized(context, user_id, update.effective_chat):
         return
