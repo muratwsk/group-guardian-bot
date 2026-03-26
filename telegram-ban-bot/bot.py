@@ -6066,7 +6066,7 @@ async def del_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def send_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Send an anonymous message through the bot in the current group."""
     user_id = update.effective_user.id
-    if not is_authorized(user_id):
+    if not await is_group_authorized(context, user_id, update.effective_chat):
         await update.message.reply_text("⛔ Kein Zugriff.")
         return
 
