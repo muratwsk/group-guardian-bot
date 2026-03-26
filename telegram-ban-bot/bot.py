@@ -6977,6 +6977,13 @@ def remove_scheduled_job(context, sched_id):
 
 async def post_init(application):
     """Called after the application is initialized. Restore scheduled jobs."""
+    # Remove bot command menu so users can't see/spam commands via "/"
+    try:
+        await application.bot.delete_my_commands(scope=None)
+        logger.info("Bot command menu cleared (no commands shown on '/')")
+    except Exception as e:
+        logger.warning(f"Could not delete bot commands: {e}")
+
     bot_data = load_data()
     count = 0
     for sched in bot_data.get("scheduled", []):
