@@ -571,8 +571,7 @@ def normalize_text(text):
 
 def check_forbidden_words(text, word_list):
     """Check if any forbidden word appears as a standalone word in the text. Returns matched word or None."""
-    # First check the original text split into words (normalized per-word)
-    import re as _re
+    # Split original text by whitespace and common separators
     # Split original text by whitespace and common separators
     raw_words = _re.split(r'[\s,.\-_;:!?/\\|+=()\[\]{}<>]+', text)
     for word in word_list:
@@ -1590,6 +1589,15 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await query.answer("⛔ Dieser User ist ein Administrator und kann nicht gebannt werden.", show_alert=True)
             return
 
+        # Prüfen ob bereits gebannt
+        try:
+            member = await context.bot.get_chat_member(scope_chat_id, target_id)
+            if member.status == "kicked":
+                await query.answer("ℹ️ Dieser User ist bereits gebannt.", show_alert=True)
+                return
+        except Exception:
+            pass
+
         await context.bot.ban_chat_member(chat_id=scope_chat_id, user_id=target_id, revoke_messages=True)
         remember_group_ban([scope_chat_id], target_id, target_name, target_username)
 
@@ -1612,6 +1620,15 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         tracked = lookup_user(str(target_id))
         target_name = tracked.get("name", str(target_id)) if tracked else str(target_id)
         target_username = tracked.get("username") if tracked else None
+
+        # Prüfen ob tatsächlich gebannt
+        try:
+            member = await context.bot.get_chat_member(scope_chat_id, target_id)
+            if member.status != "kicked":
+                await query.answer("ℹ️ Dieser User ist nicht gebannt.", show_alert=True)
+                return
+        except Exception:
+            pass
 
         await context.bot.unban_chat_member(chat_id=scope_chat_id, user_id=target_id, only_if_banned=True)
         forget_group_ban([scope_chat_id], target_id)
@@ -1642,6 +1659,15 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await query.answer("⛔ Dieser User ist ein Administrator und kann nicht gemutet werden.", show_alert=True)
             return
 
+        # Prüfen ob bereits gemutet
+        try:
+            member = await context.bot.get_chat_member(scope_chat_id, target_id)
+            if member.status == "restricted" and not member.can_send_messages:
+                await query.answer("ℹ️ Dieser User ist bereits stummgeschaltet.", show_alert=True)
+                return
+        except Exception:
+            pass
+
         await context.bot.restrict_chat_member(
             chat_id=scope_chat_id,
             user_id=target_id,
@@ -1668,6 +1694,15 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         tracked = lookup_user(str(target_id))
         target_name = tracked.get("name", str(target_id)) if tracked else str(target_id)
         target_username = tracked.get("username") if tracked else None
+
+        # Prüfen ob tatsächlich gemutet
+        try:
+            member = await context.bot.get_chat_member(scope_chat_id, target_id)
+            if not (member.status == "restricted" and not member.can_send_messages):
+                await query.answer("ℹ️ Dieser User ist nicht stummgeschaltet.", show_alert=True)
+                return
+        except Exception:
+            pass
 
         chat = await context.bot.get_chat(scope_chat_id)
         await context.bot.restrict_chat_member(
@@ -5533,10 +5568,15 @@ async def track_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                             elif punishment == "mute":
                                 await context.bot.restrict_chat_member(chat_id=chat_id, user_id=adder_id, permissions=ChatPermissions.no_permissions())
                             elif punishment == "warn":
-                                # Add a warning
+                                # Add a warning (use proper dict format)
                                 warnings_sb = bot_data_sb.setdefault("warnings", {})
                                 key = f"{chat_id}_{adder_id}"
-                                warnings_sb[key] = warnings_sb.get(key, 0) + 1
+                                warn_entry = warnings_sb.get(key, {"count": 0, "name": adder_name})
+                                if not isinstance(warn_entry, dict):
+                                    warn_entry = {"count": int(warn_entry) if isinstance(warn_entry, (int, float)) else 0, "name": adder_name}
+                                warn_entry["count"] = warn_entry.get("count", 0) + 1
+                                warn_entry["name"] = adder_name
+                                warnings_sb[key] = warn_entry
                                 save_data(bot_data_sb)
                         except Exception as e:
                             logger.error(f"Bot-Sperren punishment failed for {adder_id}: {e}")
@@ -6210,45 +6250,6 @@ async def send_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await context.bot.send_message(chat_id=chat.id, text=msg_text, parse_mode="HTML")
 
 
-    # Kill ALL other bot.py processes (not just lock file PID)
-    my_pid = os.getpid()
-    try:
-        result = subprocess.run(
-            ["grep", "-rl", "bot.py", "/proc"],
-            capture_output=True, text=True, timeout=5,
-        )
-    except Exception:
-        pass
-
-    # Simple approach: read /proc/*/cmdline and kill matching PIDs
-    for entry in os.listdir("/proc"):
-        if not entry.isdigit():
-            continue
-        pid = int(entry)
-        if pid == my_pid:
-            continue
-        try:
-            with open(f"/proc/{pid}/cmdline", "rb") as f:
-                cmdline = f.read().decode("utf-8", errors="ignore")
-            if "bot.py" in cmdline and "python" in cmdline:
-                os.kill(pid, signal.SIGKILL)
-                logger.info(f"Killed old bot process {pid}")
-        except (FileNotFoundError, ProcessLookupError, PermissionError):
-            pass
-
-    with open(LOCK_FILE, "w") as f:
-        f.write(str(os.getpid()))
-
-    def cleanup_lock():
-        try:
-            if os.path.exists(LOCK_FILE):
-                os.remove(LOCK_FILE)
-        except OSError:
-            pass
-
-    atexit.register(cleanup_lock)
-
-
 # --- Scheduled messages helper functions ---
 
 async def show_scheduled_list(query, context, user_id, page=0):
@@ -6780,14 +6781,8 @@ async def show_minute_picker(query, context, user_id, hour, back_callback="menu_
     )
 
 
-def get_interval_label(minutes):
-    labels = {
-        1: "1 Min", 2: "2 Min", 3: "3 Min", 5: "5 Min",
-        10: "10 Min", 15: "15 Min", 20: "20 Min", 30: "30 Min",
-        60: "1 Stunde", 120: "2 Stunden", 180: "3 Stunden", 240: "4 Stunden",
-        360: "6 Stunden", 480: "8 Stunden", 720: "12 Stunden", 1440: "24 Stunden",
-    }
-    return labels.get(minutes, f"{minutes} Min")
+
+# get_interval_label is already defined at module top level (line ~638)
 
 
 async def show_interval_picker(query, context, user_id, back_callback="menu_scheduled", edit_sched_id=None, current_minutes=None):
