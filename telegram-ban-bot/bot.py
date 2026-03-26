@@ -224,7 +224,21 @@ def should_skip_recent_action(context: ContextTypes.DEFAULT_TYPE, action_key: st
 async def is_user_currently_muted(context: ContextTypes.DEFAULT_TYPE, chat_id: int, user_id: int) -> bool:
     try:
         member = await context.bot.get_chat_member(chat_id, user_id)
-        return member.status == "restricted" and not member.can_send_messages
+        if member.status != "restricted":
+            return False
+        send_flags = [
+            getattr(member, "can_send_messages", None),
+            getattr(member, "can_send_audios", None),
+            getattr(member, "can_send_documents", None),
+            getattr(member, "can_send_photos", None),
+            getattr(member, "can_send_videos", None),
+            getattr(member, "can_send_video_notes", None),
+            getattr(member, "can_send_voice_notes", None),
+            getattr(member, "can_send_polls", None),
+            getattr(member, "can_send_other_messages", None),
+        ]
+        explicit_flags = [flag for flag in send_flags if flag is not None]
+        return bool(explicit_flags) and all(flag is False for flag in explicit_flags)
     except Exception:
         return False
 
