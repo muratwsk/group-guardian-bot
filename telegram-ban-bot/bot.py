@@ -481,8 +481,8 @@ async def _send_logs_async(context: ContextTypes.DEFAULT_TYPE, targets: set[int]
     async def _send_log(chat_id: int):
         try:
             await asyncio.wait_for(
-                context.bot.send_message(chat_id=chat_id, text=f"📋 {text}"),
-                timeout=1.5,
+                context.bot.send_message(chat_id=chat_id, text=text, parse_mode="HTML"),
+                timeout=3.0,
             )
         except Exception as e:
             logger.error(f"Log channel {chat_id} error: {e}")
@@ -490,51 +490,144 @@ async def _send_logs_async(context: ContextTypes.DEFAULT_TYPE, targets: set[int]
     await asyncio.gather(*[_send_log(chat_id) for chat_id in targets], return_exceptions=True)
 
 
-async def log_action(context: ContextTypes.DEFAULT_TYPE, text: str, group_id: int = None, group_name: str = None):
-    """Log action to the global log channel AND any matching protokoll channels without blocking handlers."""
-    cfg = load_config()
-    targets = set()
+def _format_log_block(category: str, action: str, details: dict) -> str:
+    """Format a structured log block for Telegram."""
+    now_str = now_de().strftime("%d.%m.%Y %H:%M:%S")
 
+    if category == "admin":
+        icon = "⚙️"
+    else:
+        action_icons = {
+            "BAN": "🚫", "UNBAN": "✅", "BANALL": "🚫", "UNBANALL": "✅",
+            "MUTE": "🔇", "UNMUTE": "🔊", "KICK": "👢", "WARN": "⚠️",
+            "UNWARN": "↩️", "BADWORD": "🔤", "LINK": "🔗", "AUTO-REBAN": "🔄",
+            "FREE": "🛡", "UNFREE": "🛡", "MASS UNBAN": "✅", "MASS UNMUTE": "🔊",
+            "DELETE": "🗑",
+        }
+        icon = action_icons.get(action.upper(), "📋")
+
+    lines = [f"{icon} <b>{html.escape(action)}</b>"]
+    lines.append(f"━━━━━━━━━━━━━━━")
+
+    field_order = ["user", "user_id", "gruppe", "von", "grund", "dauer", "details", "ergebnis"]
+    field_labels = {
+        "user": "👤 User", "user_id": "🆔 ID", "gruppe": "📍 Gruppe",
+        "von": "👮 Von", "grund": "📝 Grund", "dauer": "⏱ Dauer",
+        "details": "ℹ️ Details", "ergebnis": "📊 Ergebnis",
+    }
+
+    for key in field_order:
+        if key in details and details[key]:
+            label = field_labels.get(key, key)
+            lines.append(f"{label}: <code>{html.escape(str(details[key]))}</code>")
+
+    # Any extra keys not in field_order
+    for key, val in details.items():
+        if key not in field_order and val:
+            lines.append(f"ℹ️ {key}: <code>{html.escape(str(val))}</code>")
+
+    lines.append(f"🕐 {now_str}")
+    return "\n".join(lines)
+
+
+# Log categories
+LOG_CAT_MOD = "mod"       # Moderation: ban, mute, warn, filter hits
+LOG_CAT_ADMIN = "admin"   # Admin: settings changes, bot config
+
+async def log_action(context: ContextTypes.DEFAULT_TYPE, text: str, group_id: int = None, group_name: str = None, category: str = LOG_CAT_MOD, action: str = "", details: dict = None):
+    """Log action to matching protokoll channels based on category and group routing."""
+    cfg = load_config()
+    targets_mod = set()
+    targets_admin = set()
+
+    # Legacy global log channel → receives everything
     channel = cfg.get("log_channel_id")
     if channel:
-        targets.add(int(channel))
+        targets_mod.add(int(channel))
+        targets_admin.add(int(channel))
 
     bot_data = load_data()
     proto_channels = bot_data.get("protokoll_channels", {})
     for ch_id_str, ch_cfg in proto_channels.items():
+        ch_type = ch_cfg.get("type", "mod")  # default to mod for backwards compat
         ch_groups = ch_cfg.get("groups", [])
-        should_send = False
-        if "all" in ch_groups:
-            should_send = True
-        elif group_id and str(group_id) in [str(g) for g in ch_groups]:
-            should_send = True
-        if should_send:
-            targets.add(int(ch_id_str))
 
+        if ch_type == "admin":
+            targets_admin.add(int(ch_id_str))
+        else:
+            # mod channel: check group routing
+            should_send = False
+            if "all" in ch_groups:
+                should_send = True
+            elif group_id and str(group_id) in [str(g) for g in ch_groups]:
+                should_send = True
+            if should_send:
+                targets_mod.add(int(ch_id_str))
+
+    # Build formatted message
+    if details and action:
+        formatted = _format_log_block(category, action, details)
+    else:
+        # Legacy fallback: plain text with timestamp
+        now_str = now_de().strftime("%d.%m.%Y %H:%M:%S")
+        formatted = f"📋 {text}\n🕐 {now_str}"
+
+    targets = targets_admin if category == LOG_CAT_ADMIN else targets_mod
     if targets:
-        asyncio.create_task(_send_logs_async(context, targets, text))
+        asyncio.create_task(_send_logs_async(context, targets, formatted))
 
 
 async def render_protokoll_channel_config(query, ch_id: str):
     bot_data = load_data()
     ch_cfg = bot_data.get("protokoll_channels", {}).get(str(ch_id), {})
-    ch_groups = [str(x) for x in ch_cfg.get("groups", [])]
+    ch_type = ch_cfg.get("type", "mod")
     ch_name = ch_cfg.get("name", str(ch_id))
-    groups = bot_data.get("groups", [])
 
-    keyboard = []
-    all_check = "✅" if "all" in ch_groups else "⬜"
-    keyboard.append([InlineKeyboardButton(f"{all_check} Alle Gruppen", callback_data=f"proto_tga_{ch_id}")])
-    for g in groups:
-        gid = str(g["id"])
-        check = "✅" if gid in ch_groups else "⬜"
-        keyboard.append([InlineKeyboardButton(f"{check} {g['title']}", callback_data=f"proto_tgg_{gid}_{ch_id}")])
-    keyboard.append([InlineKeyboardButton("🔙 Zurück", callback_data="proto_what")])
-    await query.edit_message_text(
-        f"🎯 *Protokoll: {ch_name}*\nWähle welche Gruppen protokolliert werden:",
-        reply_markup=InlineKeyboardMarkup(keyboard),
-        parse_mode="Markdown",
-    )
+    if ch_type == "admin":
+        # Admin channels don't need group routing
+        type_icon = "⚙️"
+        keyboard = [
+            [InlineKeyboardButton("🔄 Zu Moderations-Log wechseln", callback_data=f"proto_switch_mod_{ch_id}")],
+            [InlineKeyboardButton("🔙 Zurück", callback_data="menu_protokoll")],
+        ]
+        await query.edit_message_text(
+            f"{type_icon} <b>Admin-Protokoll: {html.escape(ch_name)}</b>\n\n"
+            f"Dieser Kanal protokolliert alle <b>Bot-Einstellungen</b>:\n"
+            f"• Admin hinzufügen/entfernen\n"
+            f"• Einstellungen ändern\n"
+            f"• Wiederholte Nachrichten\n"
+            f"• Befehle erstellen/löschen\n"
+            f"• Freigabemodus\n"
+            f"• Sperr-Einstellungen",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode="HTML",
+        )
+    else:
+        # Mod channels have group routing
+        ch_groups = [str(x) for x in ch_cfg.get("groups", [])]
+        groups = bot_data.get("groups", [])
+        type_icon = "🛡"
+        keyboard = []
+        all_check = "✅" if "all" in ch_groups else "⬜"
+        keyboard.append([InlineKeyboardButton(f"{all_check} Alle Gruppen", callback_data=f"proto_tga_{ch_id}")])
+        for g in groups:
+            gid = str(g["id"])
+            check = "✅" if gid in ch_groups else "⬜"
+            keyboard.append([InlineKeyboardButton(f"{check} {g['title']}", callback_data=f"proto_tgg_{gid}_{ch_id}")])
+        keyboard.append([InlineKeyboardButton("🔄 Zu Admin-Log wechseln", callback_data=f"proto_switch_admin_{ch_id}")])
+        keyboard.append([InlineKeyboardButton("🔙 Zurück", callback_data="menu_protokoll")])
+        await query.edit_message_text(
+            f"{type_icon} <b>Moderations-Log: {html.escape(ch_name)}</b>\n\n"
+            f"Dieser Kanal protokolliert <b>Moderationsaktionen</b>:\n"
+            f"• Ban / Unban / BanAll / UnbanAll\n"
+            f"• Mute / Unmute / Kick\n"
+            f"• Warn / Unwarn\n"
+            f"• Verbotene Wörter / Links\n"
+            f"• Auto-Reban\n\n"
+            f"Wähle welche Gruppen protokolliert werden:",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode="HTML",
+        )
 
 
 async def render_sperr_bot_groups(query, context: ContextTypes.DEFAULT_TYPE):
@@ -2552,7 +2645,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await query.answer(f"Auto-Freigabe für {group_title} {new_state}", show_alert=False)
         except Exception:
             pass
-        await log_action(context, f"Freigabemodus {new_state} für {group_title} von {query.from_user.full_name}")
+        await log_action(context, f"Freigabemodus {new_state} für {group_title} von {query.from_user.full_name}", category=LOG_CAT_ADMIN, action="Freigabemodus", details={"details": f"{new_state} für {group_title}", "von": query.from_user.full_name})
 
         # Re-render menu
         enabled_count = sum(1 for g in groups if auto_approve.get(str(g["id"]), False))
@@ -2589,17 +2682,25 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         bot_me = await context.bot.get_me()
         bot_username = bot_me.username
 
+        admin_channels = {k: v for k, v in proto_channels.items() if v.get("type") == "admin"}
+        mod_channels = {k: v for k, v in proto_channels.items() if v.get("type", "mod") == "mod"}
+
         text = (
-            f"🔍 *Protokoll-Kanal*\n"
-            f"Hier kann ein Kanal konfiguriert werden, in dem alle Log- bzw. Protokolldaten gespeichert werden.\n\n"
-            f"Um dies einzustellen, musst Du der Gründer/Inhaber des Protokollkanals sein und "
-            f"@{bot_username} muss Admin des Kanals sein.\n"
-            f"_Der Kanal kann sowohl öffentlich als auch privat sein._"
+            f"📋 <b>Protokoll-System</b>\n\n"
+            f"Konfiguriere zwei Arten von Protokoll-Kanälen:\n\n"
+            f"⚙️ <b>Admin-Log</b> — Bot-Einstellungen, Admin-Änderungen\n"
+            f"🛡 <b>Moderations-Log</b> — Bans, Mutes, Filter-Treffer\n\n"
+            f"ℹ️ @{bot_username} muss Admin im Kanal sein."
         )
 
-        if proto_channels:
-            text += "\n\n*Aktive Protokoll-Kanäle:*"
-            for ch_id, ch_cfg in proto_channels.items():
+        if admin_channels:
+            text += "\n\n⚙️ <b>Admin-Log:</b>"
+            for ch_id, ch_cfg in admin_channels.items():
+                text += f"\n• {html.escape(ch_cfg.get('name', ch_id))}"
+
+        if mod_channels:
+            text += "\n\n🛡 <b>Moderations-Log:</b>"
+            for ch_id, ch_cfg in mod_channels.items():
                 ch_name = ch_cfg.get("name", ch_id)
                 ch_groups = ch_cfg.get("groups", [])
                 if "all" in ch_groups:
@@ -2610,27 +2711,30 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         found = next((g["title"] for g in bot_data.get("groups", []) if str(g["id"]) == str(gid)), str(gid))
                         names.append(found)
                     scope = ", ".join(names) if names else "Keine Gruppen"
-                text += f"\n• `{ch_name}` → {scope}"
+                text += f"\n• {html.escape(ch_name)} → {scope}"
 
         keyboard = [
-            [InlineKeyboardButton("➕ Protokoll-Kanal hinzufügen", callback_data="proto_add")],
+            [InlineKeyboardButton("⚙️ Admin-Log hinzufügen", callback_data="proto_add_admin"),
+             InlineKeyboardButton("🛡 Mod-Log hinzufügen", callback_data="proto_add_mod")],
         ]
         if proto_channels:
-            keyboard.append([InlineKeyboardButton("🎯 Was soll protokolliert werden?", callback_data="proto_what")])
-            keyboard.append([InlineKeyboardButton("🔄 Protokoll-Kanal wechseln", callback_data="proto_add")])
-            keyboard.append([InlineKeyboardButton("🗑 Protokoll-Kanal entfernen", callback_data="proto_remove_menu")])
+            keyboard.append([InlineKeyboardButton("🎯 Kanäle konfigurieren", callback_data="proto_what")])
+            keyboard.append([InlineKeyboardButton("🗑 Kanal entfernen", callback_data="proto_remove_menu")])
         keyboard.append([InlineKeyboardButton("🔙 Zurück", callback_data="back_main")])
-        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
+        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
 
-    elif data == "proto_add":
+    elif data in ("proto_add", "proto_add_admin", "proto_add_mod"):
+        proto_type = "admin" if data == "proto_add_admin" else "mod"
         context.user_data["state"] = WAITING_PROTO_CHANNEL
+        context.user_data["proto_add_type"] = proto_type
+        type_label = "Admin-Log ⚙️" if proto_type == "admin" else "Moderations-Log 🛡"
         keyboard = [[InlineKeyboardButton("🔙 Abbrechen", callback_data="menu_protokoll")]]
         await query.edit_message_text(
-            "📋 *Protokoll-Kanal hinzufügen*\n\n"
-            "Sende mir die *Kanal-ID* (z.B. `-1001234567890`) oder leite eine Nachricht aus dem Kanal weiter.\n\n"
-            "💡 Die Kanal-ID findest du z.B. über @userinfobot.",
+            f"📋 <b>{type_label} — Kanal hinzufügen</b>\n\n"
+            f"Sende mir die <b>Kanal-ID</b> (z.B. <code>-1001234567890</code>).\n\n"
+            f"💡 Die Kanal-ID findest du z.B. über @userinfobot.",
             reply_markup=InlineKeyboardMarkup(keyboard),
-            parse_mode="Markdown",
+            parse_mode="HTML",
         )
 
     elif data == "proto_remove_menu":
@@ -2639,12 +2743,14 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         keyboard = []
         for ch_id, ch_cfg in proto_channels.items():
             ch_name = ch_cfg.get("name", ch_id)
-            keyboard.append([InlineKeyboardButton(f"🗑 {ch_name}", callback_data=f"proto_rm_{ch_id}")])
+            ch_type = ch_cfg.get("type", "mod")
+            icon = "⚙️" if ch_type == "admin" else "🛡"
+            keyboard.append([InlineKeyboardButton(f"🗑 {icon} {ch_name}", callback_data=f"proto_rm_{ch_id}")])
         keyboard.append([InlineKeyboardButton("🔙 Zurück", callback_data="menu_protokoll")])
         await query.edit_message_text(
-            "🗑 *Protokoll-Kanal entfernen*\nWähle den Kanal:",
+            "🗑 <b>Protokoll-Kanal entfernen</b>\nWähle den Kanal:",
             reply_markup=InlineKeyboardMarkup(keyboard),
-            parse_mode="Markdown",
+            parse_mode="HTML",
         )
 
     elif data.startswith("proto_rm_"):
@@ -2655,7 +2761,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         name = removed.get("name", ch_id) if removed else ch_id
         await query.answer(f"✅ {name} entfernt!", show_alert=True)
         keyboard = [[InlineKeyboardButton("🔙 Zurück", callback_data="menu_protokoll")]]
-        await query.edit_message_text(f"✅ Protokoll-Kanal `{name}` entfernt.", reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
+        await query.edit_message_text(f"✅ Protokoll-Kanal <code>{html.escape(name)}</code> entfernt.", reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
 
     elif data == "proto_what":
         bot_data = load_data()
@@ -2663,16 +2769,40 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         keyboard = []
         for ch_id, ch_cfg in proto_channels.items():
             ch_name = ch_cfg.get("name", ch_id)
-            keyboard.append([InlineKeyboardButton(f"🎯 {ch_name}", callback_data=f"proto_cfg_{ch_id}")])
+            ch_type = ch_cfg.get("type", "mod")
+            icon = "⚙️" if ch_type == "admin" else "🛡"
+            keyboard.append([InlineKeyboardButton(f"{icon} {ch_name}", callback_data=f"proto_cfg_{ch_id}")])
         keyboard.append([InlineKeyboardButton("🔙 Zurück", callback_data="menu_protokoll")])
         await query.edit_message_text(
-            "🎯 *Was soll protokolliert werden?*\nWähle einen Kanal zum Konfigurieren:",
+            "🎯 <b>Kanal konfigurieren</b>\nWähle einen Kanal:",
             reply_markup=InlineKeyboardMarkup(keyboard),
-            parse_mode="Markdown",
+            parse_mode="HTML",
         )
 
     elif data.startswith("proto_cfg_"):
         ch_id = data.replace("proto_cfg_", "")
+        await render_protokoll_channel_config(query, ch_id)
+
+    elif data.startswith("proto_switch_admin_"):
+        ch_id = data.replace("proto_switch_admin_", "")
+        bot_data = load_data()
+        ch_cfg = bot_data.get("protokoll_channels", {}).get(ch_id, {})
+        ch_cfg["type"] = "admin"
+        ch_cfg["groups"] = []
+        bot_data["protokoll_channels"][ch_id] = ch_cfg
+        save_data(bot_data)
+        await query.answer("✅ Auf Admin-Log gewechselt!")
+        await render_protokoll_channel_config(query, ch_id)
+
+    elif data.startswith("proto_switch_mod_"):
+        ch_id = data.replace("proto_switch_mod_", "")
+        bot_data = load_data()
+        ch_cfg = bot_data.get("protokoll_channels", {}).get(ch_id, {})
+        ch_cfg["type"] = "mod"
+        ch_cfg["groups"] = ["all"]
+        bot_data["protokoll_channels"][ch_id] = ch_cfg
+        save_data(bot_data)
+        await query.answer("✅ Auf Moderations-Log gewechselt!")
         await render_protokoll_channel_config(query, ch_id)
 
     elif data.startswith("proto_tga_"):
@@ -2772,7 +2902,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         cfg["admin_ids"] = [8394295062]
         save_config(cfg)
         await query.answer("✅ Adminliste wurde zurückgesetzt!", show_alert=True)
-        await log_action(context, f"Adminliste zurückgesetzt von {query.from_user.full_name} ({query.from_user.id})")
+        await log_action(context, f"Adminliste zurückgesetzt von {query.from_user.full_name}", category=LOG_CAT_ADMIN, action="Adminliste Reset", details={"von": f"{query.from_user.full_name} ({query.from_user.id})"})
 
         admins = cfg.get("admin_ids", [])
         owners = cfg.get("owner_ids", [])
@@ -2804,7 +2934,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             tracked = lookup_user(str(aid))
             name = tracked.get("name", str(aid)) if tracked else str(aid)
             await query.answer(f"✅ {name} entfernt!", show_alert=True)
-            await log_action(context, f"Admin entfernt (Menü): {name} ({aid}) von {query.from_user.full_name}")
+            await log_action(context, f"Admin entfernt (Menü): {name} ({aid})", category=LOG_CAT_ADMIN, action="Admin entfernt", details={"user": name, "user_id": str(aid), "von": query.from_user.full_name})
         else:
             await query.answer("Nicht in der Admin-Liste.", show_alert=True)
         # Re-render admin list
@@ -3932,7 +4062,7 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 cfg["admin_ids"].append(new_admin)
                 save_config(cfg)
                 await update.message.reply_text(f"✅ Admin `{new_admin}` hinzugefügt.", parse_mode="Markdown")
-                await log_action(context, f"Admin hinzugefügt: {new_admin} von {user_id}")
+                await log_action(context, f"Admin hinzugefügt: {new_admin} von {user_id}", category=LOG_CAT_ADMIN, action="Admin hinzugefügt", details={"user_id": str(new_admin), "von": str(user_id)})
             else:
                 await update.message.reply_text("Ist bereits Admin.")
         except ValueError:
@@ -3947,7 +4077,7 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 cfg["admin_ids"].remove(rem_admin)
                 save_config(cfg)
                 await update.message.reply_text(f"✅ Admin `{rem_admin}` entfernt.", parse_mode="Markdown")
-                await log_action(context, f"Admin entfernt: {rem_admin} von {user_id}")
+                await log_action(context, f"Admin entfernt: {rem_admin} von {user_id}", category=LOG_CAT_ADMIN, action="Admin entfernt", details={"user_id": str(rem_admin), "von": str(user_id)})
             else:
                 await update.message.reply_text("Nicht in der Admin-Liste.")
         except ValueError:
@@ -3966,6 +4096,7 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data["state"] = None
 
     elif state == WAITING_PROTO_CHANNEL:
+        proto_type = context.user_data.get("proto_add_type", "mod")
         try:
             channel_id = int(text.strip())
             try:
@@ -3978,26 +4109,32 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
             bot_data = load_data()
             proto_channels = bot_data.setdefault("protokoll_channels", {})
-            proto_channels[str(channel_id)] = {
+            channel_cfg = {
                 "name": ch_name,
-                "groups": ["all"],
+                "type": proto_type,
             }
+            if proto_type == "mod":
+                channel_cfg["groups"] = ["all"]
+            else:
+                channel_cfg["groups"] = []
+            proto_channels[str(channel_id)] = channel_cfg
             save_data(bot_data)
             context.user_data["state"] = None
+            context.user_data.pop("proto_add_type", None)
 
+            type_label = "Admin-Log ⚙️" if proto_type == "admin" else "Moderations-Log 🛡"
             keyboard = [
-                [InlineKeyboardButton("🎯 Gruppen konfigurieren", callback_data=f"proto_cfg_{channel_id}")],
+                [InlineKeyboardButton("🎯 Konfigurieren", callback_data=f"proto_cfg_{channel_id}")],
                 [InlineKeyboardButton("🔙 Zum Protokoll-Menü", callback_data="menu_protokoll")],
             ]
+            extra = "\nStandardmäßig werden <b>alle Gruppen</b> protokolliert." if proto_type == "mod" else ""
             await update.message.reply_text(
-                f"✅ Protokoll-Kanal *{ch_name}* hinzugefügt!\n\n"
-                f"Standardmäßig werden *alle Gruppen* protokolliert.\n"
-                f"Klicke auf 'Gruppen konfigurieren' um dies anzupassen.",
+                f"✅ <b>{type_label}</b> — <code>{html.escape(ch_name)}</code> hinzugefügt!{extra}",
                 reply_markup=InlineKeyboardMarkup(keyboard),
-                parse_mode="Markdown",
+                parse_mode="HTML",
             )
         except ValueError:
-            await update.message.reply_text("⚠️ Bitte eine gültige numerische Kanal-ID senden (z.B. `-1001234567890`).")
+            await update.message.reply_text("⚠️ Bitte eine gültige numerische Kanal-ID senden (z.B. <code>-1001234567890</code>).", parse_mode="HTML")
         context.user_data["state"] = None
 
     elif state == WAITING_MESSENGER_INPUT:
@@ -4604,7 +4741,7 @@ async def mute_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=keyboard,
             parse_mode="HTML",
         )
-        await log_action(context, f"🔇 Mute: {target_name} [{target_id}] in {chat.title} von {update.effective_user.first_name}" + (f" | {duration_label}" if duration_label else "") + (f" | Grund: {reason}" if reason else ""), group_id=chat.id, group_name=chat.title)
+        await log_action(context, f"🔇 Mute: {target_name} [{target_id}] in {chat.title}", group_id=chat.id, group_name=chat.title, category=LOG_CAT_MOD, action="MUTE", details={"user": target_name, "user_id": str(target_id), "gruppe": chat.title, "von": update.effective_user.first_name, "dauer": duration_label or "Unbegrenzt", "grund": reason})
     except Exception as e:
         await update.message.reply_text(f"❌ Mute fehlgeschlagen: {e}")
 
@@ -4653,7 +4790,7 @@ async def unmute_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"{uname}[<code>{target_id}</code>] wurde ✅ entmutet.",
             parse_mode="HTML",
         )
-        await log_action(context, f"✅ Unmute: {target_name} [{target_id}] in {chat.title} von {update.effective_user.first_name}", group_id=chat.id, group_name=chat.title)
+        await log_action(context, f"✅ Unmute: {target_name} [{target_id}] in {chat.title}", group_id=chat.id, group_name=chat.title, category=LOG_CAT_MOD, action="UNMUTE", details={"user": target_name, "user_id": str(target_id), "gruppe": chat.title, "von": update.effective_user.first_name})
     except Exception as e:
         await update.message.reply_text(f"❌ Unmute fehlgeschlagen: {e}")
 
@@ -4702,7 +4839,7 @@ async def kick_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"ℹ️ Der User kann der Gruppe wieder beitreten.",
             parse_mode="HTML",
         )
-        await log_action(context, f"👢 Kick: {target_name} [{target_id}] aus {chat.title} von {update.effective_user.first_name}" + (f" | Grund: {reason}" if reason else ""), group_id=chat.id, group_name=chat.title)
+        await log_action(context, f"👢 Kick: {target_name} [{target_id}] aus {chat.title}", group_id=chat.id, group_name=chat.title, category=LOG_CAT_MOD, action="KICK", details={"user": target_name, "user_id": str(target_id), "gruppe": chat.title, "von": update.effective_user.first_name, "grund": reason})
     except Exception as e:
         await update.message.reply_text(f"❌ Kick fehlgeschlagen: {e}")
 
@@ -4767,7 +4904,7 @@ async def ban_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode="HTML",
             reply_markup=keyboard,
         )
-        await log_action(context, f"🚫 Ban: {target_name} [{target_id}] in {chat.title} von {update.effective_user.first_name}" + (f" | {duration_label}" if duration_label else "") + (f" | Grund: {reason}" if reason else ""), group_id=chat.id, group_name=chat.title)
+        await log_action(context, f"🚫 Ban: {target_name} [{target_id}] in {chat.title}", group_id=chat.id, group_name=chat.title, category=LOG_CAT_MOD, action="BAN", details={"user": target_name, "user_id": str(target_id), "gruppe": chat.title, "von": update.effective_user.first_name, "dauer": duration_label, "grund": reason})
     except Exception as e:
         await update.message.reply_text(f"❌ Ban fehlgeschlagen: {e}")
 
@@ -4809,7 +4946,7 @@ async def unban_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"✅ {uname}[<code>{target_id}</code>] wurde entsperrt.",
             parse_mode="HTML",
         )
-        await log_action(context, f"✅ Unban: {target_name} [{target_id}] in {chat.title} von {update.effective_user.first_name}", group_id=chat.id, group_name=chat.title)
+        await log_action(context, f"✅ Unban: {target_name} [{target_id}] in {chat.title}", group_id=chat.id, group_name=chat.title, category=LOG_CAT_MOD, action="UNBAN", details={"user": target_name, "user_id": str(target_id), "gruppe": chat.title, "von": update.effective_user.first_name})
     except Exception as e:
         await update.message.reply_text(f"❌ Unban fehlgeschlagen: {e}")
 
@@ -5137,16 +5274,22 @@ async def banall(update: Update, context: ContextTypes.DEFAULT_TYPE):
         source_group_name = chat.title if source_group_id else None
         await log_action(
             context,
-            f"BANALL: {target_name} ({target_id}) von {update.effective_user.full_name} — {success_count} OK, {fail_count} Fehler",
+            f"BANALL: {target_name} ({target_id})",
             group_id=source_group_id,
             group_name=source_group_name,
+            category=LOG_CAT_MOD,
+            action="BANALL",
+            details={"user": target_name, "user_id": str(target_id), "von": update.effective_user.full_name, "ergebnis": f"{success_count} OK, {fail_count} Fehler"},
         )
         for group in successful_groups:
             await log_action(
                 context,
-                f"BANALL: {target_name} ({target_id}) in {group['title']} ({group['id']}) von {update.effective_user.full_name}",
+                f"BANALL: {target_name} ({target_id}) in {group['title']}",
                 group_id=group["id"],
                 group_name=group["title"],
+                category=LOG_CAT_MOD,
+                action="BANALL",
+                details={"user": target_name, "user_id": str(target_id), "gruppe": group["title"], "von": update.effective_user.full_name},
             )
     except Exception as e:
         logger.error(f"banall error: {e}")
@@ -5206,16 +5349,22 @@ async def unbanall(update: Update, context: ContextTypes.DEFAULT_TYPE):
         source_group_name = chat.title if source_group_id else None
         await log_action(
             context,
-            f"UNBANALL: {target_name} ({target_id}) von {update.effective_user.full_name} — {len(successful_groups)} OK, {len(failed_groups)} Fehler",
+            f"UNBANALL: {target_name} ({target_id})",
             group_id=source_group_id,
             group_name=source_group_name,
+            category=LOG_CAT_MOD,
+            action="UNBANALL",
+            details={"user": target_name, "user_id": str(target_id), "von": update.effective_user.full_name, "ergebnis": f"{len(successful_groups)} OK, {len(failed_groups)} Fehler"},
         )
         for group in successful_groups:
             await log_action(
                 context,
-                f"UNBANALL: {target_name} ({target_id}) in {group['title']} ({group['id']}) von {update.effective_user.full_name}",
+                f"UNBANALL: {target_name} ({target_id}) in {group['title']}",
                 group_id=group["id"],
                 group_name=group["title"],
+                category=LOG_CAT_MOD,
+                action="UNBANALL",
+                details={"user": target_name, "user_id": str(target_id), "gruppe": group["title"], "von": update.effective_user.full_name},
             )
     except Exception as e:
         logger.error(f"unbanall error: {e}")
