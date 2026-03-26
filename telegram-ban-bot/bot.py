@@ -208,17 +208,22 @@ def get_tracked_banned_user_ids(group_id: int) -> list[int]:
 
 
 
+async def _delete_message_later(message, delay: float = 1.0):
+    """Delete a message shortly after command handling finished."""
+    try:
+        await asyncio.sleep(delay)
+        await message.delete()
+    except Exception:
+        pass
+
+
 async def auto_delete_command(update: Update, context):
-    """Auto-delete command-like messages in groups for admins and users based on cmd_delete config."""
+    """Queue auto-delete for command-like messages in groups without breaking command replies."""
     if not update.message or not update.message.text or not update.effective_chat:
         return
 
     chat = update.effective_chat
     if chat.type not in ("group", "supergroup"):
-        return
-
-    msg_id = update.message.message_id
-    if context.chat_data.get("_last_auto_deleted_cmd_msg_id") == msg_id:
         return
 
     msg_text = update.message.text.strip()
@@ -237,11 +242,10 @@ async def auto_delete_command(update: Update, context):
         is_adm = await is_chat_admin(context, chat.id, sender.id)
         prefixes = cd.get("admin_prefixes", []) if is_adm else cd.get("user_prefixes", [])
         if first_char in prefixes:
-            await update.message.delete()
-            context.chat_data["_last_auto_deleted_cmd_msg_id"] = msg_id
-            logger.info(f"Auto-deleted command '{msg_text[:30]}' from {'admin' if is_adm else 'user'} {sender.id} in {chat.id}")
+            asyncio.create_task(_delete_message_later(update.message))
+            logger.info(f"Queued auto-delete for command '{msg_text[:30]}' from {'admin' if is_adm else 'user'} {sender.id} in {chat.id}")
     except Exception as e:
-        logger.error(f"Cmd auto-delete failed: {e}")
+        logger.error(f"Cmd auto-delete queue failed: {e}")
 
 
 def track_user(user, group_id=None):
