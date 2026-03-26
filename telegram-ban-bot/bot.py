@@ -2682,17 +2682,25 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         bot_me = await context.bot.get_me()
         bot_username = bot_me.username
 
+        admin_channels = {k: v for k, v in proto_channels.items() if v.get("type") == "admin"}
+        mod_channels = {k: v for k, v in proto_channels.items() if v.get("type", "mod") == "mod"}
+
         text = (
-            f"🔍 *Protokoll-Kanal*\n"
-            f"Hier kann ein Kanal konfiguriert werden, in dem alle Log- bzw. Protokolldaten gespeichert werden.\n\n"
-            f"Um dies einzustellen, musst Du der Gründer/Inhaber des Protokollkanals sein und "
-            f"@{bot_username} muss Admin des Kanals sein.\n"
-            f"_Der Kanal kann sowohl öffentlich als auch privat sein._"
+            f"📋 <b>Protokoll-System</b>\n\n"
+            f"Konfiguriere zwei Arten von Protokoll-Kanälen:\n\n"
+            f"⚙️ <b>Admin-Log</b> — Bot-Einstellungen, Admin-Änderungen\n"
+            f"🛡 <b>Moderations-Log</b> — Bans, Mutes, Filter-Treffer\n\n"
+            f"ℹ️ @{bot_username} muss Admin im Kanal sein."
         )
 
-        if proto_channels:
-            text += "\n\n*Aktive Protokoll-Kanäle:*"
-            for ch_id, ch_cfg in proto_channels.items():
+        if admin_channels:
+            text += "\n\n⚙️ <b>Admin-Log:</b>"
+            for ch_id, ch_cfg in admin_channels.items():
+                text += f"\n• {html.escape(ch_cfg.get('name', ch_id))}"
+
+        if mod_channels:
+            text += "\n\n🛡 <b>Moderations-Log:</b>"
+            for ch_id, ch_cfg in mod_channels.items():
                 ch_name = ch_cfg.get("name", ch_id)
                 ch_groups = ch_cfg.get("groups", [])
                 if "all" in ch_groups:
@@ -2703,27 +2711,30 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         found = next((g["title"] for g in bot_data.get("groups", []) if str(g["id"]) == str(gid)), str(gid))
                         names.append(found)
                     scope = ", ".join(names) if names else "Keine Gruppen"
-                text += f"\n• `{ch_name}` → {scope}"
+                text += f"\n• {html.escape(ch_name)} → {scope}"
 
         keyboard = [
-            [InlineKeyboardButton("➕ Protokoll-Kanal hinzufügen", callback_data="proto_add")],
+            [InlineKeyboardButton("⚙️ Admin-Log hinzufügen", callback_data="proto_add_admin"),
+             InlineKeyboardButton("🛡 Mod-Log hinzufügen", callback_data="proto_add_mod")],
         ]
         if proto_channels:
-            keyboard.append([InlineKeyboardButton("🎯 Was soll protokolliert werden?", callback_data="proto_what")])
-            keyboard.append([InlineKeyboardButton("🔄 Protokoll-Kanal wechseln", callback_data="proto_add")])
-            keyboard.append([InlineKeyboardButton("🗑 Protokoll-Kanal entfernen", callback_data="proto_remove_menu")])
+            keyboard.append([InlineKeyboardButton("🎯 Kanäle konfigurieren", callback_data="proto_what")])
+            keyboard.append([InlineKeyboardButton("🗑 Kanal entfernen", callback_data="proto_remove_menu")])
         keyboard.append([InlineKeyboardButton("🔙 Zurück", callback_data="back_main")])
-        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
+        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
 
-    elif data == "proto_add":
+    elif data in ("proto_add", "proto_add_admin", "proto_add_mod"):
+        proto_type = "admin" if data == "proto_add_admin" else "mod"
         context.user_data["state"] = WAITING_PROTO_CHANNEL
+        context.user_data["proto_add_type"] = proto_type
+        type_label = "Admin-Log ⚙️" if proto_type == "admin" else "Moderations-Log 🛡"
         keyboard = [[InlineKeyboardButton("🔙 Abbrechen", callback_data="menu_protokoll")]]
         await query.edit_message_text(
-            "📋 *Protokoll-Kanal hinzufügen*\n\n"
-            "Sende mir die *Kanal-ID* (z.B. `-1001234567890`) oder leite eine Nachricht aus dem Kanal weiter.\n\n"
-            "💡 Die Kanal-ID findest du z.B. über @userinfobot.",
+            f"📋 <b>{type_label} — Kanal hinzufügen</b>\n\n"
+            f"Sende mir die <b>Kanal-ID</b> (z.B. <code>-1001234567890</code>).\n\n"
+            f"💡 Die Kanal-ID findest du z.B. über @userinfobot.",
             reply_markup=InlineKeyboardMarkup(keyboard),
-            parse_mode="Markdown",
+            parse_mode="HTML",
         )
 
     elif data == "proto_remove_menu":
@@ -2732,12 +2743,14 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         keyboard = []
         for ch_id, ch_cfg in proto_channels.items():
             ch_name = ch_cfg.get("name", ch_id)
-            keyboard.append([InlineKeyboardButton(f"🗑 {ch_name}", callback_data=f"proto_rm_{ch_id}")])
+            ch_type = ch_cfg.get("type", "mod")
+            icon = "⚙️" if ch_type == "admin" else "🛡"
+            keyboard.append([InlineKeyboardButton(f"🗑 {icon} {ch_name}", callback_data=f"proto_rm_{ch_id}")])
         keyboard.append([InlineKeyboardButton("🔙 Zurück", callback_data="menu_protokoll")])
         await query.edit_message_text(
-            "🗑 *Protokoll-Kanal entfernen*\nWähle den Kanal:",
+            "🗑 <b>Protokoll-Kanal entfernen</b>\nWähle den Kanal:",
             reply_markup=InlineKeyboardMarkup(keyboard),
-            parse_mode="Markdown",
+            parse_mode="HTML",
         )
 
     elif data.startswith("proto_rm_"):
@@ -2748,7 +2761,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         name = removed.get("name", ch_id) if removed else ch_id
         await query.answer(f"✅ {name} entfernt!", show_alert=True)
         keyboard = [[InlineKeyboardButton("🔙 Zurück", callback_data="menu_protokoll")]]
-        await query.edit_message_text(f"✅ Protokoll-Kanal `{name}` entfernt.", reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
+        await query.edit_message_text(f"✅ Protokoll-Kanal <code>{html.escape(name)}</code> entfernt.", reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
 
     elif data == "proto_what":
         bot_data = load_data()
@@ -2756,16 +2769,40 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         keyboard = []
         for ch_id, ch_cfg in proto_channels.items():
             ch_name = ch_cfg.get("name", ch_id)
-            keyboard.append([InlineKeyboardButton(f"🎯 {ch_name}", callback_data=f"proto_cfg_{ch_id}")])
+            ch_type = ch_cfg.get("type", "mod")
+            icon = "⚙️" if ch_type == "admin" else "🛡"
+            keyboard.append([InlineKeyboardButton(f"{icon} {ch_name}", callback_data=f"proto_cfg_{ch_id}")])
         keyboard.append([InlineKeyboardButton("🔙 Zurück", callback_data="menu_protokoll")])
         await query.edit_message_text(
-            "🎯 *Was soll protokolliert werden?*\nWähle einen Kanal zum Konfigurieren:",
+            "🎯 <b>Kanal konfigurieren</b>\nWähle einen Kanal:",
             reply_markup=InlineKeyboardMarkup(keyboard),
-            parse_mode="Markdown",
+            parse_mode="HTML",
         )
 
     elif data.startswith("proto_cfg_"):
         ch_id = data.replace("proto_cfg_", "")
+        await render_protokoll_channel_config(query, ch_id)
+
+    elif data.startswith("proto_switch_admin_"):
+        ch_id = data.replace("proto_switch_admin_", "")
+        bot_data = load_data()
+        ch_cfg = bot_data.get("protokoll_channels", {}).get(ch_id, {})
+        ch_cfg["type"] = "admin"
+        ch_cfg["groups"] = []
+        bot_data["protokoll_channels"][ch_id] = ch_cfg
+        save_data(bot_data)
+        await query.answer("✅ Auf Admin-Log gewechselt!")
+        await render_protokoll_channel_config(query, ch_id)
+
+    elif data.startswith("proto_switch_mod_"):
+        ch_id = data.replace("proto_switch_mod_", "")
+        bot_data = load_data()
+        ch_cfg = bot_data.get("protokoll_channels", {}).get(ch_id, {})
+        ch_cfg["type"] = "mod"
+        ch_cfg["groups"] = ["all"]
+        bot_data["protokoll_channels"][ch_id] = ch_cfg
+        save_data(bot_data)
+        await query.answer("✅ Auf Moderations-Log gewechselt!")
         await render_protokoll_channel_config(query, ch_id)
 
     elif data.startswith("proto_tga_"):
