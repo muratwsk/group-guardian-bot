@@ -85,6 +85,7 @@ def normalize_data(data):
     data.setdefault("scheduled", [])
     data.setdefault("personal_commands", {})
     data.setdefault("warnings", {})
+    data.setdefault("active_mutes", {})
     data.setdefault("warn_config", {
         "max_warns": 3,
         "punishment": "mute",
@@ -223,32 +224,37 @@ def should_skip_recent_action(context: ContextTypes.DEFAULT_TYPE, action_key: st
     return False
 
 
-async def is_user_currently_muted(context: ContextTypes.DEFAULT_TYPE, chat_id: int, user_id: int) -> bool:
-    try:
-        member = await context.bot.get_chat_member(chat_id, user_id)
-        if member.status != "restricted":
-            return False
+def set_active_mute(chat_id: int, user_id: int, until_ts: float | None = None):
+    bot_data = load_data()
+    active_mutes = bot_data.setdefault("active_mutes", {})
+    active_mutes[f"{chat_id}:{user_id}"] = {"until_ts": until_ts}
+    save_data(bot_data)
 
-        chat = await context.bot.get_chat(chat_id)
-        default_permissions = getattr(chat, "permissions", None)
-        member_can_send = getattr(member, "can_send_messages", None)
-        default_can_send = getattr(default_permissions, "can_send_messages", None) if default_permissions else None
 
-        if member_can_send is not None:
-            return member_can_send is False and default_can_send is not False
+def clear_active_mute(chat_id: int, user_id: int):
+    bot_data = load_data()
+    active_mutes = bot_data.setdefault("active_mutes", {})
+    active_mutes.pop(f"{chat_id}:{user_id}", None)
+    save_data(bot_data)
 
-        media_flags = [
-            getattr(member, "can_send_audios", None),
-            getattr(member, "can_send_documents", None),
-            getattr(member, "can_send_photos", None),
-            getattr(member, "can_send_videos", None),
-            getattr(member, "can_send_video_notes", None),
-            getattr(member, "can_send_voice_notes", None),
-        ]
-        explicit_media_flags = [flag for flag in media_flags if flag is not None]
-        return bool(explicit_media_flags) and all(flag is False for flag in explicit_media_flags)
-    except Exception:
+
+def has_active_mute(chat_id: int, user_id: int) -> bool:
+    bot_data = load_data()
+    active_mutes = bot_data.setdefault("active_mutes", {})
+    key = f"{chat_id}:{user_id}"
+    entry = active_mutes.get(key)
+    if not entry:
         return False
+    until_ts = entry.get("until_ts")
+    if until_ts and until_ts <= time.time():
+        active_mutes.pop(key, None)
+        save_data(bot_data)
+        return False
+    return True
+
+
+async def is_user_currently_muted(context: ContextTypes.DEFAULT_TYPE, chat_id: int, user_id: int) -> bool:
+    return has_active_mute(chat_id, user_id)
 
 
 async def wait_for_mute_state(context: ContextTypes.DEFAULT_TYPE, chat_id: int, user_id: int, expected_muted: bool, attempts: int = 5, delay: float = 0.4) -> bool:
@@ -1761,6 +1767,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             user_id=target_id,
             permissions=ChatPermissions.no_permissions(),
         )
+        set_active_mute(scope_chat_id, target_id)
 
         is_banned_all = bool(groups) and all(is_banned_in_group(g["id"], target_id) for g in groups)
         group_state = await get_info_group_state(context, scope_chat_id, target_id)
@@ -1794,6 +1801,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             user_id=target_id,
             permissions=UNMUTE_PERMISSIONS,
         )
+        clear_active_mute(scope_chat_id, target_id)
 
         if not await wait_for_mute_state(context, scope_chat_id, target_id, False):
             await query.answer("⚠️ Telegram zeigt den User noch kurz als gemutet. Bitte direkt nochmal prüfen.", show_alert=True)
@@ -1831,6 +1839,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 user_id=target_id,
                 permissions=UNMUTE_PERMISSIONS,
             )
+            clear_active_mute(scope_chat_id, target_id)
             if not await wait_for_mute_state(context, scope_chat_id, target_id, False):
                 await query.answer("⚠️ Telegram zeigt den User noch kurz als gemutet. Bitte direkt nochmal prüfen.", show_alert=True)
                 return
@@ -3687,6 +3696,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                             permissions=ChatPermissions.no_permissions(),
                             until_date=until_date,
                         )
+                        set_active_mute(chat_id_val, target_id, until_date.timestamp() if until_date else None)
                         until_str = until_date.strftime("%d.%m.%y um %H:%M")
                         action_label = f"• <b>Aktion:</b> Stummgeschaltet 🤫\n• <b>Bis:</b> {until_str}"
                 except Exception as e:
@@ -3770,6 +3780,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     chat_id=chat_id_val, user_id=target_id,
                     permissions=ChatPermissions.no_permissions(),
                 )
+                set_active_mute(chat_id_val, target_id)
                 result_text = f"📛 [{target_id}] wurde gemutet."
         except Exception as e:
             result_text = f"⚠️ Fehler: {e}"
@@ -4553,6 +4564,7 @@ async def mute_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             permissions=ChatPermissions.no_permissions(),
             until_date=until_date,
         )
+        set_active_mute(chat.id, target_id, until_date.timestamp() if until_date else None)
 
         # Look up username
         tracked = lookup_user(str(target_id))
@@ -4609,6 +4621,7 @@ async def unmute_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             user_id=target_id,
             permissions=UNMUTE_PERMISSIONS,
         )
+        clear_active_mute(chat.id, target_id)
 
         if not await wait_for_mute_state(context, chat.id, target_id, False):
             await update.message.reply_text("⚠️ Unmute wurde gesendet, aber Telegram zeigt den User noch kurz als gemutet. Bitte direkt nochmal prüfen.")
@@ -4862,6 +4875,7 @@ async def warn_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         permissions=ChatPermissions.no_permissions(),
                         until_date=until_date,
                     )
+                    set_active_mute(chat.id, target_id, until_date.timestamp() if until_date else None)
                     until_str = until_date.strftime("%d.%m.%y um %H:%M")
                     action_label = f"• <b>Aktion:</b> Stummgeschaltet 🤫\n• <b>Bis:</b> {until_str}"
             except Exception as e:
@@ -5469,6 +5483,7 @@ async def track_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                                 )
                             elif lc_punishment == "mute":
                                 await context.bot.restrict_chat_member(chat_id=chat_id_as, user_id=user_id_as, permissions=ChatPermissions.no_permissions())
+                                set_active_mute(chat_id_as, user_id_as)
                                 keyboard_as = InlineKeyboardMarkup([
                                     [InlineKeyboardButton("✅ Unmute", callback_data=f"cmd_unmute_{chat_id_as}_{user_id_as}")]
                                 ])
@@ -5683,6 +5698,7 @@ async def track_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                                 await context.bot.unban_chat_member(chat_id=chat_id, user_id=adder_id, only_if_banned=True)
                             elif punishment == "mute":
                                 await context.bot.restrict_chat_member(chat_id=chat_id, user_id=adder_id, permissions=ChatPermissions.no_permissions())
+                                set_active_mute(chat_id, adder_id)
                             elif punishment == "warn":
                                 # Add a warning (use proper dict format)
                                 warnings_sb = bot_data_sb.setdefault("warnings", {})
