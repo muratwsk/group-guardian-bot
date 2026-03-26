@@ -4956,7 +4956,7 @@ async def personal_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def unpersonal_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Delete a personal command. Usage: /unpersonal <name>"""
     user_id = update.effective_user.id
-    if not is_authorized(user_id):
+    if not await is_group_authorized(context, user_id, update.effective_chat):
         await update.message.reply_text("⛔ Kein Zugriff.")
         return
 
