@@ -9,6 +9,7 @@ import signal
 import subprocess
 import time
 from zoneinfo import ZoneInfo
+import re
 
 
 BERLIN_TZ = ZoneInfo("Europe/Berlin")
@@ -46,6 +47,33 @@ ADMIN_CACHE_TTL_SEC = 30
 USER_TRACK_LAST_SAVE = {}
 USER_TRACK_SAVE_INTERVAL_SEC = 20
 ACTION_DEDUPE_TTL_SEC = 4.0
+
+# --- Duration parser for time-based mute/ban ---
+DURATION_PATTERN = re.compile(r"(\d+)\s*(m|min|h|std|d|t|w)\b", re.IGNORECASE)
+DURATION_UNITS = {
+    "m": 60, "min": 60,
+    "h": 3600, "std": 3600,
+    "d": 86400, "t": 86400,
+    "w": 604800,
+}
+
+def parse_duration(args: list[str]) -> tuple[list[str], int | None, str | None]:
+    """Extract a duration like '2h' or '30m' from args.
+    Returns (remaining_args, seconds, human_label)."""
+    text = " ".join(args)
+    match = DURATION_PATTERN.search(text)
+    if not match:
+        return args, None, None
+    amount = int(match.group(1))
+    unit_key = match.group(2).lower()
+    seconds = amount * DURATION_UNITS.get(unit_key, 60)
+    # Build human label
+    unit_labels = {"m": "Min", "min": "Min", "h": "Std", "std": "Std", "d": "Tag(e)", "t": "Tag(e)", "w": "Woche(n)"}
+    label = f"{amount} {unit_labels.get(unit_key, unit_key)}"
+    # Remove the duration from args
+    cleaned = text[:match.start()] + text[match.end():]
+    remaining = cleaned.split()
+    return remaining, seconds, label
 
 
 def normalize_data(data):
@@ -4357,9 +4385,31 @@ async def info_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("⛔ Kein Zugriff.")
         return
 
-    target_id, target_name = await resolve_target(update, context)
+    # For /info, prioritise explicit args over reply (so /info ID always shows THAT user)
+    target_id = None
+    target_name = None
+    if context.args and len(context.args) > 0:
+        arg = context.args[0].lstrip("@")
+        try:
+            target_id = int(arg)
+            tracked = lookup_user(arg)
+            target_name = tracked["name"] if tracked else str(target_id)
+        except ValueError:
+            tracked = lookup_user(arg)
+            if tracked:
+                target_id = tracked["id"]
+                target_name = tracked.get("name", arg)
+            else:
+                await update.message.reply_text(
+                    f"⚠️ `@{arg}` ist dem Bot noch nicht bekannt.",
+                    parse_mode="Markdown",
+                )
+                return
     if target_id is None:
-        return
+        # Fallback to reply
+        target_id, target_name = await resolve_target(update, context)
+        if target_id is None:
+            return
 
     tracked = lookup_user(str(target_id))
     username = tracked.get("username") if tracked else None
@@ -4471,13 +4521,19 @@ async def mute_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         args = args[1:]  # first arg was the target
     elif args and update.message.reply_to_message and (args[0].startswith("@") or args[0].isdigit()):
         args = args[1:]
+    # Parse duration (e.g. "2h", "30m")
+    args, duration_sec, duration_label = parse_duration(args)
     reason = " ".join(args) if args else None
+    until_date = None
+    if duration_sec:
+        until_date = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(seconds=duration_sec)
 
     try:
         await context.bot.restrict_chat_member(
             chat_id=chat.id,
             user_id=target_id,
             permissions=ChatPermissions.no_permissions(),
+            until_date=until_date,
         )
 
         # Look up username
@@ -4485,6 +4541,7 @@ async def mute_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         target_username = tracked.get("username") if tracked else None
         uname = f"@{target_username} " if target_username else ""
 
+        duration_text = f"\n⏱ <b>Dauer:</b> {duration_label}" if duration_label else ""
         reason_text = f"\n📝 <b>Grund:</b> {html.escape(reason)}" if reason else ""
 
         keyboard = InlineKeyboardMarkup([
@@ -4495,11 +4552,11 @@ async def mute_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ])
 
         await update.message.reply_text(
-            f"{uname}[<code>{target_id}</code>] wurde 🔇 stummgeschaltet.{reason_text}",
+            f"{uname}[<code>{target_id}</code>] wurde 🔇 stummgeschaltet.{duration_text}{reason_text}",
             reply_markup=keyboard,
             parse_mode="HTML",
         )
-        await log_action(context, f"🔇 Mute: {target_name} [{target_id}] in {chat.title} von {update.effective_user.first_name}" + (f" | Grund: {reason}" if reason else ""), group_id=chat.id, group_name=chat.title)
+        await log_action(context, f"🔇 Mute: {target_name} [{target_id}] in {chat.title} von {update.effective_user.first_name}" + (f" | {duration_label}" if duration_label else "") + (f" | Grund: {reason}" if reason else ""), group_id=chat.id, group_name=chat.title)
     except Exception as e:
         await update.message.reply_text(f"❌ Mute fehlgeschlagen: {e}")
 
@@ -4583,6 +4640,7 @@ async def kick_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         # Ban and immediately unban = kick (user can rejoin)
         await context.bot.ban_chat_member(chat_id=chat.id, user_id=target_id)
+        await asyncio.sleep(1.0)  # Wait for ban to propagate before unban
         await context.bot.unban_chat_member(chat_id=chat.id, user_id=target_id, only_if_banned=True)
 
         reason_text = f"\n📝 <b>Grund:</b> {html.escape(reason)}" if reason else ""
@@ -4631,26 +4689,32 @@ async def ban_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         args = args[1:]
     elif args and update.message.reply_to_message and (args[0].startswith("@") or args[0].isdigit()):
         args = args[1:]
+    # Parse duration (e.g. "2h", "30m")
+    args, duration_sec, duration_label = parse_duration(args)
     reason = " ".join(args) if args else None
+    until_date = None
+    if duration_sec:
+        until_date = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(seconds=duration_sec)
 
     tracked = lookup_user(str(target_id))
     target_username = tracked.get("username") if tracked else None
 
     try:
-        await context.bot.ban_chat_member(chat_id=chat.id, user_id=target_id, revoke_messages=True)
+        await context.bot.ban_chat_member(chat_id=chat.id, user_id=target_id, revoke_messages=True, until_date=until_date)
         remember_group_ban([chat.id], target_id, target_name, target_username)
 
         uname = f"@{target_username} " if target_username else ""
+        duration_text = f"\n⏱ <b>Dauer:</b> {duration_label}" if duration_label else ""
         reason_text = f"\n📝 <b>Grund:</b> {html.escape(reason)}" if reason else ""
         keyboard = InlineKeyboardMarkup([
             [InlineKeyboardButton("✅ Entsperren", callback_data=f"cmd_unban_{chat.id}_{target_id}")]
         ])
         await update.message.reply_text(
-            f"{uname}[<code>{target_id}</code>] verbannt.{reason_text}",
+            f"{uname}[<code>{target_id}</code>] verbannt.{duration_text}{reason_text}",
             parse_mode="HTML",
             reply_markup=keyboard,
         )
-        await log_action(context, f"🚫 Ban: {target_name} [{target_id}] in {chat.title} von {update.effective_user.first_name}" + (f" | Grund: {reason}" if reason else ""), group_id=chat.id, group_name=chat.title)
+        await log_action(context, f"🚫 Ban: {target_name} [{target_id}] in {chat.title} von {update.effective_user.first_name}" + (f" | {duration_label}" if duration_label else "") + (f" | Grund: {reason}" if reason else ""), group_id=chat.id, group_name=chat.title)
     except Exception as e:
         await update.message.reply_text(f"❌ Ban fehlgeschlagen: {e}")
 
