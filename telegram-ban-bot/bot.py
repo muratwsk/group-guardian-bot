@@ -6977,12 +6977,33 @@ def remove_scheduled_job(context, sched_id):
 
 async def post_init(application):
     """Called after the application is initialized. Restore scheduled jobs."""
-    # Remove bot command menu so users can't see/spam commands via "/"
+    # Remove bot command menu in groups so normal users can't spam "/"
+    # But keep commands visible in private chat (for admins)
+    from telegram import BotCommandScopeAllGroupChats, BotCommandScopeAllPrivateChats, BotCommand
     try:
-        await application.bot.delete_my_commands(scope=None)
-        logger.info("Bot command menu cleared (no commands shown on '/')")
+        await application.bot.delete_my_commands(scope=BotCommandScopeAllGroupChats())
+        logger.info("Bot command menu cleared for group chats")
     except Exception as e:
-        logger.warning(f"Could not delete bot commands: {e}")
+        logger.warning(f"Could not delete group bot commands: {e}")
+    
+    # Set commands for private chats (admin usage)
+    try:
+        admin_commands = [
+            BotCommand("start", "Bot starten"),
+            BotCommand("settings", "Einstellungen"),
+            BotCommand("ban", "User bannen"),
+            BotCommand("unban", "User entbannen"),
+            BotCommand("warn", "User verwarnen"),
+            BotCommand("mute", "User muten"),
+            BotCommand("kick", "User kicken"),
+            BotCommand("del", "Nachricht löschen"),
+            BotCommand("send", "Anonyme Nachricht senden"),
+            BotCommand("banall", "User in allen Gruppen bannen"),
+        ]
+        await application.bot.set_my_commands(admin_commands, scope=BotCommandScopeAllPrivateChats())
+        logger.info("Bot commands set for private chats (admins)")
+    except Exception as e:
+        logger.warning(f"Could not set private chat commands: {e}")
 
     bot_data = load_data()
     count = 0
