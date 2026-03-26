@@ -7327,6 +7327,11 @@ def main():
         delete_service_message
     ), group=4)
 
+    # Global error handler to log uncaught exceptions
+    async def error_handler(update, context):
+        logger.error(f"Unhandled exception: {context.error}", exc_info=context.error)
+    app.add_error_handler(error_handler)
+
     if not app.job_queue:
         logger.error(
             "JobQueue unavailable. Repeating messages need python-telegram-bot[job-queue] / APScheduler installed."
