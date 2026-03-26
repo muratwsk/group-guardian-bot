@@ -5533,10 +5533,15 @@ async def track_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                             elif punishment == "mute":
                                 await context.bot.restrict_chat_member(chat_id=chat_id, user_id=adder_id, permissions=ChatPermissions.no_permissions())
                             elif punishment == "warn":
-                                # Add a warning
+                                # Add a warning (use proper dict format)
                                 warnings_sb = bot_data_sb.setdefault("warnings", {})
                                 key = f"{chat_id}_{adder_id}"
-                                warnings_sb[key] = warnings_sb.get(key, 0) + 1
+                                warn_entry = warnings_sb.get(key, {"count": 0, "name": adder_name})
+                                if not isinstance(warn_entry, dict):
+                                    warn_entry = {"count": int(warn_entry) if isinstance(warn_entry, (int, float)) else 0, "name": adder_name}
+                                warn_entry["count"] = warn_entry.get("count", 0) + 1
+                                warn_entry["name"] = adder_name
+                                warnings_sb[key] = warn_entry
                                 save_data(bot_data_sb)
                         except Exception as e:
                             logger.error(f"Bot-Sperren punishment failed for {adder_id}: {e}")
