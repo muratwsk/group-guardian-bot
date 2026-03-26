@@ -4606,6 +4606,15 @@ async def unban_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if target_id is None:
         return
 
+    # Prüfen ob User tatsächlich gebannt ist
+    try:
+        member = await context.bot.get_chat_member(chat.id, target_id)
+        if member.status != "kicked":
+            await update.message.reply_text("ℹ️ Dieser User ist nicht gebannt.")
+            return
+    except Exception:
+        pass
+
     tracked = lookup_user(str(target_id))
     target_username = tracked.get("username") if tracked else None
 
