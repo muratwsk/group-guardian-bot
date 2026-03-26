@@ -208,6 +208,32 @@ def get_tracked_banned_user_ids(group_id: int) -> list[int]:
 
 
 
+async def auto_delete_command(update: Update, context):
+    """Auto-delete the command message if cmd_delete is configured for the sender."""
+    if not update.message or not update.message.text or not update.effective_chat:
+        return
+    chat = update.effective_chat
+    if chat.type not in ("group", "supergroup"):
+        return
+    msg_text = update.message.text
+    first_char = msg_text[0] if msg_text else ""
+    rest = msg_text[1:] if len(msg_text) > 1 else ""
+    if not (first_char in ["/", "!", ";", "."] and rest and rest[0].isalpha()):
+        return
+    try:
+        bot_data_cd = load_data()
+        cd = bot_data_cd.get("cmd_delete", {"admin_prefixes": [], "user_prefixes": []})
+        sender = update.message.from_user
+        if not sender:
+            return
+        is_adm = await is_chat_admin(context, chat.id, sender.id)
+        prefixes = cd.get("admin_prefixes", []) if is_adm else cd.get("user_prefixes", [])
+        if first_char in prefixes:
+            await update.message.delete()
+            logger.info(f"Auto-deleted command '{msg_text[:30]}' from {'admin' if is_adm else 'user'} {sender.id} in {chat.id}")
+    except Exception as e:
+        logger.error(f"Cmd auto-delete failed: {e}")
+
 
 def track_user(user, group_id=None):
     """Track a user's username → ID mapping, per-group message count, and first seen date."""
@@ -4223,6 +4249,7 @@ async def resolve_target(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def info_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Show user info card with group-specific moderation buttons and separate BanALL."""
+    await auto_delete_command(update, context)
     user_id = update.effective_user.id
     if not await is_group_authorized(context, user_id, update.effective_chat):
         await update.message.reply_text("⛔ Kein Zugriff.")
@@ -4309,6 +4336,7 @@ async def info_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def mute_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Mute a user in the group. Usage: /mute [reason] (reply to a message)."""
+    await auto_delete_command(update, context)
     user_id = update.effective_user.id
     if not await is_group_authorized(context, user_id, update.effective_chat):
         return
@@ -4367,6 +4395,7 @@ async def mute_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def unmute_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Unmute a user in the group. Usage: /unmute (reply to a message)."""
+    await auto_delete_command(update, context)
     user_id = update.effective_user.id
     if not await is_group_authorized(context, user_id, update.effective_chat):
         return
@@ -4404,6 +4433,7 @@ async def unmute_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def kick_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Kick a user from the group (they can rejoin). Usage: /kick [reason] (reply to a message)."""
+    await auto_delete_command(update, context)
     user_id = update.effective_user.id
     if not await is_group_authorized(context, user_id, update.effective_chat):
         return
@@ -4448,6 +4478,7 @@ async def kick_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def ban_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Ban a user from the current group. Usage: /ban [reason] (reply to a message)."""
+    await auto_delete_command(update, context)
     user_id = update.effective_user.id
     if not await is_group_authorized(context, user_id, update.effective_chat):
         return
@@ -4498,6 +4529,7 @@ async def ban_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def unban_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Unban a user from the current group. Usage: /unban (reply to a message or /unban @username or /unban user_id)."""
+    await auto_delete_command(update, context)
     user_id = update.effective_user.id
     if not await is_group_authorized(context, user_id, update.effective_chat):
         return
@@ -4533,6 +4565,7 @@ async def unban_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def warn_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Warn a user. Usage: /warn [reason] (reply to a message)."""
+    await auto_delete_command(update, context)
     user_id = update.effective_user.id
     if not await is_group_authorized(context, user_id, update.effective_chat):
         return
@@ -4644,6 +4677,7 @@ async def warn_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def unwarn_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Remove a warn from a user. Usage: /unwarn (reply to a message)."""
+    await auto_delete_command(update, context)
     user_id = update.effective_user.id
     if not await is_group_authorized(context, user_id, update.effective_chat):
         return
@@ -4680,6 +4714,7 @@ async def unwarn_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def free_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Grant a user the 'Befreiter' role — exempt from link filter, forward filter, forbidden words."""
+    await auto_delete_command(update, context)
     user_id = update.effective_user.id
     if not await is_group_authorized(context, user_id, update.effective_chat):
         await update.message.reply_text("⛔ Kein Zugriff.")
@@ -4717,6 +4752,7 @@ async def free_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def unfree_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Revoke the 'Befreiter' role from a user."""
+    await auto_delete_command(update, context)
     user_id = update.effective_user.id
     if not await is_group_authorized(context, user_id, update.effective_chat):
         await update.message.reply_text("⛔ Kein Zugriff.")
@@ -4748,6 +4784,7 @@ async def unfree_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def multidel_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Delete all messages from the replied-to message up to the /multidel command message."""
+    await auto_delete_command(update, context)
     user_id = update.effective_user.id
     if not await is_group_authorized(context, user_id, update.effective_chat):
         await update.message.reply_text("⛔ Kein Zugriff.")
@@ -4797,6 +4834,7 @@ async def multidel_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def banall(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await auto_delete_command(update, context)
     if not is_authorized(update.effective_user.id):
         await update.message.reply_text("⛔ Kein Zugriff.")
         return
@@ -4840,6 +4878,7 @@ async def banall(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # --- /unbanall ---
 
 async def unbanall(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await auto_delete_command(update, context)
     if not is_authorized(update.effective_user.id):
         await update.message.reply_text("⛔ Kein Zugriff.")
         return
@@ -4877,6 +4916,7 @@ async def unbanall(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def personal_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Save a replied-to message as a personal command. Usage: /personal <name> (reply to a message)."""
+    await auto_delete_command(update, context)
     user_id = update.effective_user.id
     if not await is_group_authorized(context, user_id, update.effective_chat):
         await update.message.reply_text("⛔ Kein Zugriff.")
@@ -4971,6 +5011,7 @@ async def personal_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def unpersonal_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Delete a personal command. Usage: /unpersonal <name>"""
+    await auto_delete_command(update, context)
     user_id = update.effective_user.id
     if not await is_group_authorized(context, user_id, update.effective_chat):
         await update.message.reply_text("⛔ Kein Zugriff.")
