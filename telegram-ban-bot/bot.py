@@ -774,6 +774,11 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = query.from_user.id
     data = query.data
 
+    if data and any(data.startswith(prefix) for prefix in ("info_", "cmd_")):
+        scope_chat_id = query.message.chat.id if query.message and query.message.chat else None
+        if scope_chat_id is not None and should_skip_recent_action(context, f"button:{data}:{query.from_user.id}:{scope_chat_id}"):
+            return
+
     # Group-context moderation buttons allow Telegram group admins
     group_button_prefixes = (
         "info_",
@@ -1625,13 +1630,9 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
 
         # Prüfen ob bereits gebannt
-        try:
-            member = await context.bot.get_chat_member(scope_chat_id, target_id)
-            if member.status == "kicked":
-                await query.answer("ℹ️ Dieser User ist bereits gebannt.", show_alert=True)
-                return
-        except Exception:
-            pass
+        if await is_user_currently_banned(context, scope_chat_id, target_id):
+            await query.answer("ℹ️ Dieser User ist bereits gebannt.", show_alert=True)
+            return
 
         await context.bot.ban_chat_member(chat_id=scope_chat_id, user_id=target_id, revoke_messages=True)
         remember_group_ban([scope_chat_id], target_id, target_name, target_username)
@@ -1657,13 +1658,9 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         target_username = tracked.get("username") if tracked else None
 
         # Prüfen ob tatsächlich gebannt
-        try:
-            member = await context.bot.get_chat_member(scope_chat_id, target_id)
-            if member.status != "kicked":
-                await query.answer("ℹ️ Dieser User ist nicht gebannt.", show_alert=True)
-                return
-        except Exception:
-            pass
+        if not await is_user_currently_banned(context, scope_chat_id, target_id):
+            await query.answer("ℹ️ Dieser User ist nicht gebannt.", show_alert=True)
+            return
 
         await context.bot.unban_chat_member(chat_id=scope_chat_id, user_id=target_id, only_if_banned=True)
         forget_group_ban([scope_chat_id], target_id)
@@ -1695,13 +1692,9 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
 
         # Prüfen ob bereits gemutet
-        try:
-            member = await context.bot.get_chat_member(scope_chat_id, target_id)
-            if member.status == "restricted" and not member.can_send_messages:
-                await query.answer("ℹ️ Dieser User ist bereits stummgeschaltet.", show_alert=True)
-                return
-        except Exception:
-            pass
+        if await is_user_currently_muted(context, scope_chat_id, target_id):
+            await query.answer("ℹ️ Dieser User ist bereits stummgeschaltet.", show_alert=True)
+            return
 
         await context.bot.restrict_chat_member(
             chat_id=scope_chat_id,
@@ -1731,13 +1724,9 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         target_username = tracked.get("username") if tracked else None
 
         # Prüfen ob tatsächlich gemutet
-        try:
-            member = await context.bot.get_chat_member(scope_chat_id, target_id)
-            if not (member.status == "restricted" and not member.can_send_messages):
-                await query.answer("ℹ️ Dieser User ist nicht stummgeschaltet.", show_alert=True)
-                return
-        except Exception:
-            pass
+        if not await is_user_currently_muted(context, scope_chat_id, target_id):
+            await query.answer("ℹ️ Dieser User ist nicht stummgeschaltet.", show_alert=True)
+            return
 
         chat = await context.bot.get_chat(scope_chat_id)
         await context.bot.restrict_chat_member(
@@ -1767,6 +1756,10 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         target_name = tracked.get("name", str(target_id)) if tracked else str(target_id)
         target_username = tracked.get("username") if tracked else None
 
+        if not await is_user_currently_muted(context, scope_chat_id, target_id):
+            await query.answer("ℹ️ Dieser User ist nicht stummgeschaltet.", show_alert=True)
+            return
+
         try:
             chat_obj = await context.bot.get_chat(scope_chat_id)
             await context.bot.restrict_chat_member(
@@ -1792,6 +1785,10 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         tracked = lookup_user(str(target_id))
         target_name = tracked.get("name", str(target_id)) if tracked else str(target_id)
         target_username = tracked.get("username") if tracked else None
+
+        if not await is_user_currently_banned(context, scope_chat_id, target_id):
+            await query.answer("ℹ️ Dieser User ist nicht gebannt.", show_alert=True)
+            return
 
         try:
             await context.bot.unban_chat_member(chat_id=scope_chat_id, user_id=target_id, only_if_banned=True)
@@ -7147,7 +7144,7 @@ def main():
     except Exception:
         pass
 
-    app = Application.builder().token(token).concurrent_updates(True).post_init(post_init).build()
+    app = Application.builder().token(token).concurrent_updates(False).post_init(post_init).build()
 
     app.add_handler(CommandHandler("reload", reload_command))
     app.add_handler(CommandHandler("start", start))
