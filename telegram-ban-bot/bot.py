@@ -4399,31 +4399,9 @@ async def info_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("⛔ Kein Zugriff.")
         return
 
-    # For /info, prioritise explicit args over reply (so /info ID always shows THAT user)
-    target_id = None
-    target_name = None
-    if context.args and len(context.args) > 0:
-        arg = context.args[0].lstrip("@")
-        try:
-            target_id = int(arg)
-            tracked = lookup_user(arg)
-            target_name = tracked["name"] if tracked else str(target_id)
-        except ValueError:
-            tracked = lookup_user(arg)
-            if tracked:
-                target_id = tracked["id"]
-                target_name = tracked.get("name", arg)
-            else:
-                await update.message.reply_text(
-                    f"⚠️ `@{arg}` ist dem Bot noch nicht bekannt.",
-                    parse_mode="Markdown",
-                )
-                return
+    target_id, target_name = await resolve_target(update, context)
     if target_id is None:
-        # Fallback to reply
-        target_id, target_name = await resolve_target(update, context)
-        if target_id is None:
-            return
+        return
 
     tracked = lookup_user(str(target_id))
     username = tracked.get("username") if tracked else None
