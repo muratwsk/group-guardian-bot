@@ -208,14 +208,23 @@ def get_tracked_banned_user_ids(group_id: int) -> list[int]:
 
 
 
-async def _delete_message_later(bot, chat_id: int, message_id: int, preview: str = "", delay: float = 1.0):
-    """Delete a command message shortly after handler execution finished."""
-    try:
-        await asyncio.sleep(delay)
-        await bot.delete_message(chat_id=chat_id, message_id=message_id)
-        logger.info(f"Auto-deleted command '{preview}' in {chat_id}")
-    except Exception as e:
-        logger.error(f"Delayed cmd delete failed in {chat_id} for {message_id}: {e}")
+async def _delete_message_later(bot, chat_id: int, message_id: int, preview: str = "", delay: float = 0.5):
+    """Delete a command message shortly after handler execution finished, with retry."""
+    await asyncio.sleep(delay)
+    for attempt in range(3):
+        try:
+            await bot.delete_message(chat_id=chat_id, message_id=message_id)
+            logger.info(f"Auto-deleted command '{preview}' in {chat_id}")
+            return
+        except Exception as e:
+            if "message to delete not found" in str(e).lower() or "message can't be deleted" in str(e).lower():
+                logger.info(f"Message {message_id} already gone or can't delete in {chat_id}")
+                return
+            if attempt < 2:
+                logger.warning(f"Cmd delete attempt {attempt+1} failed for {message_id} in {chat_id}: {e}, retrying...")
+                await asyncio.sleep(1.0)
+            else:
+                logger.error(f"Cmd delete failed after 3 attempts for {message_id} in {chat_id}: {e}")
 
 
 async def auto_delete_command(update: Update, context):
