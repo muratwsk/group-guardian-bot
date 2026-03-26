@@ -4551,6 +4551,15 @@ async def ban_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("⛔ Dieser User ist ein Administrator — Ban ist nicht möglich.")
         return
 
+    # Prüfen ob User bereits gebannt ist
+    try:
+        member = await context.bot.get_chat_member(chat.id, target_id)
+        if member.status == "kicked":
+            await update.message.reply_text("ℹ️ Dieser User ist bereits gebannt.")
+            return
+    except Exception:
+        pass
+
     args = list(context.args) if context.args else []
     if args and not update.message.reply_to_message:
         args = args[1:]
