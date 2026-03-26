@@ -5110,18 +5110,12 @@ async def banall(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     lines = []
     if success_count:
-        lines.append(f"✅ *{target_name}* (`{target_id}`) in {success_count}/{len(groups)} Gruppen gebannt:\n")
-        for g in successful_groups:
-            lines.append(f"✅ {g['title']}")
+        lines.append(f"✅ *{target_name}* (`{target_id}`) in {success_count}/{len(groups)} Gruppen gebannt.")
     else:
         lines.append(f"⚠️ {target_id} konnte in keiner Gruppe gebannt werden.")
 
     if fail_count:
-        lines.append("")
-        for g in failed_groups[:8]:
-            lines.append(f"❌ {g['title']}")
-        if fail_count > 8:
-            lines.append(f"… und {fail_count - 8} weitere Fehler")
+        lines.append(f"❌ {fail_count} Gruppen fehlgeschlagen.")
 
     await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
     await log_action(
