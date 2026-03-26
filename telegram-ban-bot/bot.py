@@ -7,6 +7,7 @@ import logging
 import os
 import signal
 import subprocess
+import time
 from zoneinfo import ZoneInfo
 
 
@@ -44,6 +45,7 @@ ADMIN_STATUS_CACHE = {}
 ADMIN_CACHE_TTL_SEC = 30
 USER_TRACK_LAST_SAVE = {}
 USER_TRACK_SAVE_INTERVAL_SEC = 20
+ACTION_DEDUPE_TTL_SEC = 4.0
 
 
 def normalize_data(data):
@@ -172,6 +174,39 @@ def is_banned_in_group(group_id, user_id):
     data = load_data()
     group_bans = data.get("banned_users", {}).get(str(group_id), {})
     return str(user_id) in group_bans
+
+
+def should_skip_recent_action(context: ContextTypes.DEFAULT_TYPE, action_key: str, ttl_sec: float = ACTION_DEDUPE_TTL_SEC) -> bool:
+    """Return True if the same moderation action was already triggered moments ago."""
+    recent_actions = context.application.bot_data.setdefault("_recent_action_keys", {})
+    now = time.monotonic()
+
+    for key, expires_at in list(recent_actions.items()):
+        if expires_at <= now:
+            recent_actions.pop(key, None)
+
+    if recent_actions.get(action_key, 0.0) > now:
+        logger.info(f"Skipped duplicate action: {action_key}")
+        return True
+
+    recent_actions[action_key] = now + ttl_sec
+    return False
+
+
+async def is_user_currently_muted(context: ContextTypes.DEFAULT_TYPE, chat_id: int, user_id: int) -> bool:
+    try:
+        member = await context.bot.get_chat_member(chat_id, user_id)
+        return member.status == "restricted" and not member.can_send_messages
+    except Exception:
+        return False
+
+
+async def is_user_currently_banned(context: ContextTypes.DEFAULT_TYPE, chat_id: int, user_id: int) -> bool:
+    try:
+        member = await context.bot.get_chat_member(chat_id, user_id)
+        return member.status == "kicked"
+    except Exception:
+        return is_banned_in_group(chat_id, user_id)
 
 
 async def ban_user_in_groups(context: ContextTypes.DEFAULT_TYPE, groups: list, target_id: int):
@@ -4420,19 +4455,18 @@ async def mute_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if target_id is None:
         return
 
+    if should_skip_recent_action(context, f"mute:{chat.id}:{target_id}"):
+        return
+
     # Admin-Schutz
     if await is_chat_admin(context, chat.id, target_id):
         await update.message.reply_text("⛔ Dieser User ist ein Administrator — Mute ist nicht möglich.")
         return
 
     # Prüfen ob User bereits gemutet ist
-    try:
-        member = await context.bot.get_chat_member(chat.id, target_id)
-        if member.status == "restricted" and not member.can_send_messages:
-            await update.message.reply_text("ℹ️ Dieser User ist bereits stummgeschaltet.")
-            return
-    except Exception:
-        pass
+    if await is_user_currently_muted(context, chat.id, target_id):
+        await update.message.reply_text("ℹ️ Dieser User ist bereits stummgeschaltet.")
+        return
 
     args = list(context.args) if context.args else []
     # Strip the first arg if it was used to resolve the target (@username or numeric ID)
@@ -4488,15 +4522,13 @@ async def unmute_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if target_id is None:
         return
 
+    if should_skip_recent_action(context, f"unmute:{chat.id}:{target_id}"):
+        return
+
     # Prüfen ob User tatsächlich gemutet ist
-    try:
-        member = await context.bot.get_chat_member(chat.id, target_id)
-        is_actually_muted = (member.status == "restricted" and not member.can_send_messages)
-        if not is_actually_muted:
-            await update.message.reply_text("ℹ️ Dieser User ist nicht stummgeschaltet.")
-            return
-    except Exception:
-        pass
+    if not await is_user_currently_muted(context, chat.id, target_id):
+        await update.message.reply_text("ℹ️ Dieser User ist nicht stummgeschaltet.")
+        return
 
     try:
         chat_obj = await context.bot.get_chat(chat.id)
@@ -4534,6 +4566,9 @@ async def kick_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     target_id, target_name = await resolve_target(update, context)
     if target_id is None:
+        return
+
+    if should_skip_recent_action(context, f"kick:{chat.id}:{target_id}"):
         return
 
     # Admin-Schutz
@@ -4581,19 +4616,18 @@ async def ban_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if target_id is None:
         return
 
+    if should_skip_recent_action(context, f"ban:{chat.id}:{target_id}"):
+        return
+
     # Admin-Schutz
     if await is_chat_admin(context, chat.id, target_id):
         await update.message.reply_text("⛔ Dieser User ist ein Administrator — Ban ist nicht möglich.")
         return
 
     # Prüfen ob User bereits gebannt ist
-    try:
-        member = await context.bot.get_chat_member(chat.id, target_id)
-        if member.status == "kicked":
-            await update.message.reply_text("ℹ️ Dieser User ist bereits gebannt.")
-            return
-    except Exception:
-        pass
+    if await is_user_currently_banned(context, chat.id, target_id):
+        await update.message.reply_text("ℹ️ Dieser User ist bereits gebannt.")
+        return
 
     args = list(context.args) if context.args else []
     if args and not update.message.reply_to_message:
@@ -4641,14 +4675,13 @@ async def unban_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if target_id is None:
         return
 
+    if should_skip_recent_action(context, f"unban:{chat.id}:{target_id}"):
+        return
+
     # Prüfen ob User tatsächlich gebannt ist
-    try:
-        member = await context.bot.get_chat_member(chat.id, target_id)
-        if member.status != "kicked":
-            await update.message.reply_text("ℹ️ Dieser User ist nicht gebannt.")
-            return
-    except Exception:
-        pass
+    if not await is_user_currently_banned(context, chat.id, target_id):
+        await update.message.reply_text("ℹ️ Dieser User ist nicht gebannt.")
+        return
 
     tracked = lookup_user(str(target_id))
     target_username = tracked.get("username") if tracked else None
