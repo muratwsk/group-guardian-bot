@@ -7155,6 +7155,15 @@ def remove_scheduled_job(context, sched_id):
 
 async def post_init(application):
     """Called after the application is initialized. Restore scheduled jobs."""
+    # Pre-cache bot username so resolve_target never needs a slow get_me() call
+    global BOT_USERNAME_CACHE
+    try:
+        me = await application.bot.get_me()
+        BOT_USERNAME_CACHE = me.username
+        logger.info(f"Bot username cached: @{BOT_USERNAME_CACHE}")
+    except Exception as e:
+        logger.error(f"Failed to cache bot username: {e}")
+
     # Command menu: only visible for admins/private chats, hidden for normal group members
     from telegram import (
         BotCommandScopeDefault,
