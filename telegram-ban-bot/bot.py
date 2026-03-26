@@ -5095,11 +5095,17 @@ async def banall(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if target_id is None:
             return
 
-        chat_id = update.effective_chat.id
+        chat = update.effective_chat
+        chat_id = chat.id
+        thread_id = getattr(update.effective_message, "message_thread_id", None)
+        send_kwargs = {"chat_id": chat_id}
+        if thread_id is not None:
+            send_kwargs["message_thread_id"] = thread_id
+
         groups = await get_bot_groups(context)
         if not groups:
             try:
-                await context.bot.send_message(chat_id=chat_id, text="Keine Gruppen registriert.")
+                await context.bot.send_message(text="Keine Gruppen registriert.", **send_kwargs)
             except Exception:
                 pass
             return
@@ -5115,7 +5121,7 @@ async def banall(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         lines = []
         if success_count:
-            lines.append(f"✅ <b>{html.escape(target_name)}</b> (<code>{target_id}</code>) in {success_count}/{len(groups)} Gruppen gebannt.")
+            lines.append(f"✅ Erfolgreich gebannt in <b>{success_count}/{len(groups)}</b> Gruppen")
         else:
             lines.append(f"⚠️ {target_id} konnte in keiner Gruppe gebannt werden.")
 
@@ -5123,13 +5129,17 @@ async def banall(update: Update, context: ContextTypes.DEFAULT_TYPE):
             lines.append(f"❌ {fail_count} Gruppen fehlgeschlagen.")
 
         try:
-            await context.bot.send_message(chat_id=chat_id, text="\n".join(lines), parse_mode="HTML")
+            await context.bot.send_message(text="\n".join(lines), parse_mode="HTML", **send_kwargs)
         except Exception as e:
             logger.error(f"banall send_message error: {e}")
 
+        source_group_id = chat.id if chat and chat.type in ("group", "supergroup") else None
+        source_group_name = chat.title if source_group_id else None
         await log_action(
             context,
             f"BANALL: {target_name} ({target_id}) von {update.effective_user.full_name} — {success_count} OK, {fail_count} Fehler",
+            group_id=source_group_id,
+            group_name=source_group_name,
         )
         for group in successful_groups:
             await log_action(
@@ -5153,11 +5163,17 @@ async def unbanall(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if target_id is None:
             return
 
-        chat_id = update.effective_chat.id
+        chat = update.effective_chat
+        chat_id = chat.id
+        thread_id = getattr(update.effective_message, "message_thread_id", None)
+        send_kwargs = {"chat_id": chat_id}
+        if thread_id is not None:
+            send_kwargs["message_thread_id"] = thread_id
+
         groups = await get_bot_groups(context)
         if not groups:
             try:
-                await context.bot.send_message(chat_id=chat_id, text="Keine Gruppen registriert.")
+                await context.bot.send_message(text="Keine Gruppen registriert.", **send_kwargs)
             except Exception:
                 pass
             return
@@ -5168,27 +5184,31 @@ async def unbanall(update: Update, context: ContextTypes.DEFAULT_TYPE):
             try:
                 await context.bot.unban_chat_member(chat_id=g["id"], user_id=target_id, only_if_banned=True)
                 successful_groups.append(g)
-            except Exception as e:
+            except Exception:
                 failed_groups.append(g)
 
         forget_group_ban([g["id"] for g in groups], target_id)
 
         lines = []
         if successful_groups:
-            lines.append(f"✅ <b>{html.escape(target_name)}</b> (<code>{target_id}</code>) in {len(successful_groups)}/{len(groups)} Gruppen entbannt.")
+            lines.append(f"✅ Erfolgreich entbannt in <b>{len(successful_groups)}/{len(groups)}</b> Gruppen")
         else:
             lines.append(f"⚠️ {target_id} konnte in keiner Gruppe entbannt werden.")
         if failed_groups:
             lines.append(f"❌ {len(failed_groups)} Gruppen fehlgeschlagen.")
 
         try:
-            await context.bot.send_message(chat_id=chat_id, text="\n".join(lines), parse_mode="HTML")
+            await context.bot.send_message(text="\n".join(lines), parse_mode="HTML", **send_kwargs)
         except Exception as e:
             logger.error(f"unbanall send_message error: {e}")
 
+        source_group_id = chat.id if chat and chat.type in ("group", "supergroup") else None
+        source_group_name = chat.title if source_group_id else None
         await log_action(
             context,
             f"UNBANALL: {target_name} ({target_id}) von {update.effective_user.full_name} — {len(successful_groups)} OK, {len(failed_groups)} Fehler",
+            group_id=source_group_id,
+            group_name=source_group_name,
         )
         for group in successful_groups:
             await log_action(
