@@ -6039,7 +6039,7 @@ async def handle_close_command(update: Update, context: ContextTypes.DEFAULT_TYP
 async def del_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Delete the message that was replied to."""
     user_id = update.effective_user.id
-    if not is_authorized(user_id):
+    if not await is_group_authorized(context, user_id, update.effective_chat):
         await update.message.reply_text("⛔ Kein Zugriff.")
         return
 
