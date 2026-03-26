@@ -733,7 +733,7 @@ async def get_info_group_state(context: ContextTypes.DEFAULT_TYPE, chat_id: int 
         return state
     try:
         member = await context.bot.get_chat_member(chat_id=chat_id, user_id=user_id)
-        if member.status == "restricted" and getattr(member, "can_send_messages", True) is False:
+        if await is_user_currently_muted(context, chat_id, user_id):
             state["is_muted"] = True
         if member.status == "kicked":
             state["is_banned_local"] = True
