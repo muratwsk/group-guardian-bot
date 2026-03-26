@@ -481,8 +481,8 @@ async def _send_logs_async(context: ContextTypes.DEFAULT_TYPE, targets: set[int]
     async def _send_log(chat_id: int):
         try:
             await asyncio.wait_for(
-                context.bot.send_message(chat_id=chat_id, text=f"📋 {text}"),
-                timeout=1.5,
+                context.bot.send_message(chat_id=chat_id, text=text, parse_mode="HTML"),
+                timeout=3.0,
             )
         except Exception as e:
             logger.error(f"Log channel {chat_id} error: {e}")
@@ -490,29 +490,91 @@ async def _send_logs_async(context: ContextTypes.DEFAULT_TYPE, targets: set[int]
     await asyncio.gather(*[_send_log(chat_id) for chat_id in targets], return_exceptions=True)
 
 
-async def log_action(context: ContextTypes.DEFAULT_TYPE, text: str, group_id: int = None, group_name: str = None):
-    """Log action to the global log channel AND any matching protokoll channels without blocking handlers."""
-    cfg = load_config()
-    targets = set()
+def _format_log_block(category: str, action: str, details: dict) -> str:
+    """Format a structured log block for Telegram."""
+    now_str = now_de().strftime("%d.%m.%Y %H:%M:%S")
 
+    if category == "admin":
+        icon = "⚙️"
+    else:
+        action_icons = {
+            "BAN": "🚫", "UNBAN": "✅", "BANALL": "🚫", "UNBANALL": "✅",
+            "MUTE": "🔇", "UNMUTE": "🔊", "KICK": "👢", "WARN": "⚠️",
+            "UNWARN": "↩️", "BADWORD": "🔤", "LINK": "🔗", "AUTO-REBAN": "🔄",
+            "FREE": "🛡", "UNFREE": "🛡", "MASS UNBAN": "✅", "MASS UNMUTE": "🔊",
+            "DELETE": "🗑",
+        }
+        icon = action_icons.get(action.upper(), "📋")
+
+    lines = [f"{icon} <b>{html.escape(action)}</b>"]
+    lines.append(f"━━━━━━━━━━━━━━━")
+
+    field_order = ["user", "user_id", "gruppe", "von", "grund", "dauer", "details", "ergebnis"]
+    field_labels = {
+        "user": "👤 User", "user_id": "🆔 ID", "gruppe": "📍 Gruppe",
+        "von": "👮 Von", "grund": "📝 Grund", "dauer": "⏱ Dauer",
+        "details": "ℹ️ Details", "ergebnis": "📊 Ergebnis",
+    }
+
+    for key in field_order:
+        if key in details and details[key]:
+            label = field_labels.get(key, key)
+            lines.append(f"{label}: <code>{html.escape(str(details[key]))}</code>")
+
+    # Any extra keys not in field_order
+    for key, val in details.items():
+        if key not in field_order and val:
+            lines.append(f"ℹ️ {key}: <code>{html.escape(str(val))}</code>")
+
+    lines.append(f"🕐 {now_str}")
+    return "\n".join(lines)
+
+
+# Log categories
+LOG_CAT_MOD = "mod"       # Moderation: ban, mute, warn, filter hits
+LOG_CAT_ADMIN = "admin"   # Admin: settings changes, bot config
+
+async def log_action(context: ContextTypes.DEFAULT_TYPE, text: str, group_id: int = None, group_name: str = None, category: str = LOG_CAT_MOD, action: str = "", details: dict = None):
+    """Log action to matching protokoll channels based on category and group routing."""
+    cfg = load_config()
+    targets_mod = set()
+    targets_admin = set()
+
+    # Legacy global log channel → receives everything
     channel = cfg.get("log_channel_id")
     if channel:
-        targets.add(int(channel))
+        targets_mod.add(int(channel))
+        targets_admin.add(int(channel))
 
     bot_data = load_data()
     proto_channels = bot_data.get("protokoll_channels", {})
     for ch_id_str, ch_cfg in proto_channels.items():
+        ch_type = ch_cfg.get("type", "mod")  # default to mod for backwards compat
         ch_groups = ch_cfg.get("groups", [])
-        should_send = False
-        if "all" in ch_groups:
-            should_send = True
-        elif group_id and str(group_id) in [str(g) for g in ch_groups]:
-            should_send = True
-        if should_send:
-            targets.add(int(ch_id_str))
 
+        if ch_type == "admin":
+            targets_admin.add(int(ch_id_str))
+        else:
+            # mod channel: check group routing
+            should_send = False
+            if "all" in ch_groups:
+                should_send = True
+            elif group_id and str(group_id) in [str(g) for g in ch_groups]:
+                should_send = True
+            if should_send:
+                targets_mod.add(int(ch_id_str))
+
+    # Build formatted message
+    if details and action:
+        formatted = _format_log_block(category, action, details)
+    else:
+        # Legacy fallback: plain text with timestamp
+        now_str = now_de().strftime("%d.%m.%Y %H:%M:%S")
+        formatted = f"📋 {text}\n🕐 {now_str}"
+
+    targets = targets_admin if category == LOG_CAT_ADMIN else targets_mod
     if targets:
-        asyncio.create_task(_send_logs_async(context, targets, text))
+        asyncio.create_task(_send_logs_async(context, targets, formatted))
 
 
 async def render_protokoll_channel_config(query, ch_id: str):
