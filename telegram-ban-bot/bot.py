@@ -4834,6 +4834,7 @@ async def multidel_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def banall(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await auto_delete_command(update, context)
     if not is_authorized(update.effective_user.id):
         await update.message.reply_text("⛔ Kein Zugriff.")
         return
