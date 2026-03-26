@@ -3184,50 +3184,17 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not word_list:
             await query.answer("Keine Worte vorhanden.", show_alert=True)
             return
-        keyboard = []
-        for i, word in enumerate(word_list):
-            keyboard.append([InlineKeyboardButton(f"❌ {word}", callback_data=f"bw_del_{i}")])
-        keyboard.append([InlineKeyboardButton("🔙 Zurück", callback_data="menu_badwords")])
+        keyboard = [[InlineKeyboardButton("❌ Abbrechen", callback_data="menu_badwords")]]
         await query.edit_message_text(
-            "➖ Wähle ein Wort zum Entfernen:",
+            "➖ Sende jetzt das Wort, das entfernt werden soll.\n\n"
+            "<i>Beispiel:\nFan</i>",
+            parse_mode="HTML",
             reply_markup=InlineKeyboardMarkup(keyboard),
         )
+        context.user_data["state"] = WAITING_BADWORD_REMOVE
 
     elif data.startswith("bw_del_"):
-        idx = int(data.replace("bw_del_", ""))
-        bot_data = load_data()
-        word_list = bot_data.get("badwords", [])
-        if 0 <= idx < len(word_list):
-            removed = word_list.pop(idx)
-            save_data(bot_data)
-            await query.answer(f"'{removed}' entfernt ✅")
-        # Back to menu
-        bw = bot_data.get("badwords_config", {"punishment": "aus", "delete": True})
-        punishment = bw.get("punishment", "aus")
-        delete_msg = bw.get("delete", True)
-        punishment_labels = {"aus": "Aus", "warn": "Warn", "kick": "Kick", "mute": "Mute", "ban": "Ban"}
-        p_label = punishment_labels.get(punishment, punishment)
-        del_label = "Ja ✅" if delete_msg else "Nein"
-        keyboard = [
-            [InlineKeyboardButton("❌ Aus", callback_data="bw_set_aus"),
-             InlineKeyboardButton("❗ Warn", callback_data="bw_set_warn"),
-             InlineKeyboardButton("❗ Kick", callback_data="bw_set_kick")],
-            [InlineKeyboardButton("🤫 Mute", callback_data="bw_set_mute"),
-             InlineKeyboardButton("🚫 Ban", callback_data="bw_set_ban")],
-            [InlineKeyboardButton(f"🗑 Nachrichten Löschen {'✅' if delete_msg else '❌'}", callback_data="bw_toggle_delete")],
-            [InlineKeyboardButton("➕ Hinzufügen", callback_data="bw_add"),
-             InlineKeyboardButton("➖ Entfernen", callback_data="bw_remove")],
-            [InlineKeyboardButton("🔤 Liste", callback_data="bw_list")],
-            [InlineKeyboardButton(f"🔢 {len(word_list)} Verbotene Worte", callback_data="bw_list")],
-            [InlineKeyboardButton("🔙 Zurück", callback_data="back_main")],
-        ]
-        await query.edit_message_text(
-            f"🔤 <b>Verbotene Worte</b>\n\n"
-            f"<b>Bestrafung:</b> {p_label}\n"
-            f"<b>Löschen:</b> {del_label}",
-            reply_markup=InlineKeyboardMarkup(keyboard),
-            parse_mode="HTML",
-        )
+        await query.answer("Bitte nutze jetzt die Texteingabe zum Entfernen.", show_alert=True)
 
     elif data == "bw_list":
         bot_data = load_data()
