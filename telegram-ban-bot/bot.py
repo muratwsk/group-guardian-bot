@@ -5961,9 +5961,10 @@ async def handle_open_command(update: Update, context: ContextTypes.DEFAULT_TYPE
     except Exception as e:
         logger.error(f"Delete /open command failed: {e}")
     
+    notify_text = f"\n📢 {len(sent_messages)} Gruppen benachrichtigt." if sent_messages else ""
     confirm_msg = await context.bot.send_message(
         chat_id=chat.id,
-        text=f"🔓 *{chat.title}* ist jetzt OPEN!\n📢 {len(sent_messages)} Gruppen benachrichtigt.",
+        text=f"🔓 *{chat.title}* ist jetzt OPEN!{notify_text}",
         parse_mode="Markdown",
     )
     await log_action(context, f"OPEN: {chat.title} von {update.effective_user.full_name} → {len(sent_messages)} Gruppen benachrichtigt")
