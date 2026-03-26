@@ -4390,6 +4390,15 @@ async def mute_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("⛔ Dieser User ist ein Administrator — Mute ist nicht möglich.")
         return
 
+    # Prüfen ob User bereits gemutet ist
+    try:
+        member = await context.bot.get_chat_member(chat.id, target_id)
+        if member.status == "restricted" and not member.can_send_messages:
+            await update.message.reply_text("ℹ️ Dieser User ist bereits stummgeschaltet.")
+            return
+    except Exception:
+        pass
+
     args = list(context.args) if context.args else []
     # Strip the first arg if it was used to resolve the target (@username or numeric ID)
     if args and not update.message.reply_to_message:
@@ -4443,6 +4452,16 @@ async def unmute_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     target_id, target_name = await resolve_target(update, context)
     if target_id is None:
         return
+
+    # Prüfen ob User tatsächlich gemutet ist
+    try:
+        member = await context.bot.get_chat_member(chat.id, target_id)
+        is_actually_muted = (member.status == "restricted" and not member.can_send_messages)
+        if not is_actually_muted:
+            await update.message.reply_text("ℹ️ Dieser User ist nicht stummgeschaltet.")
+            return
+    except Exception:
+        pass
 
     try:
         chat_obj = await context.bot.get_chat(chat.id)
@@ -4532,6 +4551,15 @@ async def ban_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("⛔ Dieser User ist ein Administrator — Ban ist nicht möglich.")
         return
 
+    # Prüfen ob User bereits gebannt ist
+    try:
+        member = await context.bot.get_chat_member(chat.id, target_id)
+        if member.status == "kicked":
+            await update.message.reply_text("ℹ️ Dieser User ist bereits gebannt.")
+            return
+    except Exception:
+        pass
+
     args = list(context.args) if context.args else []
     if args and not update.message.reply_to_message:
         args = args[1:]
@@ -4577,6 +4605,15 @@ async def unban_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     target_id, target_name = await resolve_target(update, context)
     if target_id is None:
         return
+
+    # Prüfen ob User tatsächlich gebannt ist
+    try:
+        member = await context.bot.get_chat_member(chat.id, target_id)
+        if member.status != "kicked":
+            await update.message.reply_text("ℹ️ Dieser User ist nicht gebannt.")
+            return
+    except Exception:
+        pass
 
     tracked = lookup_user(str(target_id))
     target_username = tracked.get("username") if tracked else None
