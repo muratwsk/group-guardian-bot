@@ -4077,7 +4077,7 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 cfg["admin_ids"].remove(rem_admin)
                 save_config(cfg)
                 await update.message.reply_text(f"✅ Admin `{rem_admin}` entfernt.", parse_mode="Markdown")
-                await log_action(context, f"Admin entfernt: {rem_admin} von {user_id}")
+                await log_action(context, f"Admin entfernt: {rem_admin} von {user_id}", category=LOG_CAT_ADMIN, action="Admin entfernt", details={"user_id": str(rem_admin), "von": str(user_id)})
             else:
                 await update.message.reply_text("Nicht in der Admin-Liste.")
         except ValueError:
