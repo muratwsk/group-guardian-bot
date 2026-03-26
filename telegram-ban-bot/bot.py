@@ -7069,7 +7069,7 @@ def main():
     except Exception:
         pass
 
-    app = Application.builder().token(token).concurrent_updates(True).build()
+    app = Application.builder().token(token).concurrent_updates(True).post_init(post_init).build()
 
     app.add_handler(CommandHandler("reload", reload_command))
     app.add_handler(CommandHandler("start", start))
