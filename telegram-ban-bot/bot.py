@@ -60,6 +60,8 @@ MUTE_PERMISSION_FIELDS = (
     "can_add_web_page_previews",
 )
 
+UNMUTE_PERMISSIONS = ChatPermissions.all_permissions()
+
 # --- Duration parser for time-based mute/ban ---
 DURATION_PATTERN = re.compile(r"(\d+)\s*(m|min|h|std|d|t|w)\b", re.IGNORECASE)
 DURATION_UNITS = {
@@ -1797,7 +1799,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await context.bot.restrict_chat_member(
             chat_id=scope_chat_id,
             user_id=target_id,
-            permissions=chat.permissions or ChatPermissions.all_permissions(),
+            permissions=UNMUTE_PERMISSIONS,
         )
 
         if not await wait_for_mute_state(context, scope_chat_id, target_id, False):
@@ -1834,7 +1836,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await context.bot.restrict_chat_member(
                 chat_id=scope_chat_id,
                 user_id=target_id,
-                permissions=chat_obj.permissions or ChatPermissions.all_permissions(),
+                permissions=UNMUTE_PERMISSIONS,
             )
             if not await wait_for_mute_state(context, scope_chat_id, target_id, False):
                 await query.answer("⚠️ Telegram zeigt den User noch kurz als gemutet. Bitte direkt nochmal prüfen.", show_alert=True)
@@ -4612,7 +4614,7 @@ async def unmute_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await context.bot.restrict_chat_member(
             chat_id=chat.id,
             user_id=target_id,
-            permissions=chat_obj.permissions or ChatPermissions.all_permissions(),
+            permissions=UNMUTE_PERMISSIONS,
         )
 
         if not await wait_for_mute_state(context, chat.id, target_id, False):
