@@ -3027,6 +3027,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         src_group_id = int(data.split("ar_route_src_")[1])
         bot_data = load_data()
         groups = bot_data.get("groups", [])
+        ar = bot_data.get("admin_report", {})
         src_name = next((g["title"] for g in groups if g["id"] == src_group_id), str(src_group_id))
 
         keyboard = []
@@ -3034,9 +3035,11 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if g["id"] == src_group_id:
                 continue
             keyboard.append([InlineKeyboardButton(f"👥 {g['title']}", callback_data=f"ar_route_set_{src_group_id}_{g['id']}")])
-        # Option to remove route
-        ar = bot_data.get("admin_report", {})
+        # Toggle: also send to Standard-Team
         if str(src_group_id) in ar.get("group_routes", {}):
+            also = ar.get("route_also_default", {}).get(str(src_group_id), True)
+            toggle_icon = "✅" if also else "❌"
+            keyboard.append([InlineKeyboardButton(f"{toggle_icon} Auch ans Standard-Team", callback_data=f"ar_route_toggle_{src_group_id}")])
             keyboard.append([InlineKeyboardButton("🗑 Route entfernen", callback_data=f"ar_route_del_{src_group_id}")])
         keyboard.append([InlineKeyboardButton("🔙 Zurück", callback_data="ar_routes_menu")])
         await query.edit_message_text(
