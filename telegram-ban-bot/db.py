@@ -79,14 +79,20 @@ def _close_local_conn():
 
 def _load_json_file(filepath: str, default=None):
     default_value = {} if default is None else default
-    for candidate in (filepath, filepath + ".bak"):
+    candidates = []
+    if filepath:
+        candidates.append(filepath)
+        candidates.append(filepath + ".bak")
+
+    for candidate in candidates:
         if not os.path.exists(candidate):
             continue
         try:
             with open(candidate, "r", encoding="utf-8") as f:
                 content = f.read().strip()
             if not content:
-                return default_value
+                logger.warning(f"JSON snapshot empty, skipping restore source: {candidate}")
+                continue
             return json.loads(content)
         except Exception as e:
             logger.error(f"Failed to read JSON snapshot {candidate}: {e}")
