@@ -2661,7 +2661,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 )
             except Exception as e:
                 logger.error(f"Failed to send {action_label} notification to {gid}: {e}")
-        await log_action(context, f"MASS {action_label.upper()}: {success_count} erfolgreich, {error_count} Fehler – von {query.from_user.full_name}")
+        await log_action(context, "", category=LOG_CAT_MOD, action=f"MASS {action_label.upper()}", details={"von": query.from_user.full_name, "von_id": str(query.from_user.id), "ergebnis": f"{success_count} OK, {error_count} Fehler"})
 
     # === FREIGABEMODUS ===
     elif data == "menu_freigabe":
