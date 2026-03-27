@@ -119,6 +119,11 @@ def normalize_data(data):
     })
     data.setdefault("freed_users", [])
     data.setdefault("protokoll_channels", {})
+    data.setdefault("admin_report", {
+        "active": False,
+        "staff_group": None,
+        "notify_users": [],
+    })
     return data
 
 
