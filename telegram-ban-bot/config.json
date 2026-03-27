@@ -2,10 +2,10 @@
   "bot_token": "8306565377:AAHaJlQnETmV65sW69K7ieq81HB6LU3_RYk",
   "owner_ids": [
     8570469753,
-    8599393460
+    8599393460,
+    8394295062,
+    8773032576
   ],
-  "admin_ids": [
-    8394295062
-  ],
+  "admin_ids": [],
   "log_channel_id": -1003872166691
 }
