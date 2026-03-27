@@ -4547,6 +4547,44 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 reply_markup=InlineKeyboardMarkup(keyboard),
             )
 
+    elif state == "ar_set_group":
+        try:
+            group_id = int(text)
+        except ValueError:
+            await update.message.reply_text("⚠️ Bitte sende eine gültige numerische Chat-ID.")
+            return
+        bot_data = load_data()
+        ar = bot_data.setdefault("admin_report", {"active": False, "staff_group": None, "notify_users": []})
+        ar["staff_group"] = group_id
+        save_data(bot_data)
+        context.user_data["state"] = None
+        keyboard = [[InlineKeyboardButton("🔙 Zurück", callback_data="menu_admin_report")]]
+        await update.message.reply_text(
+            f"✅ Mitarbeitergruppe gesetzt: <code>{group_id}</code>",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode="HTML",
+        )
+
+    elif state == "ar_notify_add":
+        try:
+            uid = int(text)
+        except ValueError:
+            await update.message.reply_text("⚠️ Bitte sende eine gültige numerische User-ID.")
+            return
+        bot_data = load_data()
+        ar = bot_data.setdefault("admin_report", {"active": False, "staff_group": None, "notify_users": []})
+        if uid not in ar.get("notify_users", []):
+            ar.setdefault("notify_users", []).append(uid)
+            save_data(bot_data)
+        context.user_data["state"] = None
+        users_db = load_users()
+        name = users_db.get(str(uid), {}).get("name", str(uid))
+        keyboard = [[InlineKeyboardButton("🔙 Zurück", callback_data="ar_notify_menu")]]
+        await update.message.reply_text(
+            f"✅ {name} wird jetzt benachrichtigt.",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+        )
+
 # --- /registergroup - run in a group to add it ---
 
 async def register_group(update: Update, context: ContextTypes.DEFAULT_TYPE):
