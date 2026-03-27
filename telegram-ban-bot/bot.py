@@ -2989,6 +2989,77 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode="HTML",
         )
 
+    # === @ADMIN GROUP ROUTING ===
+    elif data == "ar_routes_menu":
+        bot_data = load_data()
+        ar = bot_data.get("admin_report", {})
+        group_routes = ar.get("group_routes", {})
+        groups = bot_data.get("groups", [])
+        gmap = {g["id"]: g["title"] for g in groups}
+
+        text = "📋 <b>Gruppen-Routing</b>\n\nLege fest, welche Gruppe ihre Meldungen an welche Team-Gruppe sendet.\n"
+        if group_routes:
+            text += "\n<b>Aktive Routen:</b>\n"
+            for src_id, dst_id in group_routes.items():
+                src_name = gmap.get(int(src_id), str(src_id))
+                dst_name = gmap.get(dst_id, str(dst_id))
+                text += f"  • {src_name} → {dst_name}\n"
+
+        keyboard = []
+        for g in groups:
+            dst = group_routes.get(str(g["id"]))
+            if dst:
+                dst_name = gmap.get(dst, str(dst))
+                label = f"✏️ {g['title']} → {dst_name}"
+            else:
+                label = f"➕ {g['title']}"
+            keyboard.append([InlineKeyboardButton(label, callback_data=f"ar_route_src_{g['id']}")])
+        keyboard.append([InlineKeyboardButton("🔙 Zurück", callback_data="menu_admin_report")])
+        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
+
+    elif data.startswith("ar_route_src_"):
+        src_group_id = int(data.split("ar_route_src_")[1])
+        bot_data = load_data()
+        groups = bot_data.get("groups", [])
+        src_name = next((g["title"] for g in groups if g["id"] == src_group_id), str(src_group_id))
+
+        keyboard = []
+        for g in groups:
+            if g["id"] == src_group_id:
+                continue
+            keyboard.append([InlineKeyboardButton(f"👥 {g['title']}", callback_data=f"ar_route_set_{src_group_id}_{g['id']}")])
+        # Option to remove route
+        ar = bot_data.get("admin_report", {})
+        if str(src_group_id) in ar.get("group_routes", {}):
+            keyboard.append([InlineKeyboardButton("🗑 Route entfernen", callback_data=f"ar_route_del_{src_group_id}")])
+        keyboard.append([InlineKeyboardButton("🔙 Zurück", callback_data="ar_routes_menu")])
+        await query.edit_message_text(
+            f"📋 <b>Ziel für {src_name}</b>\n\nWähle die Team-Gruppe, an die Meldungen aus <b>{src_name}</b> gesendet werden sollen:",
+            reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
+
+    elif data.startswith("ar_route_set_"):
+        parts = data.split("_")
+        src_id = int(parts[3])
+        dst_id = int(parts[4])
+        bot_data = load_data()
+        ar = bot_data.setdefault("admin_report", {"active": False, "staff_group": None, "notify_users": [], "group_routes": {}})
+        ar.setdefault("group_routes", {})[str(src_id)] = dst_id
+        save_data(bot_data)
+        groups = bot_data.get("groups", [])
+        src_name = next((g["title"] for g in groups if g["id"] == src_id), str(src_id))
+        dst_name = next((g["title"] for g in groups if g["id"] == dst_id), str(dst_id))
+        await query.answer(f"✅ {src_name} → {dst_name}")
+        await _render_admin_report_menu(query)
+
+    elif data.startswith("ar_route_del_"):
+        src_id = data.split("ar_route_del_")[1]
+        bot_data = load_data()
+        ar = bot_data.get("admin_report", {})
+        ar.get("group_routes", {}).pop(src_id, None)
+        save_data(bot_data)
+        await query.answer("✅ Route entfernt")
+        await _render_admin_report_menu(query)
+
     # === SETTINGS ===
     elif data == "menu_settings":
         if not is_owner(user_id):
