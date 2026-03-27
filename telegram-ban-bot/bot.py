@@ -6737,7 +6737,9 @@ async def enforce_ban_on_chat_member(update: Update, context: ContextTypes.DEFAU
     if is_banned_in_group(update.effective_chat.id, member.id):
         try:
             await context.bot.ban_chat_member(chat_id=update.effective_chat.id, user_id=member.id, revoke_messages=True)
-            await log_action(context, "", group_id=update.effective_chat.id, group_name=update.effective_chat.title, category=LOG_CAT_MOD, action="AUTO-REBAN", details={"user": member.full_name, "user_id": str(member.id), "gruppe": update.effective_chat.title})
+            tracked_u = lookup_user(str(member.id))
+            t_uname = f"@{tracked_u['username']}" if tracked_u and tracked_u.get("username") else member.full_name
+            await log_action(context, "", group_id=update.effective_chat.id, group_name=update.effective_chat.title, category=LOG_CAT_MOD, action="AUTO-WIEDERBANN", details={"user": t_uname, "user_id": str(member.id), "gruppe": update.effective_chat.title})
         except Exception as e:
             logger.error(f"Auto-reban via chat_member failed for {member.id} in {update.effective_chat.id}: {e}")
 
