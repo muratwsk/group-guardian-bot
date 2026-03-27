@@ -5566,6 +5566,93 @@ async def handle_custom_command(update: Update, context: ContextTypes.DEFAULT_TY
     except Exception as e:
         logger.error(f"Custom command /{cmd} failed in {chat_id}: {e}")
 
+# --- @admin / /report command ---
+
+async def handle_admin_report(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """/report command – members can alert staff. Ignored when used by admins."""
+    await auto_delete_command(update, context)
+    if not update.message or not update.effective_chat:
+        return
+    chat = update.effective_chat
+    if chat.type not in ("group", "supergroup"):
+        return
+    sender = update.message.from_user
+    if not sender:
+        return
+
+    # Admins/Mods dürfen den Befehl NICHT nutzen
+    if is_authorized(sender.id) or await is_chat_admin(context, chat.id, sender.id):
+        return
+
+    bot_data = load_data()
+    ar = bot_data.get("admin_report", {})
+    if not ar.get("active"):
+        return
+
+    staff_group = ar.get("staff_group")
+    if not staff_group:
+        return
+
+    # Build report message
+    thread_id = getattr(update.effective_message, "message_thread_id", None)
+    reply_to = update.message.reply_to_message
+    reported_info = ""
+    if reply_to and reply_to.from_user:
+        ru = reply_to.from_user
+        reported_info = (
+            f"\n\n📌 <b>Gemeldete Nachricht von:</b>\n"
+            f"  👤 {ru.full_name} (<code>{ru.id}</code>)\n"
+            f"  💬 <i>{(reply_to.text or '[Medien]')[:200]}</i>"
+        )
+
+    report_text = (
+        f"🆘 <b>Admin-Meldung</b>\n\n"
+        f"📍 <b>Gruppe:</b> {chat.title}\n"
+        f"👤 <b>Gemeldet von:</b> {sender.full_name} (<code>{sender.id}</code>)"
+        f"{reported_info}"
+    )
+
+    # Notify specific users via mention
+    notify_users = ar.get("notify_users", [])
+    if notify_users:
+        mentions = []
+        for uid in notify_users:
+            try:
+                member = await context.bot.get_chat_member(staff_group, uid)
+                name = member.user.full_name
+                mentions.append(f'<a href="tg://user?id={uid}">{name}</a>')
+            except Exception:
+                mentions.append(f'<a href="tg://user?id={uid}">Staff</a>')
+        report_text += "\n\n🔔 " + " ".join(mentions)
+
+    try:
+        await context.bot.send_message(
+            chat_id=staff_group,
+            text=report_text,
+            parse_mode="HTML",
+        )
+        logger.info(f"Admin report from {sender.id} in {chat.id} sent to staff group {staff_group}")
+    except Exception as e:
+        logger.error(f"Failed to send admin report to {staff_group}: {e}")
+
+    # Log to moderation protocol
+    await log_action(context, None, category="mod", action="REPORT",
+                     details={"👤 Gemeldet von": f"{sender.full_name} ({sender.id})",
+                              "📍 Gruppe": chat.title},
+                     group_id=chat.id, group_name=chat.title)
+
+
+async def _check_admin_mention(update: Update, context):
+    """Check if message text contains @admin and trigger report."""
+    if not update.message or not update.message.text:
+        return
+    text = update.message.text.lower()
+    if "@admin" not in text:
+        return
+    # Delegate to the report handler
+    await handle_admin_report(update, context)
+
+
 # --- Delete service messages (pinned, joined, left, etc.) ---
 
 async def delete_service_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
