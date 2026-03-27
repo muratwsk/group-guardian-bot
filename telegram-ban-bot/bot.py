@@ -3060,11 +3060,40 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.answer(f"✅ {src_name} → {dst_name}")
         await _render_admin_report_menu(query)
 
+    elif data.startswith("ar_route_toggle_"):
+        src_id = data.split("ar_route_toggle_")[1]
+        bot_data = load_data()
+        ar = bot_data.setdefault("admin_report", {})
+        route_also = ar.setdefault("route_also_default", {})
+        current = route_also.get(src_id, True)
+        route_also[src_id] = not current
+        save_data(bot_data)
+        new_state = "✅ Auch Standard-Team" if not current else "❌ Nur eigene Route"
+        await query.answer(new_state)
+        # Re-render the route source page
+        groups = bot_data.get("groups", [])
+        src_group_id = int(src_id)
+        src_name = next((g["title"] for g in groups if g["id"] == src_group_id), str(src_group_id))
+        keyboard = []
+        for g in groups:
+            if g["id"] == src_group_id:
+                continue
+            keyboard.append([InlineKeyboardButton(f"👥 {g['title']}", callback_data=f"ar_route_set_{src_group_id}_{g['id']}")])
+        also = route_also.get(src_id, True)
+        toggle_icon = "✅" if also else "❌"
+        keyboard.append([InlineKeyboardButton(f"{toggle_icon} Auch ans Standard-Team", callback_data=f"ar_route_toggle_{src_group_id}")])
+        keyboard.append([InlineKeyboardButton("🗑 Route entfernen", callback_data=f"ar_route_del_{src_group_id}")])
+        keyboard.append([InlineKeyboardButton("🔙 Zurück", callback_data="ar_routes_menu")])
+        await query.edit_message_text(
+            f"📋 <b>Ziel für {src_name}</b>\n\nWähle die Team-Gruppe, an die Meldungen aus <b>{src_name}</b> gesendet werden sollen:",
+            reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
+
     elif data.startswith("ar_route_del_"):
         src_id = data.split("ar_route_del_")[1]
         bot_data = load_data()
         ar = bot_data.get("admin_report", {})
         ar.get("group_routes", {}).pop(src_id, None)
+        ar.get("route_also_default", {}).pop(src_id, None)
         save_data(bot_data)
         await query.answer("✅ Route entfernt")
         await _render_admin_report_menu(query)
