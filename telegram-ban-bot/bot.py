@@ -1023,10 +1023,16 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "warn_punish_",
         "link_warn_cancel_",
     )
+    # Buttons that anyone in the staff group can press (no auth needed)
+    open_button_prefixes = (
+        "ar_solved_",
+    )
     if data and any(data.startswith(prefix) for prefix in group_button_prefixes):
         chat = query.message.chat if query.message else None
         if not await is_group_authorized(context, user_id, chat):
             return
+    elif data and any(data.startswith(prefix) for prefix in open_button_prefixes):
+        pass  # Allow anyone in the staff group to press these
     elif not is_authorized(user_id):
         return
 
