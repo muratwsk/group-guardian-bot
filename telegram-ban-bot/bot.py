@@ -967,20 +967,27 @@ async def _render_admin_report_menu(query):
                 parts.append(str(uid))
         notify_str = ", ".join(parts)
 
-    # Group routes info
+    # Group routes info (grouped by target)
     routes_str = ""
     route_also_default = ar.get("route_also_default", {})
     if group_routes:
         groups = bot_data.get("groups", [])
         gmap = {g["id"]: g["title"] for g in groups}
-        route_parts = []
+        # Group by target
+        targets = {}
         for src_id, dst_id in group_routes.items():
-            src_name = gmap.get(int(src_id), str(src_id))
+            targets.setdefault(dst_id, []).append(src_id)
+        parts = []
+        for dst_id, src_ids in targets.items():
             dst_name = gmap.get(dst_id, str(dst_id))
-            also = route_also_default.get(str(src_id), True)
-            mode = "+ Standard-Team" if also else "NUR Route"
-            route_parts.append(f"  • {src_name} → {dst_name} [{mode}]")
-        routes_str = "\n\n📋 <b>Gruppen-Routing:</b>\n" + "\n".join(route_parts)
+            src_names = []
+            for s in src_ids:
+                sn = gmap.get(int(s), s)
+                also = route_also_default.get(s, True)
+                mode = "+Std" if also else "nur"
+                src_names.append(f"{sn} [{mode}]")
+            parts.append(f"  📌 {dst_name} (<code>{dst_id}</code>):\n" + "\n".join(f"    • {n}" for n in src_names))
+        routes_str = "\n\n📋 <b>Gruppen-Routing:</b>\n" + "\n".join(parts)
 
     text = (
         f"🆘 <b>@admin-Befehl</b>\n\n"
