@@ -3002,22 +3002,22 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         groups = bot_data.get("groups", [])
         gmap = {g["id"]: g["title"] for g in groups}
 
-        text = "📋 <b>Gruppen-Routing</b>\n\nPro Gruppe kannst du eine eigene Team-Gruppe festlegen.\nDu kannst wählen ob die Meldung auch ans Standard-Team geht.\n"
+        text = "📋 <b>Gruppen-Routing</b>\n\nPro Gruppe ein eigenes Ziel (Gruppe/Kanal) per ID festlegen.\n"
         if group_routes:
             text += "\n<b>Aktive Routen:</b>\n"
             for src_id, dst_id in group_routes.items():
                 src_name = gmap.get(int(src_id), str(src_id))
+                # Try to resolve dst name
                 dst_name = gmap.get(dst_id, str(dst_id))
                 also = route_also_default.get(str(src_id), True)
-                mode = "✅ +Standard" if also else "❌ Nur Route"
-                text += f"  • {src_name} → {dst_name} [{mode}]\n"
+                mode = "+ Standard" if also else "NUR hier"
+                text += f"  • {src_name} → <code>{dst_id}</code> ({dst_name}) [{mode}]\n"
 
         keyboard = []
         for g in groups:
             dst = group_routes.get(str(g["id"]))
             if dst:
-                dst_name = gmap.get(dst, str(dst))
-                label = f"✏️ {g['title']} → {dst_name}"
+                label = f"✏️ {g['title']} → {dst}"
             else:
                 label = f"➕ {g['title']}"
             keyboard.append([InlineKeyboardButton(label, callback_data=f"ar_route_src_{g['id']}")])
@@ -3032,10 +3032,6 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         src_name = next((g["title"] for g in groups if g["id"] == src_group_id), str(src_group_id))
 
         keyboard = []
-        for g in groups:
-            if g["id"] == src_group_id:
-                continue
-            keyboard.append([InlineKeyboardButton(f"👥 {g['title']}", callback_data=f"ar_route_set_{src_group_id}_{g['id']}")])
         # Toggle: also send to Standard-Team
         if str(src_group_id) in ar.get("group_routes", {}):
             also = ar.get("route_also_default", {}).get(str(src_group_id), True)
@@ -3043,23 +3039,16 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             keyboard.append([InlineKeyboardButton(f"{toggle_icon} Auch ans Standard-Team", callback_data=f"ar_route_toggle_{src_group_id}")])
             keyboard.append([InlineKeyboardButton("🗑 Route entfernen", callback_data=f"ar_route_del_{src_group_id}")])
         keyboard.append([InlineKeyboardButton("🔙 Zurück", callback_data="ar_routes_menu")])
-        await query.edit_message_text(
-            f"📋 <b>Ziel für {src_name}</b>\n\nWähle die Team-Gruppe, an die Meldungen aus <b>{src_name}</b> gesendet werden sollen:",
-            reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
 
-    elif data.startswith("ar_route_set_"):
-        parts = data.split("_")
-        src_id = int(parts[3])
-        dst_id = int(parts[4])
-        bot_data = load_data()
-        ar = bot_data.setdefault("admin_report", {"active": False, "staff_group": None, "notify_users": [], "group_routes": {}})
-        ar.setdefault("group_routes", {})[str(src_id)] = dst_id
-        save_data(bot_data)
-        groups = bot_data.get("groups", [])
-        src_name = next((g["title"] for g in groups if g["id"] == src_id), str(src_id))
-        dst_name = next((g["title"] for g in groups if g["id"] == dst_id), str(dst_id))
-        await query.answer(f"✅ {src_name} → {dst_name}")
-        await _render_admin_report_menu(query)
+        current_dst = ar.get("group_routes", {}).get(str(src_group_id))
+        dst_info = f"\n\n📌 Aktuelles Ziel: <code>{current_dst}</code>" if current_dst else ""
+
+        context.user_data["state"] = f"ar_route_input_{src_group_id}"
+        await query.edit_message_text(
+            f"📋 <b>Ziel für {src_name}</b>{dst_info}\n\n"
+            f"Sende jetzt die <b>Chat-ID</b> des Ziel-Kanals/Gruppe.\n"
+            f"<i>(z.B. -1001234567890)</i>",
+            reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
 
     elif data.startswith("ar_route_toggle_"):
         src_id = data.split("ar_route_toggle_")[1]
@@ -3071,22 +3060,22 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         save_data(bot_data)
         new_state = "✅ Auch Standard-Team" if not current else "❌ Nur eigene Route"
         await query.answer(new_state)
-        # Re-render the route source page
-        groups = bot_data.get("groups", [])
+        # Re-render
         src_group_id = int(src_id)
+        groups = bot_data.get("groups", [])
         src_name = next((g["title"] for g in groups if g["id"] == src_group_id), str(src_group_id))
         keyboard = []
-        for g in groups:
-            if g["id"] == src_group_id:
-                continue
-            keyboard.append([InlineKeyboardButton(f"👥 {g['title']}", callback_data=f"ar_route_set_{src_group_id}_{g['id']}")])
         also = route_also.get(src_id, True)
         toggle_icon = "✅" if also else "❌"
         keyboard.append([InlineKeyboardButton(f"{toggle_icon} Auch ans Standard-Team", callback_data=f"ar_route_toggle_{src_group_id}")])
         keyboard.append([InlineKeyboardButton("🗑 Route entfernen", callback_data=f"ar_route_del_{src_group_id}")])
         keyboard.append([InlineKeyboardButton("🔙 Zurück", callback_data="ar_routes_menu")])
+        current_dst = ar.get("group_routes", {}).get(str(src_group_id))
+        dst_info = f"\n\n📌 Aktuelles Ziel: <code>{current_dst}</code>" if current_dst else ""
         await query.edit_message_text(
-            f"📋 <b>Ziel für {src_name}</b>\n\nWähle die Team-Gruppe, an die Meldungen aus <b>{src_name}</b> gesendet werden sollen:",
+            f"📋 <b>Ziel für {src_name}</b>{dst_info}\n\n"
+            f"Sende jetzt die <b>Chat-ID</b> des Ziel-Kanals/Gruppe.\n"
+            f"<i>(z.B. -1001234567890)</i>",
             reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
 
     elif data.startswith("ar_route_del_"):
