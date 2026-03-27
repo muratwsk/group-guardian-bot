@@ -5891,10 +5891,20 @@ async def handle_admin_report(update: Update, context: ContextTypes.DEFAULT_TYPE
             chat_link_id = chat_id_str[4:]
             message_link = f"https://t.me/c/{chat_link_id}/{update.message.message_id}"
 
+    # Extract user text after @admin
+    user_text = ""
+    if update.message.text:
+        import re as _re
+        # Remove all @admin mentions and strip
+        cleaned = _re.sub(r'@admin', '', update.message.text, flags=_re.IGNORECASE).strip()
+        if cleaned:
+            user_text = f"\n\n💬 <b>Nachricht:</b> <i>{html.escape(cleaned)[:500]}</i>"
+
     report_text = (
         f"🆘 <b>Admin-Meldung</b>\n\n"
         f"📍 <b>Gruppe:</b> {chat.title}\n"
         f"👤 <b>Gemeldet von:</b> {sender.full_name} (<code>{sender.id}</code>)"
+        f"{user_text}"
         f"{reported_info}"
     )
 
