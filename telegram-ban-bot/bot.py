@@ -712,7 +712,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton("🚪 Freigabemodus", callback_data="menu_freigabe"),
          InlineKeyboardButton("📋 Protokoll", callback_data="menu_protokoll")],
         [InlineKeyboardButton("🔒 Sperren", callback_data="menu_sperren"),
-         InlineKeyboardButton("⚙️ Einstellungen", callback_data="menu_settings")],
+         InlineKeyboardButton("🆘 @admin", callback_data="menu_admin_report")],
+        [InlineKeyboardButton("⚙️ Einstellungen", callback_data="menu_settings")],
     ]
 
     role = "👑 Owner" if is_owner(user_id) else "🛡️ Admin"
