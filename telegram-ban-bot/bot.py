@@ -3083,8 +3083,16 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         cfg = load_config()
         admins = cfg.get("admin_ids", [])
         log_ch = cfg.get("log_channel_id", "Nicht gesetzt")
+        users = load_users()
+        user_count = len(users)
+        data = load_data()
+        group_count = len(data.get("groups", []))
+        banned_count = len(data.get("banned_users", {}))
         text = (
             f"⚙️ *Einstellungen*\n\n"
+            f"👥 Bekannte User: {user_count}\n"
+            f"📊 Gruppen: {group_count}\n"
+            f"🚫 Gebannte User: {banned_count}\n"
             f"👮 Admins: {len(admins)}\n"
             f"📋 Log-Kanal: `{log_ch}`"
         )
