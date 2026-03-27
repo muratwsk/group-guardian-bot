@@ -967,20 +967,27 @@ async def _render_admin_report_menu(query):
                 parts.append(str(uid))
         notify_str = ", ".join(parts)
 
-    # Group routes info
+    # Group routes info (grouped by target)
     routes_str = ""
     route_also_default = ar.get("route_also_default", {})
     if group_routes:
         groups = bot_data.get("groups", [])
         gmap = {g["id"]: g["title"] for g in groups}
-        route_parts = []
+        # Group by target
+        targets = {}
         for src_id, dst_id in group_routes.items():
-            src_name = gmap.get(int(src_id), str(src_id))
+            targets.setdefault(dst_id, []).append(src_id)
+        parts = []
+        for dst_id, src_ids in targets.items():
             dst_name = gmap.get(dst_id, str(dst_id))
-            also = route_also_default.get(str(src_id), True)
-            mode = "+ Standard-Team" if also else "NUR Route"
-            route_parts.append(f"  • {src_name} → {dst_name} [{mode}]")
-        routes_str = "\n\n📋 <b>Gruppen-Routing:</b>\n" + "\n".join(route_parts)
+            src_names = []
+            for s in src_ids:
+                sn = gmap.get(int(s), s)
+                also = route_also_default.get(s, True)
+                mode = "+Std" if also else "nur"
+                src_names.append(f"{sn} [{mode}]")
+            parts.append(f"  📌 {dst_name} (<code>{dst_id}</code>):\n" + "\n".join(f"    • {n}" for n in src_names))
+        routes_str = "\n\n📋 <b>Gruppen-Routing:</b>\n" + "\n".join(parts)
 
     text = (
         f"🆘 <b>@admin-Befehl</b>\n\n"
@@ -2993,100 +3000,176 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode="HTML",
         )
 
-    # === @ADMIN GROUP ROUTING ===
+    # === @ADMIN GROUP ROUTING (Target-based) ===
     elif data == "ar_routes_menu":
+        bot_data = load_data()
+        ar = bot_data.get("admin_report", {})
+        group_routes = ar.get("group_routes", {})  # {src_id_str: dst_id_int}
+        route_also_default = ar.get("route_also_default", {})
+        groups = bot_data.get("groups", [])
+        gmap = {g["id"]: g["title"] for g in groups}
+
+        # Group by target
+        targets = {}  # {dst_id: [src_ids]}
+        for src_id, dst_id in group_routes.items():
+            targets.setdefault(dst_id, []).append(src_id)
+
+        text = "📋 <b>Gruppen-Routing</b>\n\nZiel-Kanal festlegen → Gruppen zuweisen.\n"
+        if targets:
+            text += "\n<b>Aktive Routen:</b>\n"
+            for dst_id, src_ids in targets.items():
+                dst_name = gmap.get(dst_id, str(dst_id))
+                src_names = [gmap.get(int(s), s) for s in src_ids]
+                text += f"\n📌 <code>{dst_id}</code> ({dst_name}):\n"
+                for sn in src_names:
+                    text += f"  • {sn}\n"
+
+        keyboard = []
+        if targets:
+            for dst_id in targets:
+                dst_name = gmap.get(dst_id, str(dst_id))
+                keyboard.append([InlineKeyboardButton(f"✏️ {dst_name} ({dst_id})", callback_data=f"ar_target_{dst_id}")])
+        keyboard.append([InlineKeyboardButton("➕ Neues Ziel hinzufügen", callback_data="ar_target_new")])
+        keyboard.append([InlineKeyboardButton("🔙 Zurück", callback_data="menu_admin_report")])
+        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
+
+    elif data == "ar_target_new":
+        context.user_data["state"] = "ar_target_new_input"
+        keyboard = [[InlineKeyboardButton("🔙 Zurück", callback_data="ar_routes_menu")]]
+        await query.edit_message_text(
+            "📋 <b>Neues Routing-Ziel</b>\n\n"
+            "Sende jetzt die <b>Chat-ID</b> des Ziel-Kanals/Gruppe.\n"
+            "<i>(z.B. -1001234567890)</i>",
+            reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
+
+    elif data.startswith("ar_target_del_"):
+        dst_id = int(data.split("ar_target_del_")[1])
+        bot_data = load_data()
+        ar = bot_data.get("admin_report", {})
+        routes = ar.get("group_routes", {})
+        also = ar.get("route_also_default", {})
+        # Remove all routes pointing to this target
+        to_remove = [s for s, d in routes.items() if d == dst_id]
+        for s in to_remove:
+            routes.pop(s, None)
+            also.pop(s, None)
+        save_data(bot_data)
+        await query.answer("✅ Ziel und alle Routen entfernt")
+        await _render_admin_report_menu(query)
+
+    elif data.startswith("ar_target_") and not data.startswith("ar_target_grp_") and not data.startswith("ar_target_also_") and not data.startswith("ar_target_del_") and not data.startswith("ar_target_new") and not data.startswith("ar_target_chid_"):
+        dst_id = int(data.split("ar_target_")[1])
         bot_data = load_data()
         ar = bot_data.get("admin_report", {})
         group_routes = ar.get("group_routes", {})
         route_also_default = ar.get("route_also_default", {})
         groups = bot_data.get("groups", [])
         gmap = {g["id"]: g["title"] for g in groups}
+        dst_name = gmap.get(dst_id, str(dst_id))
 
-        text = "📋 <b>Gruppen-Routing</b>\n\nPro Gruppe ein eigenes Ziel (Gruppe/Kanal) per ID festlegen.\n"
-        if group_routes:
-            text += "\n<b>Aktive Routen:</b>\n"
-            for src_id, dst_id in group_routes.items():
-                src_name = gmap.get(int(src_id), str(src_id))
-                # Try to resolve dst name
-                dst_name = gmap.get(dst_id, str(dst_id))
-                also = route_also_default.get(str(src_id), True)
-                mode = "+ Standard" if also else "NUR hier"
-                text += f"  • {src_name} → <code>{dst_id}</code> ({dst_name}) [{mode}]\n"
+        # Which groups currently route to this target
+        assigned = {int(s) for s, d in group_routes.items() if d == dst_id}
 
+        text = f"📌 <b>Ziel: {dst_name}</b>\n<code>{dst_id}</code>\n\nWähle Gruppen aus/ab:"
         keyboard = []
         for g in groups:
-            dst = group_routes.get(str(g["id"]))
-            if dst:
-                label = f"✏️ {g['title']} → {dst}"
-            else:
-                label = f"➕ {g['title']}"
-            keyboard.append([InlineKeyboardButton(label, callback_data=f"ar_route_src_{g['id']}")])
-        keyboard.append([InlineKeyboardButton("🔙 Zurück", callback_data="menu_admin_report")])
+            is_assigned = g["id"] in assigned
+            icon = "✅" if is_assigned else "❌"
+            keyboard.append([InlineKeyboardButton(f"{icon} {g['title']}", callback_data=f"ar_target_grp_{dst_id}_{g['id']}")])
+        # Also-default toggle for all assigned groups
+        if assigned:
+            # Show toggle per assigned group
+            for gid in assigned:
+                gname = gmap.get(gid, str(gid))
+                also = route_also_default.get(str(gid), True)
+                aicon = "✅" if also else "❌"
+                keyboard.append([InlineKeyboardButton(f"{aicon} {gname} → +Standard", callback_data=f"ar_target_also_{dst_id}_{gid}")])
+        keyboard.append([InlineKeyboardButton("✏️ Ziel-ID ändern", callback_data=f"ar_target_chid_{dst_id}")])
+        keyboard.append([InlineKeyboardButton("🗑 Ziel löschen", callback_data=f"ar_target_del_{dst_id}")])
+        keyboard.append([InlineKeyboardButton("🔙 Zurück", callback_data="ar_routes_menu")])
         await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
 
-    elif data.startswith("ar_route_src_"):
-        src_group_id = int(data.split("ar_route_src_")[1])
+    elif data.startswith("ar_target_grp_"):
+        parts = data.split("_")
+        dst_id = int(parts[3])
+        grp_id = int(parts[4])
         bot_data = load_data()
+        ar = bot_data.setdefault("admin_report", {})
+        routes = ar.setdefault("group_routes", {})
+        also = ar.setdefault("route_also_default", {})
+        if routes.get(str(grp_id)) == dst_id:
+            # Remove
+            routes.pop(str(grp_id), None)
+            also.pop(str(grp_id), None)
+            await query.answer("❌ Gruppe entfernt")
+        else:
+            routes[str(grp_id)] = dst_id
+            await query.answer("✅ Gruppe hinzugefügt")
+        save_data(bot_data)
+        # Re-render target page
         groups = bot_data.get("groups", [])
-        ar = bot_data.get("admin_report", {})
-        src_name = next((g["title"] for g in groups if g["id"] == src_group_id), str(src_group_id))
-
+        gmap = {g["id"]: g["title"] for g in groups}
+        dst_name = gmap.get(dst_id, str(dst_id))
+        assigned = {int(s) for s, d in routes.items() if d == dst_id}
+        text = f"📌 <b>Ziel: {dst_name}</b>\n<code>{dst_id}</code>\n\nWähle Gruppen aus/ab:"
         keyboard = []
-        # Toggle: also send to Standard-Team
-        if str(src_group_id) in ar.get("group_routes", {}):
-            also = ar.get("route_also_default", {}).get(str(src_group_id), True)
-            toggle_icon = "✅" if also else "❌"
-            keyboard.append([InlineKeyboardButton(f"{toggle_icon} Auch ans Standard-Team", callback_data=f"ar_route_toggle_{src_group_id}")])
-            keyboard.append([InlineKeyboardButton("🗑 Route entfernen", callback_data=f"ar_route_del_{src_group_id}")])
+        for g in groups:
+            is_assigned = g["id"] in assigned
+            icon = "✅" if is_assigned else "❌"
+            keyboard.append([InlineKeyboardButton(f"{icon} {g['title']}", callback_data=f"ar_target_grp_{dst_id}_{g['id']}")])
+        if assigned:
+            for gid in assigned:
+                gname = gmap.get(gid, str(gid))
+                a = also.get(str(gid), True)
+                aicon = "✅" if a else "❌"
+                keyboard.append([InlineKeyboardButton(f"{aicon} {gname} → +Standard", callback_data=f"ar_target_also_{dst_id}_{gid}")])
+        keyboard.append([InlineKeyboardButton("✏️ Ziel-ID ändern", callback_data=f"ar_target_chid_{dst_id}")])
+        keyboard.append([InlineKeyboardButton("🗑 Ziel löschen", callback_data=f"ar_target_del_{dst_id}")])
         keyboard.append([InlineKeyboardButton("🔙 Zurück", callback_data="ar_routes_menu")])
+        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
 
-        current_dst = ar.get("group_routes", {}).get(str(src_group_id))
-        dst_info = f"\n\n📌 Aktuelles Ziel: <code>{current_dst}</code>" if current_dst else ""
-
-        context.user_data["state"] = f"ar_route_input_{src_group_id}"
-        await query.edit_message_text(
-            f"📋 <b>Ziel für {src_name}</b>{dst_info}\n\n"
-            f"Sende jetzt die <b>Chat-ID</b> des Ziel-Kanals/Gruppe.\n"
-            f"<i>(z.B. -1001234567890)</i>",
-            reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
-
-    elif data.startswith("ar_route_toggle_"):
-        src_id = data.split("ar_route_toggle_")[1]
+    elif data.startswith("ar_target_also_"):
+        parts = data.split("_")
+        dst_id = int(parts[3])
+        grp_id = int(parts[4])
         bot_data = load_data()
         ar = bot_data.setdefault("admin_report", {})
         route_also = ar.setdefault("route_also_default", {})
-        current = route_also.get(src_id, True)
-        route_also[src_id] = not current
+        current = route_also.get(str(grp_id), True)
+        route_also[str(grp_id)] = not current
         save_data(bot_data)
-        new_state = "✅ Auch Standard-Team" if not current else "❌ Nur eigene Route"
-        await query.answer(new_state)
-        # Re-render
-        src_group_id = int(src_id)
+        await query.answer("✅ +Standard" if not current else "❌ Nur Route")
+        # Re-render target page
+        routes = ar.get("group_routes", {})
         groups = bot_data.get("groups", [])
-        src_name = next((g["title"] for g in groups if g["id"] == src_group_id), str(src_group_id))
+        gmap = {g["id"]: g["title"] for g in groups}
+        dst_name = gmap.get(dst_id, str(dst_id))
+        assigned = {int(s) for s, d in routes.items() if d == dst_id}
+        text = f"📌 <b>Ziel: {dst_name}</b>\n<code>{dst_id}</code>\n\nWähle Gruppen aus/ab:"
         keyboard = []
-        also = route_also.get(src_id, True)
-        toggle_icon = "✅" if also else "❌"
-        keyboard.append([InlineKeyboardButton(f"{toggle_icon} Auch ans Standard-Team", callback_data=f"ar_route_toggle_{src_group_id}")])
-        keyboard.append([InlineKeyboardButton("🗑 Route entfernen", callback_data=f"ar_route_del_{src_group_id}")])
+        for g in groups:
+            is_assigned = g["id"] in assigned
+            icon = "✅" if is_assigned else "❌"
+            keyboard.append([InlineKeyboardButton(f"{icon} {g['title']}", callback_data=f"ar_target_grp_{dst_id}_{g['id']}")])
+        if assigned:
+            for gid in assigned:
+                gname = gmap.get(gid, str(gid))
+                a = route_also.get(str(gid), True)
+                aicon = "✅" if a else "❌"
+                keyboard.append([InlineKeyboardButton(f"{aicon} {gname} → +Standard", callback_data=f"ar_target_also_{dst_id}_{gid}")])
+        keyboard.append([InlineKeyboardButton("✏️ Ziel-ID ändern", callback_data=f"ar_target_chid_{dst_id}")])
+        keyboard.append([InlineKeyboardButton("🗑 Ziel löschen", callback_data=f"ar_target_del_{dst_id}")])
         keyboard.append([InlineKeyboardButton("🔙 Zurück", callback_data="ar_routes_menu")])
-        current_dst = ar.get("group_routes", {}).get(str(src_group_id))
-        dst_info = f"\n\n📌 Aktuelles Ziel: <code>{current_dst}</code>" if current_dst else ""
-        await query.edit_message_text(
-            f"📋 <b>Ziel für {src_name}</b>{dst_info}\n\n"
-            f"Sende jetzt die <b>Chat-ID</b> des Ziel-Kanals/Gruppe.\n"
-            f"<i>(z.B. -1001234567890)</i>",
-            reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
+        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
 
-    elif data.startswith("ar_route_del_"):
-        src_id = data.split("ar_route_del_")[1]
-        bot_data = load_data()
-        ar = bot_data.get("admin_report", {})
-        ar.get("group_routes", {}).pop(src_id, None)
-        ar.get("route_also_default", {}).pop(src_id, None)
-        save_data(bot_data)
-        await query.answer("✅ Route entfernt")
-        await _render_admin_report_menu(query)
+    elif data.startswith("ar_target_chid_"):
+        dst_id = int(data.split("ar_target_chid_")[1])
+        context.user_data["state"] = f"ar_target_change_{dst_id}"
+        keyboard = [[InlineKeyboardButton("🔙 Zurück", callback_data=f"ar_target_{dst_id}")]]
+        await query.edit_message_text(
+            f"✏️ <b>Neue Ziel-ID eingeben</b>\n\nAktuelle ID: <code>{dst_id}</code>\n\n"
+            f"Sende die neue Chat-ID:",
+            reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
 
     elif data.startswith("ar_solved_"):
         parts = data.split("_")
@@ -4882,35 +4965,59 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode="HTML",
         )
 
-    elif state and state.startswith("ar_route_input_"):
-        src_id = state.replace("ar_route_input_", "")
+    elif state == "ar_target_new_input":
         try:
             dst_id = int(text)
         except ValueError:
             await update.message.reply_text("⚠️ Bitte sende eine gültige numerische Chat-ID (z.B. -1001234567890).")
             return
-        # Validate: try to get chat info
         dst_name = str(dst_id)
         try:
             chat_info = await context.bot.get_chat(dst_id)
             dst_name = chat_info.title or str(dst_id)
         except Exception:
-            pass  # ID might still work, just can't resolve name
-        bot_data = load_data()
-        ar = bot_data.setdefault("admin_report", {"active": False, "staff_group": None, "notify_users": [], "group_routes": {}})
-        ar.setdefault("group_routes", {})[src_id] = dst_id
-        save_data(bot_data)
+            pass
         context.user_data["state"] = None
-        groups = bot_data.get("groups", [])
-        src_name = next((g["title"] for g in groups if g["id"] == int(src_id)), src_id)
-        keyboard = [[InlineKeyboardButton("🔙 Zurück", callback_data="ar_routes_menu")]]
+        keyboard = [[InlineKeyboardButton(f"✏️ Gruppen zuweisen", callback_data=f"ar_target_{dst_id}")],
+                     [InlineKeyboardButton("🔙 Zurück", callback_data="ar_routes_menu")]]
         await update.message.reply_text(
-            f"✅ Route gesetzt:\n{src_name} → <code>{dst_id}</code> ({html.escape(dst_name)})",
+            f"✅ Ziel erstellt: <code>{dst_id}</code> ({html.escape(dst_name)})\n\n"
+            f"Klicke jetzt auf 'Gruppen zuweisen' um Gruppen zuzuordnen.",
             reply_markup=InlineKeyboardMarkup(keyboard),
             parse_mode="HTML",
         )
 
+    elif state and state.startswith("ar_target_change_"):
+        old_dst = int(state.replace("ar_target_change_", ""))
+        try:
+            new_dst = int(text)
+        except ValueError:
+            await update.message.reply_text("⚠️ Bitte sende eine gültige numerische Chat-ID.")
+            return
+        bot_data = load_data()
+        ar = bot_data.setdefault("admin_report", {})
+        routes = ar.setdefault("group_routes", {})
+        also = ar.setdefault("route_also_default", {})
+        # Move all routes from old target to new target
+        for src_id in list(routes.keys()):
+            if routes[src_id] == old_dst:
+                routes[src_id] = new_dst
+        save_data(bot_data)
+        context.user_data["state"] = None
+        new_name = str(new_dst)
+        try:
+            chat_info = await context.bot.get_chat(new_dst)
+            new_name = chat_info.title or str(new_dst)
+        except Exception:
+            pass
+        keyboard = [[InlineKeyboardButton("🔙 Zurück", callback_data=f"ar_target_{new_dst}")]]
+        await update.message.reply_text(
+            f"✅ Ziel geändert: <code>{new_dst}</code> ({html.escape(new_name)})",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode="HTML",
+        )
 
+    elif state == "ar_notify_add":
         try:
             uid = int(text)
         except ValueError:
