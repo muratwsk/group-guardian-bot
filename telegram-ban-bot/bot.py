@@ -340,7 +340,7 @@ async def auto_delete_command(update: Update, context):
     msg_text = update.message.text.strip()
     first_char = msg_text[0] if msg_text else ""
     rest = msg_text[1:] if len(msg_text) > 1 else ""
-    if not (first_char in ["/", "!", ";", "."] and rest and rest[0].isalpha()):
+    if not (first_char in ["/", "!", ";", "."] and rest and rest[0].isalnum()):
         return
 
     msg_id = update.message.message_id
