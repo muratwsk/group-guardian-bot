@@ -5677,6 +5677,9 @@ async def track_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # --- Command delete check ---
     await auto_delete_command(update, context)
 
+    # --- @admin mention check ---
+    await _check_admin_mention(update, context)
+
     # --- Anti-Spam: Link check ---
     if update.message.from_user:
         sender_as = update.message.from_user
