@@ -5448,7 +5448,7 @@ async def unfree_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"{uname}[<code>{target_id}</code>] wurde die Rolle 🔒 <b>Befreiter</b> widerrufen.",
         parse_mode="HTML",
     )
-    await log_action(context, f"🔒 UNFREE: {target_name} [{target_id}] von {update.effective_user.first_name}")
+    await log_action(context, "", group_id=chat.id if chat else None, group_name=chat.title if chat else None, category=LOG_CAT_MOD, action="UNFREE", details={"user": target_name, "user_id": str(target_id), "von": update.effective_user.full_name, "von_id": str(update.effective_user.id)})
 
 
 async def multidel_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
