@@ -509,7 +509,8 @@ def _format_log_block(category: str, action: str, details: dict) -> str:
             "MUTE": "🔇", "UNMUTE": "🔊", "KICK": "👢", "WARN": "⚠️",
             "UNWARN": "↩️", "BADWORD": "🔤", "LINK": "🔗", "AUTO-REBAN": "🔄",
             "FREE": "🛡", "UNFREE": "🛡", "MASS UNBAN": "✅", "MASS UNMUTE": "🔊",
-            "DELETE": "🗑",
+            "DELETE": "🗑", "FORWARD-SPAM": "🔀", "LINK-WARN CANCEL": "↩️",
+            "MASS BAN": "🚫", "MASS MUTE": "🔇", "MASS KICK": "👢",
         }
         icon = action_icons.get(action.upper(), "📋")
 
