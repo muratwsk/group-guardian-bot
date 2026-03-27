@@ -749,6 +749,7 @@ WAITING_WARN_MUTE_DUR = 19
 WAITING_BADWORD_ADD = 20
 WAITING_BADWORD_REMOVE = 21
 WAITING_PROTO_CHANNEL = 22
+WAITING_GROUP_ADD_ID = 23
 
 # --- Smart text normalizer for forbidden word evasion detection ---
 LEET_MAP = {
