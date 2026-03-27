@@ -2997,16 +2997,19 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         bot_data = load_data()
         ar = bot_data.get("admin_report", {})
         group_routes = ar.get("group_routes", {})
+        route_also_default = ar.get("route_also_default", {})
         groups = bot_data.get("groups", [])
         gmap = {g["id"]: g["title"] for g in groups}
 
-        text = "📋 <b>Gruppen-Routing</b>\n\nHier kannst du für einzelne Gruppen eine <b>zusätzliche</b> Team-Gruppe festlegen.\nDas Standard-Team bekommt weiterhin ALLE Meldungen.\n"
+        text = "📋 <b>Gruppen-Routing</b>\n\nPro Gruppe kannst du eine eigene Team-Gruppe festlegen.\nDu kannst wählen ob die Meldung auch ans Standard-Team geht.\n"
         if group_routes:
             text += "\n<b>Aktive Routen:</b>\n"
             for src_id, dst_id in group_routes.items():
                 src_name = gmap.get(int(src_id), str(src_id))
                 dst_name = gmap.get(dst_id, str(dst_id))
-                text += f"  • {src_name} → {dst_name}\n"
+                also = route_also_default.get(str(src_id), True)
+                mode = "✅ +Standard" if also else "❌ Nur Route"
+                text += f"  • {src_name} → {dst_name} [{mode}]\n"
 
         keyboard = []
         for g in groups:
