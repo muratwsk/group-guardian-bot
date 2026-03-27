@@ -6372,7 +6372,7 @@ async def track_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     await update.message.delete()
                 except Exception:
                     pass
-                await log_action(context, f"AUTO-REBANNED: {member.full_name} ({member.id}) in {update.effective_chat.title}")
+                await log_action(context, "", group_id=chat_id, group_name=update.effective_chat.title, category=LOG_CAT_MOD, action="AUTO-REBAN", details={"user": member.full_name, "user_id": str(member.id), "gruppe": update.effective_chat.title})
             except Exception as e:
                 logger.error(f"Auto-reban via new_chat_members failed for {member.id} in {chat_id}: {e}")
 
