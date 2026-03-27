@@ -3060,6 +3060,21 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.answer("✅ Route entfernt")
         await _render_admin_report_menu(query)
 
+    elif data.startswith("ar_solved_"):
+        parts = data.split("_")
+        # ar_solved_{chat_id}_{sender_id}
+        solver = update.effective_user
+        solver_name = solver.full_name if solver else "Unbekannt"
+        original_text = query.message.text or query.message.caption or ""
+        solved_text = (
+            f"{original_text}\n\n"
+            f"━━━━━━━━━━━━━━━\n"
+            f"✅ <b>Gelöst</b> von {solver_name}\n"
+            f"🕐 {datetime.datetime.now().strftime('%d.%m.%Y %H:%M')}"
+        )
+        await query.edit_message_text(solved_text, parse_mode="HTML")
+        await query.answer("✅ Als gelöst markiert")
+
     # === SETTINGS ===
     elif data == "menu_settings":
         if not is_owner(user_id):
@@ -4113,18 +4128,18 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if action == "ban":
                 await context.bot.ban_chat_member(chat_id=chat_id_val, user_id=target_id, revoke_messages=True)
                 remember_group_ban([chat_id_val], target_id, t_name, t_username)
-                result_text = f"🚫 [{target_id}] wurde gebannt."
+                result_text = f"🚫 {t_name} [<code>{target_id}</code>] wurde gebannt."
             elif action == "kick":
                 await context.bot.ban_chat_member(chat_id=chat_id_val, user_id=target_id)
                 await context.bot.unban_chat_member(chat_id=chat_id_val, user_id=target_id)
-                result_text = f"❗ [{target_id}] wurde gekickt."
+                result_text = f"❗ {t_name} [<code>{target_id}</code>] wurde gekickt."
             elif action == "mute":
                 await context.bot.restrict_chat_member(
                     chat_id=chat_id_val, user_id=target_id,
                     permissions=ChatPermissions.no_permissions(),
                 )
                 set_active_mute(chat_id_val, target_id)
-                result_text = f"📛 [{target_id}] wurde gemutet."
+                result_text = f"📛 {t_name} [<code>{target_id}</code>] wurde gemutet."
         except Exception as e:
             result_text = f"⚠️ Fehler: {e}"
         # Reset warns
@@ -4263,7 +4278,8 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         result_text = "\n".join(results)
         verb = "gebannt" if action == "ban" else "entbannt"
-        await update.message.reply_text(f"Ergebnis für User `{target_id}`:\n\n{result_text}", parse_mode="Markdown")
+        uname = f"@{target_username} " if target_username else ""
+        await update.message.reply_text(f"Ergebnis für {uname}{target_name} [<code>{target_id}</code>]:\n\n{result_text}", parse_mode="HTML")
         await log_action(context, f"User `{target_id}` {verb} von {update.effective_user.full_name} ({user_id})\n{result_text}")
 
         context.user_data["state"] = None
@@ -5896,13 +5912,16 @@ async def handle_admin_report(update: Update, context: ContextTypes.DEFAULT_TYPE
             mentions.append(f'<a href="tg://user?id={uid}">\u200b</a>')
         report_text += "\n" + "".join(mentions)
 
-    # Build inline keyboard with "Go to message" button
-    reply_markup = None
+    # Build inline keyboard with "Go to message" and "Solved" buttons
+    buttons = []
     if message_link:
-        from telegram import InlineKeyboardButton, InlineKeyboardMarkup
-        reply_markup = InlineKeyboardMarkup([
-            [InlineKeyboardButton("📍 Zur Nachricht", url=message_link)]
-        ])
+        buttons.append(InlineKeyboardButton("📍 Zur Nachricht", url=message_link))
+    reply_markup = InlineKeyboardMarkup([
+        buttons,
+        [InlineKeyboardButton("✅ Gelöst", callback_data=f"ar_solved_{chat.id}_{sender.id}")],
+    ]) if buttons else InlineKeyboardMarkup([
+        [InlineKeyboardButton("✅ Gelöst", callback_data=f"ar_solved_{chat.id}_{sender.id}")],
+    ])
 
     try:
         await context.bot.send_message(
