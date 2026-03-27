@@ -5957,16 +5957,22 @@ async def handle_admin_report(update: Update, context: ContextTypes.DEFAULT_TYPE
     if not ar.get("active"):
         return
 
-    # Collect ALL target groups: default team + per-group route
+    # Collect target groups based on per-group routing config
     group_routes = ar.get("group_routes", {})
+    route_also_default = ar.get("route_also_default", {})
     default_team = ar.get("staff_group")
     specific_route = group_routes.get(str(chat.id))
 
     target_groups = set()
-    if default_team:
-        target_groups.add(int(default_team))
     if specific_route:
         target_groups.add(int(specific_route))
+        # Check if this group also sends to Standard-Team
+        also_default = route_also_default.get(str(chat.id), True)
+        if also_default and default_team:
+            target_groups.add(int(default_team))
+    elif default_team:
+        # No specific route → send to Standard-Team
+        target_groups.add(int(default_team))
 
     if not target_groups:
         return
