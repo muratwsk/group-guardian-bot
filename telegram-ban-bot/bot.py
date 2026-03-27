@@ -5772,7 +5772,9 @@ async def handle_admin_report(update: Update, context: ContextTypes.DEFAULT_TYPE
     if not ar.get("active"):
         return
 
-    staff_group = ar.get("staff_group")
+    # Per-group routing: check group_routes first, then fallback to default staff_group
+    group_routes = ar.get("group_routes", {})
+    staff_group = group_routes.get(str(chat.id)) or ar.get("staff_group")
     if not staff_group:
         return
 
