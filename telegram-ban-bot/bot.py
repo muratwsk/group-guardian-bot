@@ -5903,7 +5903,8 @@ async def handle_admin_report(update: Update, context: ContextTypes.DEFAULT_TYPE
     report_text = (
         f"🆘 <b>Admin-Meldung</b>\n\n"
         f"📍 <b>Gruppe:</b> {chat.title}\n"
-        f"👤 <b>Gemeldet von:</b> {sender.full_name} (<code>{sender.id}</code>)"
+        f"👤 <b>Gemeldet von:</b> {sender.full_name} (<code>{sender.id}</code>)\n"
+        f"🕐 {now_de().strftime('%d.%m.%Y %H:%M')}"
         f"{user_text}"
         f"{reported_info}"
     )
