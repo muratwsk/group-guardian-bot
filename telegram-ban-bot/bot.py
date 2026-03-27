@@ -980,19 +980,18 @@ async def _render_admin_report_menu(query):
 
     text = (
         f"🆘 <b>@admin-Befehl</b>\n\n"
-        f"@admin (oder /report) ist ein Befehl, der Chatmitgliedern "
-        f"zur Verfügung steht, um die Aufmerksamkeit des Mitarbeiterteams "
-        f"auf sich zu lenken.\n\n"
-        f"⚠️ Der @admin-Befehl funktioniert <b>NICHT</b>, wenn er von "
-        f"Admins oder Moderatoren verwendet wird.\n\n"
-        f"Status: {status_icon}\n"
-        f"Standard-Team: {staff_str}\n"
-        f"🔔 Benachrichtigen: {notify_str}"
+        f"Status: {status_icon}\n\n"
+        f"🏢 <b>Standard-Team:</b> {staff_str}\n"
+        f"<i>→ Bekommt ALLE Meldungen aus allen Gruppen</i>\n\n"
+        f"🔔 <b>Benachrichtigen:</b> {notify_str}"
         f"{routes_str}"
     )
 
+    if routes_str:
+        text += "\n<i>→ Diese Gruppen bekommen Meldungen ZUSÄTZLICH zum Standard-Team</i>"
+
     if not staff_group and not group_routes:
-        text += "\n\n❗️ Es wurde keine Mitarbeitergruppe definiert, die Mitteilung wird an niemanden gesendet werden."
+        text += "\n\n❗️ Es wurde keine Mitarbeitergruppe definiert."
 
     keyboard = [
         [InlineKeyboardButton(f"{'❌ Deaktivieren' if active else '✅ Aktivieren'}", callback_data="ar_toggle")],
