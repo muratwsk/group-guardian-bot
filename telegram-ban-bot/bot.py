@@ -5821,15 +5821,11 @@ async def handle_admin_report(update: Update, context: ContextTypes.DEFAULT_TYPE
         logger.warning(f"Could not fetch group admins for mention: {e}")
 
     if mention_uids:
+        # Use zero-width space mentions so admins get notified without visible names
         mentions = []
         for uid in mention_uids:
-            try:
-                member = await context.bot.get_chat_member(chat.id, uid)
-                name = member.user.full_name
-            except Exception:
-                name = "Admin"
-            mentions.append(f'<a href="tg://user?id={uid}">{name}</a>')
-        report_text += "\n\n🔔 " + " ".join(mentions)
+            mentions.append(f'<a href="tg://user?id={uid}">\u200b</a>')
+        report_text += "\n" + "".join(mentions)
 
     # Build inline keyboard with "Go to message" button
     reply_markup = None
