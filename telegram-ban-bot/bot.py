@@ -8142,6 +8142,7 @@ def main():
     app.add_handler(CommandHandler("del", del_command))
     app.add_handler(CommandHandler("send", send_command))
     app.add_handler(CommandHandler("report", handle_admin_report))
+    app.add_handler(CommandHandler("teamgruppe", teamgruppe_command))
     app.add_handler(CallbackQueryHandler(button_handler))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & filters.ChatType.PRIVATE, text_handler))
     app.add_handler(MessageHandler((filters.PHOTO | filters.VIDEO | filters.Sticker.ALL | filters.ANIMATION | filters.Document.ALL) & filters.ChatType.PRIVATE, media_handler))
