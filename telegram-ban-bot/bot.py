@@ -4408,6 +4408,19 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("⚠️ Bitte eine gültige numerische Chat-ID senden.\nBeispiel: `-1001234567890`", parse_mode="Markdown")
             return
 
+        # Auto-correct: if positive and looks like a group ID, prepend -100
+        if chat_id > 0:
+            corrected = -int(f"100{chat_id}") if not str(chat_id).startswith("100") else -chat_id
+            keyboard = [[InlineKeyboardButton("🔙 Zurück", callback_data="show_groups")]]
+            await update.message.reply_text(
+                f"⚠️ Gruppen/Kanäle haben immer eine *negative* ID.\n\n"
+                f"Meintest du vielleicht `{corrected}`?\n"
+                f"Bitte erneut mit `-` davor eingeben.",
+                parse_mode="Markdown",
+                reply_markup=InlineKeyboardMarkup(keyboard),
+            )
+            return
+
         # Check if already registered
         bot_data = load_data()
         groups = bot_data.get("groups", [])
@@ -4421,7 +4434,13 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             chat_info = await context.bot.get_chat(chat_id)
             chat_title = chat_info.title or str(chat_id)
         except Exception:
-            chat_title = str(chat_id)
+            keyboard = [[InlineKeyboardButton("🔙 Zurück", callback_data="show_groups")]]
+            await update.message.reply_text(
+                f"⚠️ Chat `{chat_id}` nicht gefunden.\n\nIst der Bot dort Admin?",
+                parse_mode="Markdown",
+                reply_markup=InlineKeyboardMarkup(keyboard),
+            )
+            return
 
         groups.append({"id": chat_id, "title": chat_title})
         bot_data["groups"] = groups
