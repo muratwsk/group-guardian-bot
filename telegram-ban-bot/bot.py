@@ -4958,35 +4958,59 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode="HTML",
         )
 
-    elif state and state.startswith("ar_route_input_"):
-        src_id = state.replace("ar_route_input_", "")
+    elif state == "ar_target_new_input":
         try:
             dst_id = int(text)
         except ValueError:
             await update.message.reply_text("⚠️ Bitte sende eine gültige numerische Chat-ID (z.B. -1001234567890).")
             return
-        # Validate: try to get chat info
         dst_name = str(dst_id)
         try:
             chat_info = await context.bot.get_chat(dst_id)
             dst_name = chat_info.title or str(dst_id)
         except Exception:
-            pass  # ID might still work, just can't resolve name
-        bot_data = load_data()
-        ar = bot_data.setdefault("admin_report", {"active": False, "staff_group": None, "notify_users": [], "group_routes": {}})
-        ar.setdefault("group_routes", {})[src_id] = dst_id
-        save_data(bot_data)
+            pass
         context.user_data["state"] = None
-        groups = bot_data.get("groups", [])
-        src_name = next((g["title"] for g in groups if g["id"] == int(src_id)), src_id)
-        keyboard = [[InlineKeyboardButton("🔙 Zurück", callback_data="ar_routes_menu")]]
+        keyboard = [[InlineKeyboardButton(f"✏️ Gruppen zuweisen", callback_data=f"ar_target_{dst_id}")],
+                     [InlineKeyboardButton("🔙 Zurück", callback_data="ar_routes_menu")]]
         await update.message.reply_text(
-            f"✅ Route gesetzt:\n{src_name} → <code>{dst_id}</code> ({html.escape(dst_name)})",
+            f"✅ Ziel erstellt: <code>{dst_id}</code> ({html.escape(dst_name)})\n\n"
+            f"Klicke jetzt auf 'Gruppen zuweisen' um Gruppen zuzuordnen.",
             reply_markup=InlineKeyboardMarkup(keyboard),
             parse_mode="HTML",
         )
 
+    elif state and state.startswith("ar_target_change_"):
+        old_dst = int(state.replace("ar_target_change_", ""))
+        try:
+            new_dst = int(text)
+        except ValueError:
+            await update.message.reply_text("⚠️ Bitte sende eine gültige numerische Chat-ID.")
+            return
+        bot_data = load_data()
+        ar = bot_data.setdefault("admin_report", {})
+        routes = ar.setdefault("group_routes", {})
+        also = ar.setdefault("route_also_default", {})
+        # Move all routes from old target to new target
+        for src_id in list(routes.keys()):
+            if routes[src_id] == old_dst:
+                routes[src_id] = new_dst
+        save_data(bot_data)
+        context.user_data["state"] = None
+        new_name = str(new_dst)
+        try:
+            chat_info = await context.bot.get_chat(new_dst)
+            new_name = chat_info.title or str(new_dst)
+        except Exception:
+            pass
+        keyboard = [[InlineKeyboardButton("🔙 Zurück", callback_data=f"ar_target_{new_dst}")]]
+        await update.message.reply_text(
+            f"✅ Ziel geändert: <code>{new_dst}</code> ({html.escape(new_name)})",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode="HTML",
+        )
 
+    elif state == "ar_notify_add":
         try:
             uid = int(text)
         except ValueError:
