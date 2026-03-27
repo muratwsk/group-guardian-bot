@@ -4113,18 +4113,18 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if action == "ban":
                 await context.bot.ban_chat_member(chat_id=chat_id_val, user_id=target_id, revoke_messages=True)
                 remember_group_ban([chat_id_val], target_id, t_name, t_username)
-                result_text = f"🚫 [{target_id}] wurde gebannt."
+                result_text = f"🚫 {t_name} [<code>{target_id}</code>] wurde gebannt."
             elif action == "kick":
                 await context.bot.ban_chat_member(chat_id=chat_id_val, user_id=target_id)
                 await context.bot.unban_chat_member(chat_id=chat_id_val, user_id=target_id)
-                result_text = f"❗ [{target_id}] wurde gekickt."
+                result_text = f"❗ {t_name} [<code>{target_id}</code>] wurde gekickt."
             elif action == "mute":
                 await context.bot.restrict_chat_member(
                     chat_id=chat_id_val, user_id=target_id,
                     permissions=ChatPermissions.no_permissions(),
                 )
                 set_active_mute(chat_id_val, target_id)
-                result_text = f"📛 [{target_id}] wurde gemutet."
+                result_text = f"📛 {t_name} [<code>{target_id}</code>] wurde gemutet."
         except Exception as e:
             result_text = f"⚠️ Fehler: {e}"
         # Reset warns
