@@ -5321,7 +5321,7 @@ async def warn_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             warnings.pop(f"{chat.id}_{target_id}", None)
             save_data(bot_data)
             await update.message.reply_text(result_text, parse_mode="HTML")
-            await log_action(context, f"WARN AUTO-PUNISH ({punishment}): {target_name} ({target_id}) in {chat.title} — {current_count}/{max_warns}" + (f" Grund: {reason}" if reason else ""), group_id=chat.id, group_name=chat.title)
+            await log_action(context, "", group_id=chat.id, group_name=chat.title, category=LOG_CAT_MOD, action="WARN", details={"user": target_name, "user_id": str(target_id), "gruppe": chat.title, "von": update.effective_user.full_name, "von_id": str(update.effective_user.id), "details": f"{current_count}/{max_warns} → Auto-{punishment}", "grund": reason})
             return
         else:
             # No punishment configured — show choice
