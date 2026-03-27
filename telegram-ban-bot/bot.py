@@ -968,6 +968,7 @@ async def _render_admin_report_menu(query):
 
     # Group routes info
     routes_str = ""
+    route_also_default = ar.get("route_also_default", {})
     if group_routes:
         groups = bot_data.get("groups", [])
         gmap = {g["id"]: g["title"] for g in groups}
@@ -975,20 +976,19 @@ async def _render_admin_report_menu(query):
         for src_id, dst_id in group_routes.items():
             src_name = gmap.get(int(src_id), str(src_id))
             dst_name = gmap.get(dst_id, str(dst_id))
-            route_parts.append(f"  • {src_name} → {dst_name}")
+            also = route_also_default.get(str(src_id), True)
+            mode = "+ Standard-Team" if also else "NUR Route"
+            route_parts.append(f"  • {src_name} → {dst_name} [{mode}]")
         routes_str = "\n\n📋 <b>Gruppen-Routing:</b>\n" + "\n".join(route_parts)
 
     text = (
         f"🆘 <b>@admin-Befehl</b>\n\n"
         f"Status: {status_icon}\n\n"
         f"🏢 <b>Standard-Team:</b> {staff_str}\n"
-        f"<i>→ Bekommt ALLE Meldungen aus allen Gruppen</i>\n\n"
+        f"<i>→ Bekommt Meldungen aus Gruppen ohne eigene Route (oder wenn 'auch Standard-Team' aktiv)</i>\n\n"
         f"🔔 <b>Benachrichtigen:</b> {notify_str}"
         f"{routes_str}"
     )
-
-    if routes_str:
-        text += "\n<i>→ Diese Gruppen bekommen Meldungen ZUSÄTZLICH zum Standard-Team</i>"
 
     if not staff_group and not group_routes:
         text += "\n\n❗️ Es wurde keine Mitarbeitergruppe definiert."
@@ -2997,16 +2997,19 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         bot_data = load_data()
         ar = bot_data.get("admin_report", {})
         group_routes = ar.get("group_routes", {})
+        route_also_default = ar.get("route_also_default", {})
         groups = bot_data.get("groups", [])
         gmap = {g["id"]: g["title"] for g in groups}
 
-        text = "📋 <b>Gruppen-Routing</b>\n\nHier kannst du für einzelne Gruppen eine <b>zusätzliche</b> Team-Gruppe festlegen.\nDas Standard-Team bekommt weiterhin ALLE Meldungen.\n"
+        text = "📋 <b>Gruppen-Routing</b>\n\nPro Gruppe kannst du eine eigene Team-Gruppe festlegen.\nDu kannst wählen ob die Meldung auch ans Standard-Team geht.\n"
         if group_routes:
             text += "\n<b>Aktive Routen:</b>\n"
             for src_id, dst_id in group_routes.items():
                 src_name = gmap.get(int(src_id), str(src_id))
                 dst_name = gmap.get(dst_id, str(dst_id))
-                text += f"  • {src_name} → {dst_name}\n"
+                also = route_also_default.get(str(src_id), True)
+                mode = "✅ +Standard" if also else "❌ Nur Route"
+                text += f"  • {src_name} → {dst_name} [{mode}]\n"
 
         keyboard = []
         for g in groups:
@@ -3024,6 +3027,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         src_group_id = int(data.split("ar_route_src_")[1])
         bot_data = load_data()
         groups = bot_data.get("groups", [])
+        ar = bot_data.get("admin_report", {})
         src_name = next((g["title"] for g in groups if g["id"] == src_group_id), str(src_group_id))
 
         keyboard = []
@@ -3031,9 +3035,11 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if g["id"] == src_group_id:
                 continue
             keyboard.append([InlineKeyboardButton(f"👥 {g['title']}", callback_data=f"ar_route_set_{src_group_id}_{g['id']}")])
-        # Option to remove route
-        ar = bot_data.get("admin_report", {})
+        # Toggle: also send to Standard-Team
         if str(src_group_id) in ar.get("group_routes", {}):
+            also = ar.get("route_also_default", {}).get(str(src_group_id), True)
+            toggle_icon = "✅" if also else "❌"
+            keyboard.append([InlineKeyboardButton(f"{toggle_icon} Auch ans Standard-Team", callback_data=f"ar_route_toggle_{src_group_id}")])
             keyboard.append([InlineKeyboardButton("🗑 Route entfernen", callback_data=f"ar_route_del_{src_group_id}")])
         keyboard.append([InlineKeyboardButton("🔙 Zurück", callback_data="ar_routes_menu")])
         await query.edit_message_text(
@@ -3054,11 +3060,40 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.answer(f"✅ {src_name} → {dst_name}")
         await _render_admin_report_menu(query)
 
+    elif data.startswith("ar_route_toggle_"):
+        src_id = data.split("ar_route_toggle_")[1]
+        bot_data = load_data()
+        ar = bot_data.setdefault("admin_report", {})
+        route_also = ar.setdefault("route_also_default", {})
+        current = route_also.get(src_id, True)
+        route_also[src_id] = not current
+        save_data(bot_data)
+        new_state = "✅ Auch Standard-Team" if not current else "❌ Nur eigene Route"
+        await query.answer(new_state)
+        # Re-render the route source page
+        groups = bot_data.get("groups", [])
+        src_group_id = int(src_id)
+        src_name = next((g["title"] for g in groups if g["id"] == src_group_id), str(src_group_id))
+        keyboard = []
+        for g in groups:
+            if g["id"] == src_group_id:
+                continue
+            keyboard.append([InlineKeyboardButton(f"👥 {g['title']}", callback_data=f"ar_route_set_{src_group_id}_{g['id']}")])
+        also = route_also.get(src_id, True)
+        toggle_icon = "✅" if also else "❌"
+        keyboard.append([InlineKeyboardButton(f"{toggle_icon} Auch ans Standard-Team", callback_data=f"ar_route_toggle_{src_group_id}")])
+        keyboard.append([InlineKeyboardButton("🗑 Route entfernen", callback_data=f"ar_route_del_{src_group_id}")])
+        keyboard.append([InlineKeyboardButton("🔙 Zurück", callback_data="ar_routes_menu")])
+        await query.edit_message_text(
+            f"📋 <b>Ziel für {src_name}</b>\n\nWähle die Team-Gruppe, an die Meldungen aus <b>{src_name}</b> gesendet werden sollen:",
+            reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
+
     elif data.startswith("ar_route_del_"):
         src_id = data.split("ar_route_del_")[1]
         bot_data = load_data()
         ar = bot_data.get("admin_report", {})
         ar.get("group_routes", {}).pop(src_id, None)
+        ar.get("route_also_default", {}).pop(src_id, None)
         save_data(bot_data)
         await query.answer("✅ Route entfernt")
         await _render_admin_report_menu(query)
@@ -5957,16 +5992,22 @@ async def handle_admin_report(update: Update, context: ContextTypes.DEFAULT_TYPE
     if not ar.get("active"):
         return
 
-    # Collect ALL target groups: default team + per-group route
+    # Collect target groups based on per-group routing config
     group_routes = ar.get("group_routes", {})
+    route_also_default = ar.get("route_also_default", {})
     default_team = ar.get("staff_group")
     specific_route = group_routes.get(str(chat.id))
 
     target_groups = set()
-    if default_team:
-        target_groups.add(int(default_team))
     if specific_route:
         target_groups.add(int(specific_route))
+        # Check if this group also sends to Standard-Team
+        also_default = route_also_default.get(str(chat.id), True)
+        if also_default and default_team:
+            target_groups.add(int(default_team))
+    elif default_team:
+        # No specific route → send to Standard-Team
+        target_groups.add(int(default_team))
 
     if not target_groups:
         return
