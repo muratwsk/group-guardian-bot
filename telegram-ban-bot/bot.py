@@ -5826,7 +5826,12 @@ async def multidel_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def banall(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         await auto_delete_command(update, context)
-        if not is_authorized(update.effective_user.id):
+        user_id = update.effective_user.id
+        chat = update.effective_chat
+        is_tg_admin = False
+        if chat and chat.type in ("group", "supergroup"):
+            is_tg_admin = await is_chat_admin(context, chat.id, user_id)
+        if not is_authorized(user_id) and not is_tg_admin:
             return
 
         target_id, target_name = await resolve_target(update, context)
