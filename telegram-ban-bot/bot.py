@@ -5378,7 +5378,7 @@ async def unwarn_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     wc = bot_data.get("warn_config", {"max_warns": 3})
     max_w = wc.get("max_warns", 3)
     await update.message.reply_text(f"✅ Verwarnung von {target_name} entfernt. ({new_count}/{max_w})")
-    await log_action(context, f"UNWARN: {target_name} ({target_id}) in {chat.title} — jetzt {new_count}/{max_w}")
+    await log_action(context, "", group_id=chat.id, group_name=chat.title, category=LOG_CAT_MOD, action="UNWARN", details={"user": target_name, "user_id": str(target_id), "gruppe": chat.title, "von": update.effective_user.full_name, "von_id": str(update.effective_user.id), "details": f"{new_count}/{max_w}"})
 
 
 # --- /free & /unfree ---
