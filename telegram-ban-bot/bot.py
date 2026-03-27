@@ -8083,6 +8083,42 @@ async def post_init(application):
     logger.info(f"Restored {count} scheduled jobs")
 
 
+# --- /teamgruppe command ---
+async def teamgruppe_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Toggle filter exemption for the current group. Admin-only."""
+    await auto_delete_command(update, context)
+    if not update.effective_chat or update.effective_chat.type not in ("group", "supergroup"):
+        return
+    user_id = update.effective_user.id
+    if not is_authorized(user_id):
+        return
+    chat = update.effective_chat
+    bot_data = load_data()
+    exempt = bot_data.setdefault("exempt_groups", [])
+    if chat.id in exempt:
+        exempt.remove(chat.id)
+        save_data(bot_data)
+        try:
+            await update.message.reply_text(
+                f"❌ <b>{html.escape(chat.title)}</b> ist jetzt NICHT mehr filterfrei.\n"
+                f"Alle Filter (verbotene Wörter, Links, Forwards) sind wieder aktiv.",
+                parse_mode="HTML"
+            )
+        except Exception:
+            pass
+    else:
+        exempt.append(chat.id)
+        save_data(bot_data)
+        try:
+            await update.message.reply_text(
+                f"✅ <b>{html.escape(chat.title)}</b> ist jetzt filterfrei.\n"
+                f"Alle Filter (verbotene Wörter, Links, Forwards) sind deaktiviert.",
+                parse_mode="HTML"
+            )
+        except Exception:
+            pass
+
+
 def main():
     cfg = load_config()
     token = cfg.get("bot_token", "")
@@ -8116,42 +8152,7 @@ def main():
     except Exception:
         pass
 
-# --- /teamgruppe command ---
-async def teamgruppe_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Toggle filter exemption for the current group. Admin-only."""
-    await auto_delete_command(update, context)
-    if not update.effective_chat or update.effective_chat.type not in ("group", "supergroup"):
-        return
-    user_id = update.effective_user.id
-    if not is_authorized(user_id):
-        return
-    chat = update.effective_chat
-    bot_data = load_data()
-    exempt = bot_data.setdefault("exempt_groups", [])
-    if chat.id in exempt:
-        exempt.remove(chat.id)
-        save_data(bot_data)
-        try:
-            msg = await update.message.reply_text(
-                f"❌ <b>{html.escape(chat.title)}</b> ist jetzt NICHT mehr filterfrei.\n"
-                f"Alle Filter (verbotene Wörter, Links, Forwards) sind wieder aktiv.",
-                parse_mode="HTML"
-            )
-        except Exception:
-            pass
-    else:
-        exempt.append(chat.id)
-        save_data(bot_data)
-        try:
-            msg = await update.message.reply_text(
-                f"✅ <b>{html.escape(chat.title)}</b> ist jetzt filterfrei.\n"
-                f"Alle Filter (verbotene Wörter, Links, Forwards) sind deaktiviert.",
-                parse_mode="HTML"
-            )
-        except Exception:
-            pass
-
-
+    app = Application.builder().token(token).concurrent_updates(False).post_init(post_init).build()
 
     app.add_handler(CommandHandler("reload", reload_command))
     app.add_handler(CommandHandler("start", start))
