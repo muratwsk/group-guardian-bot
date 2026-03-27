@@ -1819,11 +1819,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=keyboard,
             parse_mode="HTML",
         )
-        await log_action(
-            context,
-            f"BANALL (via /info): {target_name} ({target_id}) von {query.from_user.full_name} — {len(successful_groups)} OK, {len(failed_groups)} Fehler",
-            group_id=scope_chat_id, group_name=str(scope_chat_id),
-        )
+        await log_action(context, "", group_id=scope_chat_id, group_name=str(scope_chat_id), category=LOG_CAT_MOD, action="BANALL", details={"user": target_name, "user_id": str(target_id), "von": query.from_user.full_name, "von_id": str(query.from_user.id), "ergebnis": f"{len(successful_groups)} OK, {len(failed_groups)} Fehler"})
 
     elif data.startswith("info_unbanall_"):
         target_id = int(data.replace("info_unbanall_", "", 1))
