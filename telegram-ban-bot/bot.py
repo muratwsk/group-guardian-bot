@@ -5118,7 +5118,7 @@ async def kick_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"ℹ️ Der User kann der Gruppe wieder beitreten.",
             parse_mode="HTML",
         )
-        await log_action(context, f"👢 Kick: {target_name} [{target_id}] aus {chat.title}", group_id=chat.id, group_name=chat.title, category=LOG_CAT_MOD, action="KICK", details={"user": target_name, "user_id": str(target_id), "gruppe": chat.title, "von": update.effective_user.first_name, "grund": reason})
+        await log_action(context, "", group_id=chat.id, group_name=chat.title, category=LOG_CAT_MOD, action="KICK", details={"user": target_name, "user_id": str(target_id), "gruppe": chat.title, "von": update.effective_user.full_name, "von_id": str(update.effective_user.id), "grund": reason})
     except Exception as e:
         await update.message.reply_text(f"❌ Kick fehlgeschlagen: {e}")
 
