@@ -2071,7 +2071,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"↩️ Link-Verwarnung für {uname}[<code>{target_id}</code>] wurde zurückgenommen.",
             parse_mode="HTML",
         )
-        await log_action(context, f"LINK-WARN CANCEL: {target_name} ({target_id}) in {scope_chat_id} von {query.from_user.full_name}", group_id=scope_chat_id, group_name=str(scope_chat_id))
+        await log_action(context, "", group_id=scope_chat_id, group_name=str(scope_chat_id), category=LOG_CAT_MOD, action="LINK-WARN CANCEL", details={"user": target_name, "user_id": str(target_id), "gruppe": str(scope_chat_id), "von": query.from_user.full_name, "von_id": str(query.from_user.id)})
 
     # === OPEN / CLOSE MENU ===
     elif data == "menu_openclose":
