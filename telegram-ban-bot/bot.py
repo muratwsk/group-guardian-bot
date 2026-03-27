@@ -3147,7 +3147,71 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ]
         await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
 
-    elif data == "settings_admins":
+    elif data == "menu_exempt_groups":
+        if not is_owner(user_id):
+            await query.answer("⛔ Nur für Owner.", show_alert=True)
+            return
+        bot_data = load_data()
+        exempt = set(bot_data.get("exempt_groups", []))
+        groups = bot_data.get("groups", [])
+        gmap = {g["id"]: g["title"] for g in groups}
+
+        text = (
+            "🛡 <b>Filterfreie Gruppen</b>\n\n"
+            "Gruppen ohne Einschränkungen — alle Filter (verbotene Wörter, Links, Forwards) sind deaktiviert.\n\n"
+            "Ideal für Team-/Mitarbeiter-Gruppen.\n"
+        )
+        if exempt:
+            text += "\n<b>Aktive Befreiungen:</b>\n"
+            for gid in exempt:
+                name = gmap.get(gid, str(gid))
+                text += f"  • ✅ {name}\n"
+
+        keyboard = []
+        for g in groups:
+            is_exempt = g["id"] in exempt
+            icon = "✅" if is_exempt else "❌"
+            keyboard.append([InlineKeyboardButton(f"{icon} {g['title']}", callback_data=f"toggle_exempt_{g['id']}")])
+        keyboard.append([InlineKeyboardButton("🔙 Zurück", callback_data="menu_settings")])
+        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
+
+    elif data.startswith("toggle_exempt_"):
+        if not is_owner(user_id):
+            await query.answer("⛔ Nur für Owner.", show_alert=True)
+            return
+        gid = int(data.split("toggle_exempt_")[1])
+        bot_data = load_data()
+        exempt = bot_data.setdefault("exempt_groups", [])
+        if gid in exempt:
+            exempt.remove(gid)
+            await query.answer("❌ Filter aktiviert")
+        else:
+            exempt.append(gid)
+            await query.answer("✅ Gruppe befreit")
+        save_data(bot_data)
+        # Re-render
+        groups = bot_data.get("groups", [])
+        gmap = {g["id"]: g["title"] for g in groups}
+        exempt_set = set(exempt)
+        text = (
+            "🛡 <b>Filterfreie Gruppen</b>\n\n"
+            "Gruppen ohne Einschränkungen — alle Filter (verbotene Wörter, Links, Forwards) sind deaktiviert.\n\n"
+            "Ideal für Team-/Mitarbeiter-Gruppen.\n"
+        )
+        if exempt_set:
+            text += "\n<b>Aktive Befreiungen:</b>\n"
+            for eid in exempt_set:
+                name = gmap.get(eid, str(eid))
+                text += f"  • ✅ {name}\n"
+        kb = []
+        for g in groups:
+            is_ex = g["id"] in exempt_set
+            icon = "✅" if is_ex else "❌"
+            kb.append([InlineKeyboardButton(f"{icon} {g['title']}", callback_data=f"toggle_exempt_{g['id']}")])
+        kb.append([InlineKeyboardButton("🔙 Zurück", callback_data="menu_settings")])
+        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(kb), parse_mode="HTML")
+
+
         if not is_owner(user_id):
             await query.answer("⛔ Nur für Owner.", show_alert=True)
             return
