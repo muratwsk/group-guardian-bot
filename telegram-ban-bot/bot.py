@@ -5896,13 +5896,16 @@ async def handle_admin_report(update: Update, context: ContextTypes.DEFAULT_TYPE
             mentions.append(f'<a href="tg://user?id={uid}">\u200b</a>')
         report_text += "\n" + "".join(mentions)
 
-    # Build inline keyboard with "Go to message" button
-    reply_markup = None
+    # Build inline keyboard with "Go to message" and "Solved" buttons
+    buttons = []
     if message_link:
-        from telegram import InlineKeyboardButton, InlineKeyboardMarkup
-        reply_markup = InlineKeyboardMarkup([
-            [InlineKeyboardButton("📍 Zur Nachricht", url=message_link)]
-        ])
+        buttons.append(InlineKeyboardButton("📍 Zur Nachricht", url=message_link))
+    reply_markup = InlineKeyboardMarkup([
+        buttons,
+        [InlineKeyboardButton("✅ Gelöst", callback_data=f"ar_solved_{chat.id}_{sender.id}")],
+    ]) if buttons else InlineKeyboardMarkup([
+        [InlineKeyboardButton("✅ Gelöst", callback_data=f"ar_solved_{chat.id}_{sender.id}")],
+    ])
 
     try:
         await context.bot.send_message(
