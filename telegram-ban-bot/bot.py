@@ -8116,7 +8116,42 @@ def main():
     except Exception:
         pass
 
-    app = Application.builder().token(token).concurrent_updates(False).post_init(post_init).build()
+# --- /teamgruppe command ---
+async def teamgruppe_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Toggle filter exemption for the current group. Admin-only."""
+    await auto_delete_command(update, context)
+    if not update.effective_chat or update.effective_chat.type not in ("group", "supergroup"):
+        return
+    user_id = update.effective_user.id
+    if not is_authorized(user_id):
+        return
+    chat = update.effective_chat
+    bot_data = load_data()
+    exempt = bot_data.setdefault("exempt_groups", [])
+    if chat.id in exempt:
+        exempt.remove(chat.id)
+        save_data(bot_data)
+        try:
+            msg = await update.message.reply_text(
+                f"❌ <b>{html.escape(chat.title)}</b> ist jetzt NICHT mehr filterfrei.\n"
+                f"Alle Filter (verbotene Wörter, Links, Forwards) sind wieder aktiv.",
+                parse_mode="HTML"
+            )
+        except Exception:
+            pass
+    else:
+        exempt.append(chat.id)
+        save_data(bot_data)
+        try:
+            msg = await update.message.reply_text(
+                f"✅ <b>{html.escape(chat.title)}</b> ist jetzt filterfrei.\n"
+                f"Alle Filter (verbotene Wörter, Links, Forwards) sind deaktiviert.",
+                parse_mode="HTML"
+            )
+        except Exception:
+            pass
+
+
 
     app.add_handler(CommandHandler("reload", reload_command))
     app.add_handler(CommandHandler("start", start))
@@ -8142,6 +8177,7 @@ def main():
     app.add_handler(CommandHandler("del", del_command))
     app.add_handler(CommandHandler("send", send_command))
     app.add_handler(CommandHandler("report", handle_admin_report))
+    app.add_handler(CommandHandler("teamgruppe", teamgruppe_command))
     app.add_handler(CallbackQueryHandler(button_handler))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & filters.ChatType.PRIVATE, text_handler))
     app.add_handler(MessageHandler((filters.PHOTO | filters.VIDEO | filters.Sticker.ALL | filters.ANIMATION | filters.Document.ALL) & filters.ChatType.PRIVATE, media_handler))
