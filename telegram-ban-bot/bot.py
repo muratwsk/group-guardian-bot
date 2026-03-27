@@ -5534,19 +5534,20 @@ async def unban_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("ℹ️ Dieser User ist nicht gebannt.")
         return
 
-    tracked = lookup_user(str(target_id))
-    target_username = tracked.get("username") if tracked else None
+        tracked = lookup_user(str(target_id))
+        target_username = tracked.get("username") if tracked else None
+        display_name = target_name or (f"@{target_username}" if target_username else str(target_id))
 
-    try:
-        await context.bot.unban_chat_member(chat_id=chat.id, user_id=target_id, only_if_banned=True)
-        forget_group_ban([chat.id], target_id)
+        try:
+            await context.bot.unban_chat_member(chat_id=chat.id, user_id=target_id, only_if_banned=True)
+            forget_group_ban([chat.id], target_id)
 
-        uname = f"@{target_username} " if target_username else ""
-        await update.message.reply_text(
-            f"✅ {uname}[<code>{target_id}</code>] wurde entsperrt.",
-            parse_mode="HTML",
-        )
-        await log_action(context, "", group_id=chat.id, group_name=chat.title, category=LOG_CAT_MOD, action="UNBAN", details={"user": target_name, "user_id": str(target_id), "gruppe": chat.title, "von": update.effective_user.full_name, "von_id": str(update.effective_user.id)})
+            uname = f"@{target_username} " if target_username else ""
+            await update.message.reply_text(
+                f"✅ {uname}[<code>{target_id}</code>] wurde entsperrt.",
+                parse_mode="HTML",
+            )
+            await log_action(context, "", group_id=chat.id, group_name=chat.title, category=LOG_CAT_MOD, action="UNBAN", details={"user": display_name, "user_id": str(target_id), "gruppe": chat.title, "von": update.effective_user.full_name, "von_id": str(update.effective_user.id)})
     except Exception as e:
         await update.message.reply_text(f"❌ Unban fehlgeschlagen: {e}")
 
