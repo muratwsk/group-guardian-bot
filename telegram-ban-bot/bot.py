@@ -5384,12 +5384,13 @@ async def unmute_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         tracked = lookup_user(str(target_id))
         target_username = tracked.get("username") if tracked else None
         uname = f"@{target_username} " if target_username else ""
+        display_name = target_name or (f"@{target_username}" if target_username else str(target_id))
 
         await update.message.reply_text(
-            f"{uname}[<code>{target_id}</code>] wurde ✅ entmutet.",
+            f"✅ {uname}[<code>{target_id}</code>] wurde entmutet.",
             parse_mode="HTML",
         )
-        await log_action(context, "", group_id=chat.id, group_name=chat.title, category=LOG_CAT_MOD, action="UNMUTE", details={"user": target_name, "user_id": str(target_id), "gruppe": chat.title, "von": update.effective_user.full_name, "von_id": str(update.effective_user.id)})
+        await log_action(context, "", group_id=chat.id, group_name=chat.title, category=LOG_CAT_MOD, action="UNMUTE", details={"user": display_name, "user_id": str(target_id), "gruppe": chat.title, "von": update.effective_user.full_name, "von_id": str(update.effective_user.id)})
     except Exception as e:
         await update.message.reply_text(f"❌ Unmute fehlgeschlagen: {e}")
 
