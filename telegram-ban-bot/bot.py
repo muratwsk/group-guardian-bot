@@ -749,6 +749,7 @@ WAITING_WARN_MUTE_DUR = 19
 WAITING_BADWORD_ADD = 20
 WAITING_BADWORD_REMOVE = 21
 WAITING_PROTO_CHANNEL = 22
+WAITING_GROUP_ADD_ID = 23
 
 # --- Smart text normalizer for forbidden word evasion detection ---
 LEET_MAP = {
@@ -4192,8 +4193,11 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
         groups = await get_bot_groups(context)
         if not groups:
-            keyboard = [[InlineKeyboardButton("🔙 Zurück", callback_data="menu_settings")]]
-            await query.edit_message_text("Keine Gruppen registriert.\nNutze /registergroup in einer Gruppe.",
+            keyboard = [
+                [InlineKeyboardButton("➕ Gruppe/Kanal hinzufügen", callback_data="add_group_manual")],
+                [InlineKeyboardButton("🔙 Zurück", callback_data="menu_settings")],
+            ]
+            await query.edit_message_text("Keine Gruppen registriert.\n\nDu kannst eine Gruppe/Kanal per ID hinzufügen oder /registergroup in einer Gruppe nutzen.",
                                           reply_markup=InlineKeyboardMarkup(keyboard))
             return
         text = "👥 *Registrierte Gruppen:*\n\n"
@@ -4201,6 +4205,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         for g in groups:
             text += f"• {g['title']} (`{g['id']}`)\n"
             keyboard.append([InlineKeyboardButton(f"❌ {g['title']}", callback_data=f"remove_group_{g['id']}")])
+        keyboard.append([InlineKeyboardButton("➕ Gruppe/Kanal hinzufügen", callback_data="add_group_manual")])
         keyboard.append([InlineKeyboardButton("🔙 Zurück", callback_data="menu_settings")])
         await query.edit_message_text(text, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(keyboard))
 
@@ -4232,9 +4237,25 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         for g in groups:
             text += f"• {g['title']} (`{g['id']}`)\n"
             keyboard.append([InlineKeyboardButton(f"❌ {g['title']}", callback_data=f"remove_group_{g['id']}")])
+        keyboard.append([InlineKeyboardButton("➕ Gruppe/Kanal hinzufügen", callback_data="add_group_manual")])
         keyboard.append([InlineKeyboardButton("🔙 Zurück", callback_data="menu_settings")])
         await query.edit_message_text(text, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(keyboard))
         await log_action(context, f"Gruppe entfernt (Menü): {removed_name} ({gid})")
+
+    elif data == "add_group_manual":
+        if not is_owner(user_id):
+            await query.answer("⛔ Nur für Owner.", show_alert=True)
+            return
+        keyboard = [[InlineKeyboardButton("❌ Abbrechen", callback_data="show_groups")]]
+        await query.edit_message_text(
+            "➕ *Gruppe/Kanal hinzufügen*\n\n"
+            "Sende mir die Chat-ID der Gruppe oder des Kanals.\n"
+            "Beispiel: `-1001234567890`\n\n"
+            "💡 Der Bot muss dort bereits Admin sein.",
+            parse_mode="Markdown",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+        )
+        context.user_data["state"] = WAITING_GROUP_ADD_ID
 
 # --- Message handler for text input ---
 
@@ -4378,6 +4399,42 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except ValueError:
             await update.message.reply_text("⚠️ Bitte eine gültige numerische Kanal-ID senden (z.B. <code>-1001234567890</code>).", parse_mode="HTML")
         context.user_data["state"] = None
+
+    elif state == WAITING_GROUP_ADD_ID:
+        context.user_data["state"] = None
+        try:
+            chat_id = int(text.strip())
+        except ValueError:
+            await update.message.reply_text("⚠️ Bitte eine gültige numerische Chat-ID senden.\nBeispiel: `-1001234567890`", parse_mode="Markdown")
+            return
+
+        # Check if already registered
+        bot_data = load_data()
+        groups = bot_data.get("groups", [])
+        if any(g["id"] == chat_id for g in groups):
+            keyboard = [[InlineKeyboardButton("🔙 Zurück", callback_data="show_groups")]]
+            await update.message.reply_text("✅ Diese Gruppe/Kanal ist bereits registriert.", reply_markup=InlineKeyboardMarkup(keyboard))
+            return
+
+        # Try to get chat info
+        try:
+            chat_info = await context.bot.get_chat(chat_id)
+            chat_title = chat_info.title or str(chat_id)
+        except Exception:
+            chat_title = str(chat_id)
+
+        groups.append({"id": chat_id, "title": chat_title})
+        bot_data["groups"] = groups
+        save_data(bot_data)
+        sync_groups_to_file()
+
+        keyboard = [[InlineKeyboardButton("🔙 Zur Gruppenliste", callback_data="show_groups")]]
+        await update.message.reply_text(
+            f"✅ *{chat_title}* (`{chat_id}`) wurde hinzugefügt!",
+            parse_mode="Markdown",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+        )
+        await log_action(context, f"Gruppe manuell hinzugefügt: {chat_title} ({chat_id})")
 
     elif state == WAITING_MESSENGER_INPUT:
         pending = user_data_store.get(user_id)
