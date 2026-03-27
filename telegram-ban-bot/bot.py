@@ -4237,9 +4237,25 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         for g in groups:
             text += f"• {g['title']} (`{g['id']}`)\n"
             keyboard.append([InlineKeyboardButton(f"❌ {g['title']}", callback_data=f"remove_group_{g['id']}")])
+        keyboard.append([InlineKeyboardButton("➕ Gruppe/Kanal hinzufügen", callback_data="add_group_manual")])
         keyboard.append([InlineKeyboardButton("🔙 Zurück", callback_data="menu_settings")])
         await query.edit_message_text(text, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(keyboard))
         await log_action(context, f"Gruppe entfernt (Menü): {removed_name} ({gid})")
+
+    elif data == "add_group_manual":
+        if not is_owner(user_id):
+            await query.answer("⛔ Nur für Owner.", show_alert=True)
+            return
+        keyboard = [[InlineKeyboardButton("❌ Abbrechen", callback_data="show_groups")]]
+        await query.edit_message_text(
+            "➕ *Gruppe/Kanal hinzufügen*\n\n"
+            "Sende mir die Chat-ID der Gruppe oder des Kanals.\n"
+            "Beispiel: `-1001234567890`\n\n"
+            "💡 Der Bot muss dort bereits Admin sein.",
+            parse_mode="Markdown",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+        )
+        context.user_data["state"] = WAITING_GROUP_ADD_ID
 
 # --- Message handler for text input ---
 
