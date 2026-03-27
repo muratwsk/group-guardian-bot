@@ -980,19 +980,18 @@ async def _render_admin_report_menu(query):
 
     text = (
         f"🆘 <b>@admin-Befehl</b>\n\n"
-        f"@admin (oder /report) ist ein Befehl, der Chatmitgliedern "
-        f"zur Verfügung steht, um die Aufmerksamkeit des Mitarbeiterteams "
-        f"auf sich zu lenken.\n\n"
-        f"⚠️ Der @admin-Befehl funktioniert <b>NICHT</b>, wenn er von "
-        f"Admins oder Moderatoren verwendet wird.\n\n"
-        f"Status: {status_icon}\n"
-        f"Standard-Team: {staff_str}\n"
-        f"🔔 Benachrichtigen: {notify_str}"
+        f"Status: {status_icon}\n\n"
+        f"🏢 <b>Standard-Team:</b> {staff_str}\n"
+        f"<i>→ Bekommt ALLE Meldungen aus allen Gruppen</i>\n\n"
+        f"🔔 <b>Benachrichtigen:</b> {notify_str}"
         f"{routes_str}"
     )
 
+    if routes_str:
+        text += "\n<i>→ Diese Gruppen bekommen Meldungen ZUSÄTZLICH zum Standard-Team</i>"
+
     if not staff_group and not group_routes:
-        text += "\n\n❗️ Es wurde keine Mitarbeitergruppe definiert, die Mitteilung wird an niemanden gesendet werden."
+        text += "\n\n❗️ Es wurde keine Mitarbeitergruppe definiert."
 
     keyboard = [
         [InlineKeyboardButton(f"{'❌ Deaktivieren' if active else '✅ Aktivieren'}", callback_data="ar_toggle")],
@@ -3001,7 +3000,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         groups = bot_data.get("groups", [])
         gmap = {g["id"]: g["title"] for g in groups}
 
-        text = "📋 <b>Gruppen-Routing</b>\n\nLege fest, welche Gruppe ihre Meldungen an welche Team-Gruppe sendet.\n"
+        text = "📋 <b>Gruppen-Routing</b>\n\nHier kannst du für einzelne Gruppen eine <b>zusätzliche</b> Team-Gruppe festlegen.\nDas Standard-Team bekommt weiterhin ALLE Meldungen.\n"
         if group_routes:
             text += "\n<b>Aktive Routen:</b>\n"
             for src_id, dst_id in group_routes.items():
@@ -5958,10 +5957,18 @@ async def handle_admin_report(update: Update, context: ContextTypes.DEFAULT_TYPE
     if not ar.get("active"):
         return
 
-    # Per-group routing: check group_routes first, then fallback to default staff_group
+    # Collect ALL target groups: default team + per-group route
     group_routes = ar.get("group_routes", {})
-    staff_group = group_routes.get(str(chat.id)) or ar.get("staff_group")
-    if not staff_group:
+    default_team = ar.get("staff_group")
+    specific_route = group_routes.get(str(chat.id))
+
+    target_groups = set()
+    if default_team:
+        target_groups.add(int(default_team))
+    if specific_route:
+        target_groups.add(int(specific_route))
+
+    if not target_groups:
         return
 
     # Build report message
@@ -6039,18 +6046,23 @@ async def handle_admin_report(update: Update, context: ContextTypes.DEFAULT_TYPE
         [InlineKeyboardButton("✅ Gelöst", callback_data=f"ar_solved_{chat.id}_{sender.id}")],
     ])
 
-    try:
-        await context.bot.send_message(
-            chat_id=staff_group,
-            text=report_text,
-            parse_mode="HTML",
-            reply_markup=reply_markup,
-        )
-        logger.info(f"Admin report from {sender.id} in {chat.id} sent to staff group {staff_group}")
-        # Send confirmation in the source group
+    sent_ok = False
+    for tg_id in target_groups:
+        try:
+            await context.bot.send_message(
+                chat_id=tg_id,
+                text=report_text,
+                parse_mode="HTML",
+                reply_markup=reply_markup,
+            )
+            logger.info(f"Admin report from {sender.id} in {chat.id} sent to {tg_id}")
+            sent_ok = True
+        except Exception as e:
+            logger.error(f"Failed to send admin report to {tg_id}: {e}")
+
+    if sent_ok:
         try:
             confirm_msg = await update.message.reply_text("✅ Admin wurde informiert.")
-            # Auto-delete confirmation after 10 seconds
             asyncio.get_event_loop().call_later(
                 10,
                 lambda mid=confirm_msg.message_id, cid=chat.id: asyncio.ensure_future(
@@ -6059,8 +6071,6 @@ async def handle_admin_report(update: Update, context: ContextTypes.DEFAULT_TYPE
             )
         except Exception:
             pass
-    except Exception as e:
-        logger.error(f"Failed to send admin report to {staff_group}: {e}")
 
     # Log to moderation protocol
     await log_action(context, None, category="mod", action="REPORT",
