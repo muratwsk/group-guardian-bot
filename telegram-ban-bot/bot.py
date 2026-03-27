@@ -4882,7 +4882,35 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode="HTML",
         )
 
-    elif state == "ar_notify_add":
+    elif state and state.startswith("ar_route_input_"):
+        src_id = state.replace("ar_route_input_", "")
+        try:
+            dst_id = int(text)
+        except ValueError:
+            await update.message.reply_text("⚠️ Bitte sende eine gültige numerische Chat-ID (z.B. -1001234567890).")
+            return
+        # Validate: try to get chat info
+        dst_name = str(dst_id)
+        try:
+            chat_info = await context.bot.get_chat(dst_id)
+            dst_name = chat_info.title or str(dst_id)
+        except Exception:
+            pass  # ID might still work, just can't resolve name
+        bot_data = load_data()
+        ar = bot_data.setdefault("admin_report", {"active": False, "staff_group": None, "notify_users": [], "group_routes": {}})
+        ar.setdefault("group_routes", {})[src_id] = dst_id
+        save_data(bot_data)
+        context.user_data["state"] = None
+        groups = bot_data.get("groups", [])
+        src_name = next((g["title"] for g in groups if g["id"] == int(src_id)), src_id)
+        keyboard = [[InlineKeyboardButton("🔙 Zurück", callback_data="ar_routes_menu")]]
+        await update.message.reply_text(
+            f"✅ Route gesetzt:\n{src_name} → <code>{dst_id}</code> ({html.escape(dst_name)})",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode="HTML",
+        )
+
+
         try:
             uid = int(text)
         except ValueError:
