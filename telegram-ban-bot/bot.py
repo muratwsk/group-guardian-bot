@@ -6178,7 +6178,7 @@ async def track_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         logger.info(f"Deleted forwarded msg from {update.message.from_user.id} in {update.effective_chat.id} (origin: {origin_type})")
                     except Exception as e:
                         logger.error(f"Forward delete failed: {e}")
-                    await log_action(context, f"FORWARD-SPAM: {update.message.from_user.full_name} ({update.message.from_user.id}) in {update.effective_chat.title} — Typ: {origin_type}")
+                    await log_action(context, "", group_id=update.effective_chat.id, group_name=update.effective_chat.title, category=LOG_CAT_MOD, action="FORWARD-SPAM", details={"user": update.message.from_user.full_name, "user_id": str(update.message.from_user.id), "gruppe": update.effective_chat.title, "details": f"Typ: {origin_type}"})
                     return
 
     # --- Forbidden words check ---
