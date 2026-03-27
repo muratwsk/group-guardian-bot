@@ -119,11 +119,13 @@ def normalize_data(data):
     })
     data.setdefault("freed_users", [])
     data.setdefault("protokoll_channels", {})
-    data.setdefault("admin_report", {
+    ar = data.setdefault("admin_report", {
         "active": False,
         "staff_group": None,
         "notify_users": [],
+        "group_routes": {},
     })
+    ar.setdefault("group_routes", {})
     return data
 
 
@@ -931,6 +933,74 @@ async def show_messenger_selection(query, context, user_id, groups):
         reply_markup=InlineKeyboardMarkup(keyboard),
         parse_mode="Markdown",
     )
+
+async def _render_admin_report_menu(query):
+    """Render the @admin settings menu."""
+    bot_data = load_data()
+    ar = bot_data.get("admin_report", {})
+    active = ar.get("active", False)
+    staff_group = ar.get("staff_group")
+    notify_users = ar.get("notify_users", [])
+    group_routes = ar.get("group_routes", {})
+
+    status_icon = "✅ Aktiv" if active else "❌ Inaktiv"
+
+    # Resolve staff group name
+    if staff_group:
+        groups = bot_data.get("groups", [])
+        sg_name = next((g["title"] for g in groups if g["id"] == staff_group), str(staff_group))
+        staff_str = f"👥 {sg_name}"
+    else:
+        staff_str = "❗️ Nicht definiert"
+
+    notify_str = "Keine"
+    if notify_users:
+        parts = []
+        for uid in notify_users:
+            try:
+                u_entry = load_users().get(str(uid), {})
+                parts.append(u_entry.get("name", str(uid)))
+            except Exception:
+                parts.append(str(uid))
+        notify_str = ", ".join(parts)
+
+    # Group routes info
+    routes_str = ""
+    if group_routes:
+        groups = bot_data.get("groups", [])
+        gmap = {g["id"]: g["title"] for g in groups}
+        route_parts = []
+        for src_id, dst_id in group_routes.items():
+            src_name = gmap.get(int(src_id), str(src_id))
+            dst_name = gmap.get(dst_id, str(dst_id))
+            route_parts.append(f"  • {src_name} → {dst_name}")
+        routes_str = "\n\n📋 <b>Gruppen-Routing:</b>\n" + "\n".join(route_parts)
+
+    text = (
+        f"🆘 <b>@admin-Befehl</b>\n\n"
+        f"@admin (oder /report) ist ein Befehl, der Chatmitgliedern "
+        f"zur Verfügung steht, um die Aufmerksamkeit des Mitarbeiterteams "
+        f"auf sich zu lenken.\n\n"
+        f"⚠️ Der @admin-Befehl funktioniert <b>NICHT</b>, wenn er von "
+        f"Admins oder Moderatoren verwendet wird.\n\n"
+        f"Status: {status_icon}\n"
+        f"Standard-Team: {staff_str}\n"
+        f"🔔 Benachrichtigen: {notify_str}"
+        f"{routes_str}"
+    )
+
+    if not staff_group and not group_routes:
+        text += "\n\n❗️ Es wurde keine Mitarbeitergruppe definiert, die Mitteilung wird an niemanden gesendet werden."
+
+    keyboard = [
+        [InlineKeyboardButton(f"{'❌ Deaktivieren' if active else '✅ Aktivieren'}", callback_data="ar_toggle")],
+        [InlineKeyboardButton("👥 Standard-Team setzen", callback_data="ar_set_group")],
+        [InlineKeyboardButton("📋 Gruppen-Routing", callback_data="ar_routes_menu")],
+        [InlineKeyboardButton("🔔 Benutzer benachrichtigen", callback_data="ar_notify_menu")],
+        [InlineKeyboardButton("🔙 Zurück", callback_data="back_main")],
+    ]
+    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
+
 
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -2853,89 +2923,15 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # === @ADMIN / REPORT MENU ===
     elif data == "menu_admin_report":
-        bot_data = load_data()
-        ar = bot_data.get("admin_report", {})
-        active = ar.get("active", False)
-        staff_group = ar.get("staff_group")
-        notify_users = ar.get("notify_users", [])
-
-        status_icon = "✅ Aktiv" if active else "❌ Inaktiv"
-        staff_str = "❗️ Nicht definiert" if not staff_group else f"<code>{staff_group}</code>"
-
-        notify_str = "Keine"
-        if notify_users:
-            parts = []
-            for uid in notify_users:
-                try:
-                    users_db = load_users()
-                    u_entry = users_db.get(str(uid), {})
-                    parts.append(u_entry.get("name", str(uid)))
-                except Exception:
-                    parts.append(str(uid))
-            notify_str = ", ".join(parts)
-
-        text = (
-            f"🆘 <b>@admin-Befehl</b>\n\n"
-            f"@admin (oder /report) ist ein Befehl, der Chatmitgliedern "
-            f"zur Verfügung steht, um die Aufmerksamkeit des Mitarbeiterteams "
-            f"auf sich zu lenken.\n\n"
-            f"⚠️ Der @admin-Befehl funktioniert <b>NICHT</b>, wenn er von "
-            f"Admins oder Moderatoren verwendet wird.\n\n"
-            f"Status: {status_icon}\n"
-            f"Senden an: 👥 {staff_str}\n"
-            f"🔔 Benachrichtigen: {notify_str}"
-        )
-
-        if not staff_group:
-            text += "\n\n❗️ Es wurde keine Mitarbeitergruppe definiert, die Mitteilung wird an niemanden gesendet werden."
-
-        keyboard = [
-            [InlineKeyboardButton(f"{'❌ Deaktivieren' if active else '✅ Aktivieren'}", callback_data="ar_toggle")],
-            [InlineKeyboardButton("👥 Mitarbeitergruppe setzen", callback_data="ar_set_group")],
-            [InlineKeyboardButton("🔔 Benutzer benachrichtigen", callback_data="ar_notify_menu")],
-            [InlineKeyboardButton("🔙 Zurück", callback_data="back_main")],
-        ]
-        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
+        await _render_admin_report_menu(query)
 
     elif data == "ar_toggle":
         bot_data = load_data()
-        ar = bot_data.setdefault("admin_report", {"active": False, "staff_group": None, "notify_users": []})
+        ar = bot_data.setdefault("admin_report", {"active": False, "staff_group": None, "notify_users": [], "group_routes": {}})
         ar["active"] = not ar.get("active", False)
         save_data(bot_data)
         await query.answer(f"{'✅ Aktiviert' if ar['active'] else '❌ Deaktiviert'}")
-        # Re-render the admin report menu inline
-        active = ar["active"]
-        staff_group = ar.get("staff_group")
-        notify_users = ar.get("notify_users", [])
-        status_icon = "✅ Aktiv" if active else "❌ Inaktiv"
-        staff_str = "❗️ Nicht definiert" if not staff_group else f"<code>{staff_group}</code>"
-        notify_str = "Keine"
-        if notify_users:
-            parts = []
-            for uid in notify_users:
-                u_entry = load_users().get(str(uid), {})
-                parts.append(u_entry.get("name", str(uid)))
-            notify_str = ", ".join(parts)
-        text = (
-            f"🆘 <b>@admin-Befehl</b>\n\n"
-            f"@admin (oder /report) ist ein Befehl, der Chatmitgliedern "
-            f"zur Verfügung steht, um die Aufmerksamkeit des Mitarbeiterteams "
-            f"auf sich zu lenken.\n\n"
-            f"⚠️ Der @admin-Befehl funktioniert <b>NICHT</b>, wenn er von "
-            f"Admins oder Moderatoren verwendet wird.\n\n"
-            f"Status: {status_icon}\n"
-            f"Senden an: 👥 {staff_str}\n"
-            f"🔔 Benachrichtigen: {notify_str}"
-        )
-        if not staff_group:
-            text += "\n\n❗️ Es wurde keine Mitarbeitergruppe definiert, die Mitteilung wird an niemanden gesendet werden."
-        keyboard = [
-            [InlineKeyboardButton(f"{'❌ Deaktivieren' if active else '✅ Aktivieren'}", callback_data="ar_toggle")],
-            [InlineKeyboardButton("👥 Mitarbeitergruppe setzen", callback_data="ar_set_group")],
-            [InlineKeyboardButton("🔔 Benutzer benachrichtigen", callback_data="ar_notify_menu")],
-            [InlineKeyboardButton("🔙 Zurück", callback_data="back_main")],
-        ]
-        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
+        await _render_admin_report_menu(query)
 
     elif data == "ar_set_group":
         context.user_data["state"] = "ar_set_group"
@@ -2992,6 +2988,77 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=InlineKeyboardMarkup(keyboard),
             parse_mode="HTML",
         )
+
+    # === @ADMIN GROUP ROUTING ===
+    elif data == "ar_routes_menu":
+        bot_data = load_data()
+        ar = bot_data.get("admin_report", {})
+        group_routes = ar.get("group_routes", {})
+        groups = bot_data.get("groups", [])
+        gmap = {g["id"]: g["title"] for g in groups}
+
+        text = "📋 <b>Gruppen-Routing</b>\n\nLege fest, welche Gruppe ihre Meldungen an welche Team-Gruppe sendet.\n"
+        if group_routes:
+            text += "\n<b>Aktive Routen:</b>\n"
+            for src_id, dst_id in group_routes.items():
+                src_name = gmap.get(int(src_id), str(src_id))
+                dst_name = gmap.get(dst_id, str(dst_id))
+                text += f"  • {src_name} → {dst_name}\n"
+
+        keyboard = []
+        for g in groups:
+            dst = group_routes.get(str(g["id"]))
+            if dst:
+                dst_name = gmap.get(dst, str(dst))
+                label = f"✏️ {g['title']} → {dst_name}"
+            else:
+                label = f"➕ {g['title']}"
+            keyboard.append([InlineKeyboardButton(label, callback_data=f"ar_route_src_{g['id']}")])
+        keyboard.append([InlineKeyboardButton("🔙 Zurück", callback_data="menu_admin_report")])
+        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
+
+    elif data.startswith("ar_route_src_"):
+        src_group_id = int(data.split("ar_route_src_")[1])
+        bot_data = load_data()
+        groups = bot_data.get("groups", [])
+        src_name = next((g["title"] for g in groups if g["id"] == src_group_id), str(src_group_id))
+
+        keyboard = []
+        for g in groups:
+            if g["id"] == src_group_id:
+                continue
+            keyboard.append([InlineKeyboardButton(f"👥 {g['title']}", callback_data=f"ar_route_set_{src_group_id}_{g['id']}")])
+        # Option to remove route
+        ar = bot_data.get("admin_report", {})
+        if str(src_group_id) in ar.get("group_routes", {}):
+            keyboard.append([InlineKeyboardButton("🗑 Route entfernen", callback_data=f"ar_route_del_{src_group_id}")])
+        keyboard.append([InlineKeyboardButton("🔙 Zurück", callback_data="ar_routes_menu")])
+        await query.edit_message_text(
+            f"📋 <b>Ziel für {src_name}</b>\n\nWähle die Team-Gruppe, an die Meldungen aus <b>{src_name}</b> gesendet werden sollen:",
+            reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
+
+    elif data.startswith("ar_route_set_"):
+        parts = data.split("_")
+        src_id = int(parts[3])
+        dst_id = int(parts[4])
+        bot_data = load_data()
+        ar = bot_data.setdefault("admin_report", {"active": False, "staff_group": None, "notify_users": [], "group_routes": {}})
+        ar.setdefault("group_routes", {})[str(src_id)] = dst_id
+        save_data(bot_data)
+        groups = bot_data.get("groups", [])
+        src_name = next((g["title"] for g in groups if g["id"] == src_id), str(src_id))
+        dst_name = next((g["title"] for g in groups if g["id"] == dst_id), str(dst_id))
+        await query.answer(f"✅ {src_name} → {dst_name}")
+        await _render_admin_report_menu(query)
+
+    elif data.startswith("ar_route_del_"):
+        src_id = data.split("ar_route_del_")[1]
+        bot_data = load_data()
+        ar = bot_data.get("admin_report", {})
+        ar.get("group_routes", {}).pop(src_id, None)
+        save_data(bot_data)
+        await query.answer("✅ Route entfernt")
+        await _render_admin_report_menu(query)
 
     # === SETTINGS ===
     elif data == "menu_settings":
@@ -5770,7 +5837,9 @@ async def handle_admin_report(update: Update, context: ContextTypes.DEFAULT_TYPE
     if not ar.get("active"):
         return
 
-    staff_group = ar.get("staff_group")
+    # Per-group routing: check group_routes first, then fallback to default staff_group
+    group_routes = ar.get("group_routes", {})
+    staff_group = group_routes.get(str(chat.id)) or ar.get("staff_group")
     if not staff_group:
         return
 
@@ -5843,6 +5912,18 @@ async def handle_admin_report(update: Update, context: ContextTypes.DEFAULT_TYPE
             reply_markup=reply_markup,
         )
         logger.info(f"Admin report from {sender.id} in {chat.id} sent to staff group {staff_group}")
+        # Send confirmation in the source group
+        try:
+            confirm_msg = await update.message.reply_text("✅ Admin wurde informiert.")
+            # Auto-delete confirmation after 10 seconds
+            asyncio.get_event_loop().call_later(
+                10,
+                lambda mid=confirm_msg.message_id, cid=chat.id: asyncio.ensure_future(
+                    context.bot.delete_message(chat_id=cid, message_id=mid)
+                ),
+            )
+        except Exception:
+            pass
     except Exception as e:
         logger.error(f"Failed to send admin report to {staff_group}: {e}")
 
