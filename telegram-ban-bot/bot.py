@@ -3060,6 +3060,21 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.answer("✅ Route entfernt")
         await _render_admin_report_menu(query)
 
+    elif data.startswith("ar_solved_"):
+        parts = data.split("_")
+        # ar_solved_{chat_id}_{sender_id}
+        solver = update.effective_user
+        solver_name = solver.full_name if solver else "Unbekannt"
+        original_text = query.message.text or query.message.caption or ""
+        solved_text = (
+            f"{original_text}\n\n"
+            f"━━━━━━━━━━━━━━━\n"
+            f"✅ <b>Gelöst</b> von {solver_name}\n"
+            f"🕐 {datetime.datetime.now().strftime('%d.%m.%Y %H:%M')}"
+        )
+        await query.edit_message_text(solved_text, parse_mode="HTML")
+        await query.answer("✅ Als gelöst markiert")
+
     # === SETTINGS ===
     elif data == "menu_settings":
         if not is_owner(user_id):
