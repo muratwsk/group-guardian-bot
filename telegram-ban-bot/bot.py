@@ -4073,7 +4073,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 warnings.pop(f"{chat_id_str}_{target_id_str}", None)
                 save_data(bot_data)
                 await query.edit_message_text(result_text, parse_mode="HTML")
-                await log_action(context, f"WARN AUTO-PUNISH ({punishment}): {t_name} ({target_id}) von {query.from_user.full_name}", group_id=int(chat_id_str), group_name=str(chat_id_str))
+                await log_action(context, "", group_id=int(chat_id_str), group_name=str(chat_id_str), category=LOG_CAT_MOD, action="WARN", details={"user": t_name, "user_id": str(target_id), "von": query.from_user.full_name, "von_id": str(query.from_user.id), "details": f"Auto-{punishment}"})
             else:
                 keyboard = [
                     [InlineKeyboardButton("🚫 Ban", callback_data=f"warn_punish_ban_{chat_id_str}_{target_id_str}"),
