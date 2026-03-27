@@ -118,6 +118,7 @@ def normalize_data(data):
         "bots": False,
     })
     data.setdefault("freed_users", [])
+    data.setdefault("exempt_groups", [])
     data.setdefault("protokoll_channels", {})
     ar = data.setdefault("admin_report", {
         "active": False,
