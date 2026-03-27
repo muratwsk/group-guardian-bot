@@ -6159,6 +6159,14 @@ async def track_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # --- @admin mention check ---
     await _check_admin_mention(update, context)
 
+    # --- Check if group is exempt from all filters ---
+    if update.effective_chat and update.effective_chat.id:
+        _exempt_data = load_data()
+        _exempt_groups = _exempt_data.get("exempt_groups", [])
+        if update.effective_chat.id in _exempt_groups:
+            # This group is exempt from all filters (links, forwards, forbidden words)
+            return
+
     # --- Anti-Spam: Link check ---
     if update.message.from_user:
         sender_as = update.message.from_user
