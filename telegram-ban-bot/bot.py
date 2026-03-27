@@ -6189,10 +6189,12 @@ async def track_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg_text = update.message.text or update.message.caption or ""
     if msg_text and update.message.from_user:
         sender = update.message.from_user
-        # Admins (Owner, Bot-Admins, Gruppen-Admins) sind von Forbidden Words ausgenommen
+        # Admins (Owner, Bot-Admins, Gruppen-Admins) sind von ALLEN Filtern ausgenommen
         sender_is_admin = is_authorized(sender.id) or is_freed(sender.id)
         if not sender_is_admin and update.effective_chat and update.effective_chat.type in ("group", "supergroup"):
             sender_is_admin = await is_chat_admin(context, update.effective_chat.id, sender.id)
+        if sender_is_admin:
+            logger.info(f"Skipping forbidden words for admin/freed user {sender.id} ({sender.full_name})")
         if not sender_is_admin:
             bot_data = load_data()
             bw_config = bot_data.get("badwords_config", {"punishment": "aus", "delete": True})
