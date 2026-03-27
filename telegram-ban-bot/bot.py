@@ -2978,9 +2978,20 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             ar["notify_users"].remove(uid_to_remove)
             save_data(bot_data)
         await query.answer("✅ Entfernt")
-        query.data = "ar_notify_menu"
-        await button_handler(update, context)
-        return
+        # Re-render notify menu inline
+        notify_users = ar.get("notify_users", [])
+        keyboard = []
+        for uid in notify_users:
+            name = load_users().get(str(uid), {}).get("name", str(uid))
+            keyboard.append([InlineKeyboardButton(f"❌ {name}", callback_data=f"ar_notify_remove_{uid}")])
+        keyboard.append([InlineKeyboardButton("➕ Benutzer hinzufügen", callback_data="ar_notify_add")])
+        keyboard.append([InlineKeyboardButton("🔙 Zurück", callback_data="menu_admin_report")])
+        await query.edit_message_text(
+            "🔔 <b>Benutzer benachrichtigen</b>\n\n"
+            "Diese Benutzer werden bei einer @admin-Meldung per Erwähnung benachrichtigt:",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode="HTML",
+        )
 
     # === SETTINGS ===
     elif data == "menu_settings":
