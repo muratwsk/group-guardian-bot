@@ -2935,7 +2935,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
     elif data == "ar_notify_add":
-        user_data_store[user_id] = {"state": "ar_notify_add"}
+        context.user_data["state"] = "ar_notify_add"
         await query.edit_message_text(
             "🔔 Sende mir die <b>User-ID</b> des Benutzers, der benachrichtigt werden soll.",
             parse_mode="HTML",
