@@ -508,7 +508,7 @@ def _format_log_block(category: str, action: str, details: dict) -> str:
         action_icons = {
             "BAN": "🚫", "UNBAN": "✅", "BANALL": "🚫", "UNBANALL": "✅",
              "MUTE": "🔇", "UNMUTE": "🔊", "KICK": "👢", "WARN": "⚠️",
-             "UNWARN": "↩️", "BADWORD": "🔤", "LINK": "🔗", "AUTO-WIEDERBANN": "🔄",
+             "UNWARN": "↩️", "BADWORD": "🔤", "LINK": "🔗", "AUTO-BANN": "🔄",
             "FREE": "🛡", "UNFREE": "🛡", "MASS UNBAN": "✅", "MASS UNMUTE": "🔊",
             "DELETE": "🗑", "FORWARD-SPAM": "🔀", "LINK-WARN CANCEL": "↩️",
             "MASS BAN": "🚫", "MASS MUTE": "🔇", "MASS KICK": "👢",
@@ -632,7 +632,7 @@ async def render_protokoll_channel_config(query, ch_id: str):
             f"• Mute / Unmute / Kick\n"
             f"• Warn / Unwarn\n"
             f"• Verbotene Wörter / Links\n"
-            f"• Auto-Wiederbann\n\n"
+            f"• Auto-Bann\n\n"
             f"Wähle welche Gruppen protokolliert werden:",
             reply_markup=InlineKeyboardMarkup(keyboard),
             parse_mode="HTML",
@@ -6721,7 +6721,7 @@ async def track_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     pass
                 tracked_u = lookup_user(str(member.id))
                 t_uname = f"@{tracked_u['username']}" if tracked_u and tracked_u.get("username") else member.full_name
-                await log_action(context, "", group_id=chat_id, group_name=update.effective_chat.title, category=LOG_CAT_MOD, action="AUTO-WIEDERBANN", details={"user": t_uname, "user_id": str(member.id), "gruppe": update.effective_chat.title})
+                await log_action(context, "", group_id=chat_id, group_name=update.effective_chat.title, category=LOG_CAT_MOD, action="AUTO-BANN", details={"user": t_uname, "user_id": str(member.id), "gruppe": update.effective_chat.title})
             except Exception as e:
                 logger.error(f"Auto-reban via new_chat_members failed for {member.id} in {chat_id}: {e}")
 
@@ -6739,7 +6739,7 @@ async def enforce_ban_on_chat_member(update: Update, context: ContextTypes.DEFAU
             await context.bot.ban_chat_member(chat_id=update.effective_chat.id, user_id=member.id, revoke_messages=True)
             tracked_u = lookup_user(str(member.id))
             t_uname = f"@{tracked_u['username']}" if tracked_u and tracked_u.get("username") else member.full_name
-            await log_action(context, "", group_id=update.effective_chat.id, group_name=update.effective_chat.title, category=LOG_CAT_MOD, action="AUTO-WIEDERBANN", details={"user": t_uname, "user_id": str(member.id), "gruppe": update.effective_chat.title})
+            await log_action(context, "", group_id=update.effective_chat.id, group_name=update.effective_chat.title, category=LOG_CAT_MOD, action="AUTO-BANN", details={"user": t_uname, "user_id": str(member.id), "gruppe": update.effective_chat.title})
         except Exception as e:
             logger.error(f"Auto-reban via chat_member failed for {member.id} in {update.effective_chat.id}: {e}")
 
