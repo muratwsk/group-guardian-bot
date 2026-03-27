@@ -934,6 +934,74 @@ async def show_messenger_selection(query, context, user_id, groups):
         parse_mode="Markdown",
     )
 
+async def _render_admin_report_menu(query):
+    """Render the @admin settings menu."""
+    bot_data = load_data()
+    ar = bot_data.get("admin_report", {})
+    active = ar.get("active", False)
+    staff_group = ar.get("staff_group")
+    notify_users = ar.get("notify_users", [])
+    group_routes = ar.get("group_routes", {})
+
+    status_icon = "✅ Aktiv" if active else "❌ Inaktiv"
+
+    # Resolve staff group name
+    if staff_group:
+        groups = bot_data.get("groups", [])
+        sg_name = next((g["title"] for g in groups if g["id"] == staff_group), str(staff_group))
+        staff_str = f"👥 {sg_name}"
+    else:
+        staff_str = "❗️ Nicht definiert"
+
+    notify_str = "Keine"
+    if notify_users:
+        parts = []
+        for uid in notify_users:
+            try:
+                u_entry = load_users().get(str(uid), {})
+                parts.append(u_entry.get("name", str(uid)))
+            except Exception:
+                parts.append(str(uid))
+        notify_str = ", ".join(parts)
+
+    # Group routes info
+    routes_str = ""
+    if group_routes:
+        groups = bot_data.get("groups", [])
+        gmap = {g["id"]: g["title"] for g in groups}
+        route_parts = []
+        for src_id, dst_id in group_routes.items():
+            src_name = gmap.get(int(src_id), str(src_id))
+            dst_name = gmap.get(dst_id, str(dst_id))
+            route_parts.append(f"  • {src_name} → {dst_name}")
+        routes_str = "\n\n📋 <b>Gruppen-Routing:</b>\n" + "\n".join(route_parts)
+
+    text = (
+        f"🆘 <b>@admin-Befehl</b>\n\n"
+        f"@admin (oder /report) ist ein Befehl, der Chatmitgliedern "
+        f"zur Verfügung steht, um die Aufmerksamkeit des Mitarbeiterteams "
+        f"auf sich zu lenken.\n\n"
+        f"⚠️ Der @admin-Befehl funktioniert <b>NICHT</b>, wenn er von "
+        f"Admins oder Moderatoren verwendet wird.\n\n"
+        f"Status: {status_icon}\n"
+        f"Standard-Team: {staff_str}\n"
+        f"🔔 Benachrichtigen: {notify_str}"
+        f"{routes_str}"
+    )
+
+    if not staff_group and not group_routes:
+        text += "\n\n❗️ Es wurde keine Mitarbeitergruppe definiert, die Mitteilung wird an niemanden gesendet werden."
+
+    keyboard = [
+        [InlineKeyboardButton(f"{'❌ Deaktivieren' if active else '✅ Aktivieren'}", callback_data="ar_toggle")],
+        [InlineKeyboardButton("👥 Standard-Team setzen", callback_data="ar_set_group")],
+        [InlineKeyboardButton("📋 Gruppen-Routing", callback_data="ar_routes_menu")],
+        [InlineKeyboardButton("🔔 Benutzer benachrichtigen", callback_data="ar_notify_menu")],
+        [InlineKeyboardButton("🔙 Zurück", callback_data="back_main")],
+    ]
+    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
+
+
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
