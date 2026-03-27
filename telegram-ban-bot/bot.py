@@ -632,7 +632,7 @@ async def render_protokoll_channel_config(query, ch_id: str):
             f"• Mute / Unmute / Kick\n"
             f"• Warn / Unwarn\n"
             f"• Verbotene Wörter / Links\n"
-            f"• Auto-Wiederbann\n\n"
+            f"• Auto-Bann\n\n"
             f"Wähle welche Gruppen protokolliert werden:",
             reply_markup=InlineKeyboardMarkup(keyboard),
             parse_mode="HTML",
