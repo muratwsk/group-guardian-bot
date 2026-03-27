@@ -5847,6 +5847,18 @@ async def handle_admin_report(update: Update, context: ContextTypes.DEFAULT_TYPE
             reply_markup=reply_markup,
         )
         logger.info(f"Admin report from {sender.id} in {chat.id} sent to staff group {staff_group}")
+        # Send confirmation in the source group
+        try:
+            confirm_msg = await update.message.reply_text("✅ Admin wurde informiert.")
+            # Auto-delete confirmation after 10 seconds
+            asyncio.get_event_loop().call_later(
+                10,
+                lambda mid=confirm_msg.message_id, cid=chat.id: asyncio.ensure_future(
+                    context.bot.delete_message(chat_id=cid, message_id=mid)
+                ),
+            )
+        except Exception:
+            pass
     except Exception as e:
         logger.error(f"Failed to send admin report to {staff_group}: {e}")
 
