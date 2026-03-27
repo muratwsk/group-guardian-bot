@@ -4192,8 +4192,11 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
         groups = await get_bot_groups(context)
         if not groups:
-            keyboard = [[InlineKeyboardButton("🔙 Zurück", callback_data="menu_settings")]]
-            await query.edit_message_text("Keine Gruppen registriert.\nNutze /registergroup in einer Gruppe.",
+            keyboard = [
+                [InlineKeyboardButton("➕ Gruppe/Kanal hinzufügen", callback_data="add_group_manual")],
+                [InlineKeyboardButton("🔙 Zurück", callback_data="menu_settings")],
+            ]
+            await query.edit_message_text("Keine Gruppen registriert.\n\nDu kannst eine Gruppe/Kanal per ID hinzufügen oder /registergroup in einer Gruppe nutzen.",
                                           reply_markup=InlineKeyboardMarkup(keyboard))
             return
         text = "👥 *Registrierte Gruppen:*\n\n"
