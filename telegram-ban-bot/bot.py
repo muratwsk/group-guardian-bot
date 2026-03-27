@@ -3070,7 +3070,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"{original_text}\n\n"
             f"━━━━━━━━━━━━━━━\n"
             f"✅ <b>Gelöst</b> von {solver_name}\n"
-            f"🕐 {datetime.datetime.now().strftime('%d.%m.%Y %H:%M')}"
+            f"🕐 {now_de().strftime('%d.%m.%Y %H:%M')}"
         )
         await query.edit_message_text(solved_text, parse_mode="HTML")
         await query.answer("✅ Als gelöst markiert")
