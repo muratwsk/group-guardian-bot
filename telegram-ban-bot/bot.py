@@ -6291,10 +6291,7 @@ async def track_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     except Exception as e:
                         logger.error(f"Badword punishment failed: {e}")
 
-                    await log_action(
-                        context,
-                        f"BADWORD: {user_name} ({user_id_bw}) in {update.effective_chat.title} — Wort: {matched} — Strafe: {bw_punishment} — Gelöscht: {'ja' if deleted else 'nein'}"
-                    )
+                    await log_action(context, "", group_id=chat_id, group_name=update.effective_chat.title, category=LOG_CAT_MOD, action="BADWORD", details={"user": user_name, "user_id": str(user_id_bw), "gruppe": update.effective_chat.title, "details": f"Wort: {matched} — Strafe: {bw_punishment} — Gelöscht: {'ja' if deleted else 'nein'}"})
                     return
 
 
