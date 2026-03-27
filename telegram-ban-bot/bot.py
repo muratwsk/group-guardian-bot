@@ -2909,7 +2909,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     elif data == "ar_set_group":
-        user_data_store[user_id] = {"state": "ar_set_group"}
+        context.user_data["state"] = "ar_set_group"
         await query.edit_message_text(
             "👥 Sende mir die <b>Chat-ID</b> der Mitarbeitergruppe.\n\n"
             "💡 Tipp: Leite eine Nachricht aus der Gruppe weiter oder nutze @userinfobot um die ID herauszufinden.",
