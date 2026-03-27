@@ -5739,6 +5739,7 @@ async def handle_admin_report(update: Update, context: ContextTypes.DEFAULT_TYPE
     thread_id = getattr(update.effective_message, "message_thread_id", None)
     reply_to = update.message.reply_to_message
     reported_info = ""
+    message_link = None
     if reply_to and reply_to.from_user:
         ru = reply_to.from_user
         reported_info = (
@@ -5746,6 +5747,17 @@ async def handle_admin_report(update: Update, context: ContextTypes.DEFAULT_TYPE
             f"  👤 {ru.full_name} (<code>{ru.id}</code>)\n"
             f"  💬 <i>{(reply_to.text or '[Medien]')[:200]}</i>"
         )
+        # Build deep link to the reported message
+        chat_id_str = str(chat.id)
+        if chat_id_str.startswith("-100"):
+            chat_link_id = chat_id_str[4:]  # Remove -100 prefix
+            message_link = f"https://t.me/c/{chat_link_id}/{reply_to.message_id}"
+    elif update.message:
+        # Link to the report message itself
+        chat_id_str = str(chat.id)
+        if chat_id_str.startswith("-100"):
+            chat_link_id = chat_id_str[4:]
+            message_link = f"https://t.me/c/{chat_link_id}/{update.message.message_id}"
 
     report_text = (
         f"🆘 <b>Admin-Meldung</b>\n\n"
@@ -5754,24 +5766,46 @@ async def handle_admin_report(update: Update, context: ContextTypes.DEFAULT_TYPE
         f"{reported_info}"
     )
 
-    # Notify specific users via mention
+    # Collect all users to mention: configured notify_users + all group admins
+    mention_uids = set()
     notify_users = ar.get("notify_users", [])
-    if notify_users:
+    for uid in notify_users:
+        mention_uids.add(uid)
+
+    # Fetch all admins of the source group and mention them
+    try:
+        admins = await context.bot.get_chat_administrators(chat.id)
+        for admin in admins:
+            if not admin.user.is_bot:
+                mention_uids.add(admin.user.id)
+    except Exception as e:
+        logger.warning(f"Could not fetch group admins for mention: {e}")
+
+    if mention_uids:
         mentions = []
-        for uid in notify_users:
+        for uid in mention_uids:
             try:
-                member = await context.bot.get_chat_member(staff_group, uid)
+                member = await context.bot.get_chat_member(chat.id, uid)
                 name = member.user.full_name
-                mentions.append(f'<a href="tg://user?id={uid}">{name}</a>')
             except Exception:
-                mentions.append(f'<a href="tg://user?id={uid}">Staff</a>')
+                name = "Admin"
+            mentions.append(f'<a href="tg://user?id={uid}">{name}</a>')
         report_text += "\n\n🔔 " + " ".join(mentions)
+
+    # Build inline keyboard with "Go to message" button
+    reply_markup = None
+    if message_link:
+        from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+        reply_markup = InlineKeyboardMarkup([
+            [InlineKeyboardButton("📍 Zur Nachricht", url=message_link)]
+        ])
 
     try:
         await context.bot.send_message(
             chat_id=staff_group,
             text=report_text,
             parse_mode="HTML",
+            reply_markup=reply_markup,
         )
         logger.info(f"Admin report from {sender.id} in {chat.id} sent to staff group {staff_group}")
     except Exception as e:
