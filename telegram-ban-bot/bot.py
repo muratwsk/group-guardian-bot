@@ -3135,12 +3135,14 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"👮 Admins: {len(admins)}\n"
             f"📋 Log-Kanal: `{log_ch}`"
         )
+        exempt_count = len(data.get("exempt_groups", []))
         keyboard = [
             [InlineKeyboardButton("👮 Admins verwalten", callback_data="settings_admins")],
             [InlineKeyboardButton("➕ Admin hinzufügen", callback_data="add_admin"),
              InlineKeyboardButton("➖ Admin entfernen", callback_data="remove_admin")],
             [InlineKeyboardButton("📋 Log-Kanal setzen", callback_data="set_log")],
             [InlineKeyboardButton("👥 Gruppen anzeigen", callback_data="show_groups")],
+            [InlineKeyboardButton(f"🛡 Filterfreie Gruppen ({exempt_count})", callback_data="menu_exempt_groups")],
             [InlineKeyboardButton("🔙 Zurück", callback_data="back_main")],
         ]
         await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
