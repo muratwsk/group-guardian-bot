@@ -2903,10 +2903,39 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ar["active"] = not ar.get("active", False)
         save_data(bot_data)
         await query.answer(f"{'✅ Aktiviert' if ar['active'] else '❌ Deaktiviert'}")
-        # Re-render menu by simulating menu_admin_report
-        query.data = "menu_admin_report"
-        await button_handler(update, context)
-        return
+        # Re-render the admin report menu inline
+        active = ar["active"]
+        staff_group = ar.get("staff_group")
+        notify_users = ar.get("notify_users", [])
+        status_icon = "✅ Aktiv" if active else "❌ Inaktiv"
+        staff_str = "❗️ Nicht definiert" if not staff_group else f"<code>{staff_group}</code>"
+        notify_str = "Keine"
+        if notify_users:
+            parts = []
+            for uid in notify_users:
+                u_entry = load_users().get(str(uid), {})
+                parts.append(u_entry.get("name", str(uid)))
+            notify_str = ", ".join(parts)
+        text = (
+            f"🆘 <b>@admin-Befehl</b>\n\n"
+            f"@admin (oder /report) ist ein Befehl, der Chatmitgliedern "
+            f"zur Verfügung steht, um die Aufmerksamkeit des Mitarbeiterteams "
+            f"auf sich zu lenken.\n\n"
+            f"⚠️ Der @admin-Befehl funktioniert <b>NICHT</b>, wenn er von "
+            f"Admins oder Moderatoren verwendet wird.\n\n"
+            f"Status: {status_icon}\n"
+            f"Senden an: 👥 {staff_str}\n"
+            f"🔔 Benachrichtigen: {notify_str}"
+        )
+        if not staff_group:
+            text += "\n\n❗️ Es wurde keine Mitarbeitergruppe definiert, die Mitteilung wird an niemanden gesendet werden."
+        keyboard = [
+            [InlineKeyboardButton(f"{'❌ Deaktivieren' if active else '✅ Aktivieren'}", callback_data="ar_toggle")],
+            [InlineKeyboardButton("👥 Mitarbeitergruppe setzen", callback_data="ar_set_group")],
+            [InlineKeyboardButton("🔔 Benutzer benachrichtigen", callback_data="ar_notify_menu")],
+            [InlineKeyboardButton("🔙 Zurück", callback_data="back_main")],
+        ]
+        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
 
     elif data == "ar_set_group":
         context.user_data["state"] = "ar_set_group"
@@ -2949,9 +2978,20 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             ar["notify_users"].remove(uid_to_remove)
             save_data(bot_data)
         await query.answer("✅ Entfernt")
-        query.data = "ar_notify_menu"
-        await button_handler(update, context)
-        return
+        # Re-render notify menu inline
+        notify_users = ar.get("notify_users", [])
+        keyboard = []
+        for uid in notify_users:
+            name = load_users().get(str(uid), {}).get("name", str(uid))
+            keyboard.append([InlineKeyboardButton(f"❌ {name}", callback_data=f"ar_notify_remove_{uid}")])
+        keyboard.append([InlineKeyboardButton("➕ Benutzer hinzufügen", callback_data="ar_notify_add")])
+        keyboard.append([InlineKeyboardButton("🔙 Zurück", callback_data="menu_admin_report")])
+        await query.edit_message_text(
+            "🔔 <b>Benutzer benachrichtigen</b>\n\n"
+            "Diese Benutzer werden bei einer @admin-Meldung per Erwähnung benachrichtigt:",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode="HTML",
+        )
 
     # === SETTINGS ===
     elif data == "menu_settings":
