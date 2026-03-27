@@ -4201,6 +4201,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         for g in groups:
             text += f"• {g['title']} (`{g['id']}`)\n"
             keyboard.append([InlineKeyboardButton(f"❌ {g['title']}", callback_data=f"remove_group_{g['id']}")])
+        keyboard.append([InlineKeyboardButton("➕ Gruppe/Kanal hinzufügen", callback_data="add_group_manual")])
         keyboard.append([InlineKeyboardButton("🔙 Zurück", callback_data="menu_settings")])
         await query.edit_message_text(text, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(keyboard))
 
