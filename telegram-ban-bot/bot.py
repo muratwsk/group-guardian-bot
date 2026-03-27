@@ -6104,7 +6104,7 @@ async def track_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                                         ),
                                         parse_mode="HTML",
                                     )
-                                    await log_action(context, f"LINK-WARN AUTO-PUNISH ({warn_punishment}): {user_name_as} ({user_id_as}) in {chat_id_as} — {max_w}/{max_w}", group_id=chat_id_as, group_name=update.effective_chat.title)
+                                    await log_action(context, "", group_id=chat_id_as, group_name=update.effective_chat.title, category=LOG_CAT_MOD, action="LINK", details={"user": user_name_as, "user_id": str(user_id_as), "gruppe": update.effective_chat.title, "details": f"Auto-{warn_punishment} ({max_w}/{max_w})"})
                                 else:
                                     keyboard_as = InlineKeyboardMarkup([
                                         [InlineKeyboardButton("❌ Abbrechen", callback_data=f"link_warn_cancel_{chat_id_as}_{user_id_as}")]
