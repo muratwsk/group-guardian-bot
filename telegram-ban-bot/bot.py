@@ -516,10 +516,10 @@ def _format_log_block(category: str, action: str, details: dict) -> str:
     lines = [f"{icon} <b>{html.escape(action)}</b>"]
     lines.append(f"━━━━━━━━━━━━━━━")
 
-    field_order = ["user", "user_id", "gruppe", "von", "grund", "dauer", "details", "ergebnis"]
+    field_order = ["user", "user_id", "gruppe", "von", "von_id", "grund", "dauer", "details", "ergebnis"]
     field_labels = {
         "user": "👤 User", "user_id": "🆔 ID", "gruppe": "📍 Gruppe",
-        "von": "👮 Von", "grund": "📝 Grund", "dauer": "⏱ Dauer",
+        "von": "👮 Von", "von_id": "👮 Admin-ID", "grund": "📝 Grund", "dauer": "⏱ Dauer",
         "details": "ℹ️ Details", "ergebnis": "📊 Ergebnis",
     }
 
