@@ -4400,6 +4400,42 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("⚠️ Bitte eine gültige numerische Kanal-ID senden (z.B. <code>-1001234567890</code>).", parse_mode="HTML")
         context.user_data["state"] = None
 
+    elif state == WAITING_GROUP_ADD_ID:
+        context.user_data["state"] = None
+        try:
+            chat_id = int(text.strip())
+        except ValueError:
+            await update.message.reply_text("⚠️ Bitte eine gültige numerische Chat-ID senden.\nBeispiel: `-1001234567890`", parse_mode="Markdown")
+            return
+
+        # Check if already registered
+        bot_data = load_data()
+        groups = bot_data.get("groups", [])
+        if any(g["id"] == chat_id for g in groups):
+            keyboard = [[InlineKeyboardButton("🔙 Zurück", callback_data="show_groups")]]
+            await update.message.reply_text("✅ Diese Gruppe/Kanal ist bereits registriert.", reply_markup=InlineKeyboardMarkup(keyboard))
+            return
+
+        # Try to get chat info
+        try:
+            chat_info = await context.bot.get_chat(chat_id)
+            chat_title = chat_info.title or str(chat_id)
+        except Exception:
+            chat_title = str(chat_id)
+
+        groups.append({"id": chat_id, "title": chat_title})
+        bot_data["groups"] = groups
+        save_data(bot_data)
+        sync_groups_to_file()
+
+        keyboard = [[InlineKeyboardButton("🔙 Zur Gruppenliste", callback_data="show_groups")]]
+        await update.message.reply_text(
+            f"✅ *{chat_title}* (`{chat_id}`) wurde hinzugefügt!",
+            parse_mode="Markdown",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+        )
+        await log_action(context, f"Gruppe manuell hinzugefügt: {chat_title} ({chat_id})")
+
     elif state == WAITING_MESSENGER_INPUT:
         pending = user_data_store.get(user_id)
         if not pending:
