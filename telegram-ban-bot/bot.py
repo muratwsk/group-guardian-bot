@@ -5417,7 +5417,7 @@ async def free_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=keyboard,
         parse_mode="HTML",
     )
-    await log_action(context, f"🔓 FREE: {target_name} [{target_id}] von {update.effective_user.first_name}")
+    await log_action(context, "", group_id=chat.id if chat else None, group_name=chat.title if chat else None, category=LOG_CAT_MOD, action="FREE", details={"user": target_name, "user_id": str(target_id), "von": update.effective_user.full_name, "von_id": str(update.effective_user.id)})
 
 
 async def unfree_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
