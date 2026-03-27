@@ -3162,25 +3162,24 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         sb = bot_data.setdefault("sperr_bots", {"enabled": False, "punishment": "ban", "delete": True, "groups": []})
         sb["enabled"] = True
         save_data(bot_data)
-        # Re-render
-        query.data = "sperr_bot_menu"
-        return await button_handler(update, context)
+        await render_sperr_bot_menu(query, context)
+        return
 
     elif data == "sperr_bot_off":
         bot_data = load_data()
         sb = bot_data.setdefault("sperr_bots", {"enabled": False, "punishment": "ban", "delete": True, "groups": []})
         sb["enabled"] = False
         save_data(bot_data)
-        query.data = "sperr_bot_menu"
-        return await button_handler(update, context)
+        await render_sperr_bot_menu(query, context)
+        return
 
     elif data == "sperr_bot_del":
         bot_data = load_data()
         sb = bot_data.setdefault("sperr_bots", {"enabled": False, "punishment": "ban", "delete": True, "groups": []})
         sb["delete"] = not sb.get("delete", True)
         save_data(bot_data)
-        query.data = "sperr_bot_menu"
-        return await button_handler(update, context)
+        await render_sperr_bot_menu(query, context)
+        return
 
     elif data.startswith("sperr_bot_p_"):
         p = data.replace("sperr_bot_p_", "")
@@ -3188,8 +3187,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         sb = bot_data.setdefault("sperr_bots", {"enabled": False, "punishment": "ban", "delete": True, "groups": []})
         sb["punishment"] = p
         save_data(bot_data)
-        query.data = "sperr_bot_menu"
-        return await button_handler(update, context)
+        await render_sperr_bot_menu(query, context)
+        return
 
     elif data == "sperr_bot_groups":
         await render_sperr_bot_groups(query, context)
