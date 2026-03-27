@@ -4263,7 +4263,8 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         result_text = "\n".join(results)
         verb = "gebannt" if action == "ban" else "entbannt"
-        await update.message.reply_text(f"Ergebnis für User `{target_id}`:\n\n{result_text}", parse_mode="Markdown")
+        uname = f"@{target_username} " if target_username else ""
+        await update.message.reply_text(f"Ergebnis für {uname}{target_name} [<code>{target_id}</code>]:\n\n{result_text}", parse_mode="HTML")
         await log_action(context, f"User `{target_id}` {verb} von {update.effective_user.full_name} ({user_id})\n{result_text}")
 
         context.user_data["state"] = None
