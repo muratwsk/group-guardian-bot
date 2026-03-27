@@ -3000,7 +3000,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         groups = bot_data.get("groups", [])
         gmap = {g["id"]: g["title"] for g in groups}
 
-        text = "📋 <b>Gruppen-Routing</b>\n\nLege fest, welche Gruppe ihre Meldungen an welche Team-Gruppe sendet.\n"
+        text = "📋 <b>Gruppen-Routing</b>\n\nHier kannst du für einzelne Gruppen eine <b>zusätzliche</b> Team-Gruppe festlegen.\nDas Standard-Team bekommt weiterhin ALLE Meldungen.\n"
         if group_routes:
             text += "\n<b>Aktive Routen:</b>\n"
             for src_id, dst_id in group_routes.items():
