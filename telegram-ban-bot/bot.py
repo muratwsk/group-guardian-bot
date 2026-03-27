@@ -968,6 +968,7 @@ async def _render_admin_report_menu(query):
 
     # Group routes info
     routes_str = ""
+    route_also_default = ar.get("route_also_default", {})
     if group_routes:
         groups = bot_data.get("groups", [])
         gmap = {g["id"]: g["title"] for g in groups}
@@ -975,20 +976,19 @@ async def _render_admin_report_menu(query):
         for src_id, dst_id in group_routes.items():
             src_name = gmap.get(int(src_id), str(src_id))
             dst_name = gmap.get(dst_id, str(dst_id))
-            route_parts.append(f"  • {src_name} → {dst_name}")
+            also = route_also_default.get(str(src_id), True)
+            mode = "+ Standard-Team" if also else "NUR Route"
+            route_parts.append(f"  • {src_name} → {dst_name} [{mode}]")
         routes_str = "\n\n📋 <b>Gruppen-Routing:</b>\n" + "\n".join(route_parts)
 
     text = (
         f"🆘 <b>@admin-Befehl</b>\n\n"
         f"Status: {status_icon}\n\n"
         f"🏢 <b>Standard-Team:</b> {staff_str}\n"
-        f"<i>→ Bekommt ALLE Meldungen aus allen Gruppen</i>\n\n"
+        f"<i>→ Bekommt Meldungen aus Gruppen ohne eigene Route (oder wenn 'auch Standard-Team' aktiv)</i>\n\n"
         f"🔔 <b>Benachrichtigen:</b> {notify_str}"
         f"{routes_str}"
     )
-
-    if routes_str:
-        text += "\n<i>→ Diese Gruppen bekommen Meldungen ZUSÄTZLICH zum Standard-Team</i>"
 
     if not staff_group and not group_routes:
         text += "\n\n❗️ Es wurde keine Mitarbeitergruppe definiert."
