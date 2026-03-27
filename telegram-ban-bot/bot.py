@@ -509,17 +509,18 @@ def _format_log_block(category: str, action: str, details: dict) -> str:
             "MUTE": "🔇", "UNMUTE": "🔊", "KICK": "👢", "WARN": "⚠️",
             "UNWARN": "↩️", "BADWORD": "🔤", "LINK": "🔗", "AUTO-REBAN": "🔄",
             "FREE": "🛡", "UNFREE": "🛡", "MASS UNBAN": "✅", "MASS UNMUTE": "🔊",
-            "DELETE": "🗑",
+            "DELETE": "🗑", "FORWARD-SPAM": "🔀", "LINK-WARN CANCEL": "↩️",
+            "MASS BAN": "🚫", "MASS MUTE": "🔇", "MASS KICK": "👢",
         }
         icon = action_icons.get(action.upper(), "📋")
 
     lines = [f"{icon} <b>{html.escape(action)}</b>"]
     lines.append(f"━━━━━━━━━━━━━━━")
 
-    field_order = ["user", "user_id", "gruppe", "von", "grund", "dauer", "details", "ergebnis"]
+    field_order = ["user", "user_id", "gruppe", "von", "von_id", "grund", "dauer", "details", "ergebnis"]
     field_labels = {
         "user": "👤 User", "user_id": "🆔 ID", "gruppe": "📍 Gruppe",
-        "von": "👮 Von", "grund": "📝 Grund", "dauer": "⏱ Dauer",
+        "von": "👮 Von", "von_id": "👮 Admin-ID", "grund": "📝 Grund", "dauer": "⏱ Dauer",
         "details": "ℹ️ Details", "ergebnis": "📊 Ergebnis",
     }
 
@@ -1819,11 +1820,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=keyboard,
             parse_mode="HTML",
         )
-        await log_action(
-            context,
-            f"BANALL (via /info): {target_name} ({target_id}) von {query.from_user.full_name} — {len(successful_groups)} OK, {len(failed_groups)} Fehler",
-            group_id=scope_chat_id, group_name=str(scope_chat_id),
-        )
+        await log_action(context, "", group_id=scope_chat_id, group_name=str(scope_chat_id), category=LOG_CAT_MOD, action="BANALL", details={"user": target_name, "user_id": str(target_id), "von": query.from_user.full_name, "von_id": str(query.from_user.id), "ergebnis": f"{len(successful_groups)} OK, {len(failed_groups)} Fehler"})
 
     elif data.startswith("info_unbanall_"):
         target_id = int(data.replace("info_unbanall_", "", 1))
@@ -1851,7 +1848,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=keyboard,
             parse_mode="HTML",
         )
-        await log_action(context, f"UNBANALL (via /info): {target_name} ({target_id}) von {query.from_user.full_name}", group_id=scope_chat_id, group_name=str(scope_chat_id))
+        await log_action(context, "", group_id=scope_chat_id, group_name=str(scope_chat_id), category=LOG_CAT_MOD, action="UNBANALL", details={"user": target_name, "user_id": str(target_id), "von": query.from_user.full_name, "von_id": str(query.from_user.id)})
 
     elif data.startswith("info_ban_"):
         payload = data.replace("info_ban_", "", 1)
@@ -1884,7 +1881,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=keyboard,
             parse_mode="HTML",
         )
-        await log_action(context, f"BAN (via /info): {target_name} ({target_id}) in {scope_chat_id} von {query.from_user.full_name}", group_id=scope_chat_id, group_name=str(scope_chat_id))
+        await log_action(context, "", group_id=scope_chat_id, group_name=str(scope_chat_id), category=LOG_CAT_MOD, action="BAN", details={"user": target_name, "user_id": str(target_id), "gruppe": str(scope_chat_id), "von": query.from_user.full_name, "von_id": str(query.from_user.id)})
 
     elif data.startswith("info_unban_"):
         payload = data.replace("info_unban_", "", 1)
@@ -1913,7 +1910,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=keyboard,
             parse_mode="HTML",
         )
-        await log_action(context, f"UNBAN (via /info): {target_name} ({target_id}) in {scope_chat_id} von {query.from_user.full_name}", group_id=scope_chat_id, group_name=str(scope_chat_id))
+        await log_action(context, "", group_id=scope_chat_id, group_name=str(scope_chat_id), category=LOG_CAT_MOD, action="UNBAN", details={"user": target_name, "user_id": str(target_id), "gruppe": str(scope_chat_id), "von": query.from_user.full_name, "von_id": str(query.from_user.id)})
 
     elif data.startswith("info_mute_"):
         payload = data.replace("info_mute_", "", 1)
@@ -1952,7 +1949,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=keyboard,
             parse_mode="HTML",
         )
-        await log_action(context, f"MUTE (via /info): {target_name} ({target_id}) in {scope_chat_id} von {query.from_user.full_name}", group_id=scope_chat_id, group_name=str(scope_chat_id))
+        await log_action(context, "", group_id=scope_chat_id, group_name=str(scope_chat_id), category=LOG_CAT_MOD, action="MUTE", details={"user": target_name, "user_id": str(target_id), "gruppe": str(scope_chat_id), "von": query.from_user.full_name, "von_id": str(query.from_user.id)})
 
     elif data.startswith("info_unmute_"):
         payload = data.replace("info_unmute_", "", 1)
@@ -1990,7 +1987,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=keyboard,
             parse_mode="HTML",
         )
-        await log_action(context, f"UNMUTE (via /info): {target_name} ({target_id}) in {scope_chat_id} von {query.from_user.full_name}", group_id=scope_chat_id, group_name=str(scope_chat_id))
+        await log_action(context, "", group_id=scope_chat_id, group_name=str(scope_chat_id), category=LOG_CAT_MOD, action="UNMUTE", details={"user": target_name, "user_id": str(target_id), "gruppe": str(scope_chat_id), "von": query.from_user.full_name, "von_id": str(query.from_user.id)})
 
     # === CMD UNMUTE BUTTON ===
     elif data.startswith("cmd_unmute_"):
@@ -2022,7 +2019,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"{uname}[<code>{target_id}</code>] wurde ✅ entmutet.",
                 parse_mode="HTML",
             )
-            await log_action(context, f"✅ Unmute (Button): {target_name} ({target_id}) in {scope_chat_id} von {query.from_user.full_name}", group_id=scope_chat_id, group_name=str(scope_chat_id))
+            await log_action(context, "", group_id=scope_chat_id, group_name=str(scope_chat_id), category=LOG_CAT_MOD, action="UNMUTE", details={"user": target_name, "user_id": str(target_id), "gruppe": str(scope_chat_id), "von": query.from_user.full_name, "von_id": str(query.from_user.id), "details": "via Button"})
         except Exception as e:
             await query.answer(f"❌ Unmute fehlgeschlagen: {e}", show_alert=True)
 
@@ -2048,7 +2045,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"{uname}[<code>{target_id}</code>] wurde ✅ entbannt.",
                 parse_mode="HTML",
             )
-            await log_action(context, f"✅ Unban (Button): {target_name} ({target_id}) in {scope_chat_id} von {query.from_user.full_name}", group_id=scope_chat_id, group_name=str(scope_chat_id))
+            await log_action(context, "", group_id=scope_chat_id, group_name=str(scope_chat_id), category=LOG_CAT_MOD, action="UNBAN", details={"user": target_name, "user_id": str(target_id), "gruppe": str(scope_chat_id), "von": query.from_user.full_name, "von_id": str(query.from_user.id), "details": "via Button"})
         except Exception as e:
             await query.answer(f"❌ Unban fehlgeschlagen: {e}", show_alert=True)
 
@@ -2075,7 +2072,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"↩️ Link-Verwarnung für {uname}[<code>{target_id}</code>] wurde zurückgenommen.",
             parse_mode="HTML",
         )
-        await log_action(context, f"LINK-WARN CANCEL: {target_name} ({target_id}) in {scope_chat_id} von {query.from_user.full_name}", group_id=scope_chat_id, group_name=str(scope_chat_id))
+        await log_action(context, "", group_id=scope_chat_id, group_name=str(scope_chat_id), category=LOG_CAT_MOD, action="LINK-WARN CANCEL", details={"user": target_name, "user_id": str(target_id), "gruppe": str(scope_chat_id), "von": query.from_user.full_name, "von_id": str(query.from_user.id)})
 
     # === OPEN / CLOSE MENU ===
     elif data == "menu_openclose":
@@ -2665,7 +2662,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 )
             except Exception as e:
                 logger.error(f"Failed to send {action_label} notification to {gid}: {e}")
-        await log_action(context, f"MASS {action_label.upper()}: {success_count} erfolgreich, {error_count} Fehler – von {query.from_user.full_name}")
+        await log_action(context, "", category=LOG_CAT_MOD, action=f"MASS {action_label.upper()}", details={"von": query.from_user.full_name, "von_id": str(query.from_user.id), "ergebnis": f"{success_count} OK, {error_count} Fehler"})
 
     # === FREIGABEMODUS ===
     elif data == "menu_freigabe":
@@ -4077,7 +4074,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 warnings.pop(f"{chat_id_str}_{target_id_str}", None)
                 save_data(bot_data)
                 await query.edit_message_text(result_text, parse_mode="HTML")
-                await log_action(context, f"WARN AUTO-PUNISH ({punishment}): {t_name} ({target_id}) von {query.from_user.full_name}", group_id=int(chat_id_str), group_name=str(chat_id_str))
+                await log_action(context, "", group_id=int(chat_id_str), group_name=str(chat_id_str), category=LOG_CAT_MOD, action="WARN", details={"user": t_name, "user_id": str(target_id), "von": query.from_user.full_name, "von_id": str(query.from_user.id), "details": f"Auto-{punishment}"})
             else:
                 keyboard = [
                     [InlineKeyboardButton("🚫 Ban", callback_data=f"warn_punish_ban_{chat_id_str}_{target_id_str}"),
@@ -4162,7 +4159,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         warnings.pop(f"{chat_id_val}_{target_id}", None)
         save_data(bot_data)
         await query.edit_message_text(result_text)
-        await log_action(context, f"WARN PUNISH ({action}): {t_name} ({target_id}) von {query.from_user.full_name}", group_id=int(chat_id_val), group_name=str(chat_id_val))
+        await log_action(context, "", group_id=int(chat_id_val), group_name=str(chat_id_val), category=LOG_CAT_MOD, action=action.upper(), details={"user": t_name, "user_id": str(target_id), "von": query.from_user.full_name, "von_id": str(query.from_user.id)})
 
     elif data == "add_admin":
         if not is_owner(user_id):
@@ -5024,7 +5021,7 @@ async def mute_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=keyboard,
             parse_mode="HTML",
         )
-        await log_action(context, f"🔇 Mute: {target_name} [{target_id}] in {chat.title}", group_id=chat.id, group_name=chat.title, category=LOG_CAT_MOD, action="MUTE", details={"user": target_name, "user_id": str(target_id), "gruppe": chat.title, "von": update.effective_user.first_name, "dauer": duration_label or "Unbegrenzt", "grund": reason})
+        await log_action(context, "", group_id=chat.id, group_name=chat.title, category=LOG_CAT_MOD, action="MUTE", details={"user": target_name, "user_id": str(target_id), "gruppe": chat.title, "von": update.effective_user.full_name, "von_id": str(update.effective_user.id), "dauer": duration_label or "Unbegrenzt", "grund": reason})
     except Exception as e:
         await update.message.reply_text(f"❌ Mute fehlgeschlagen: {e}")
 
@@ -5073,7 +5070,7 @@ async def unmute_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"{uname}[<code>{target_id}</code>] wurde ✅ entmutet.",
             parse_mode="HTML",
         )
-        await log_action(context, f"✅ Unmute: {target_name} [{target_id}] in {chat.title}", group_id=chat.id, group_name=chat.title, category=LOG_CAT_MOD, action="UNMUTE", details={"user": target_name, "user_id": str(target_id), "gruppe": chat.title, "von": update.effective_user.first_name})
+        await log_action(context, "", group_id=chat.id, group_name=chat.title, category=LOG_CAT_MOD, action="UNMUTE", details={"user": target_name, "user_id": str(target_id), "gruppe": chat.title, "von": update.effective_user.full_name, "von_id": str(update.effective_user.id)})
     except Exception as e:
         await update.message.reply_text(f"❌ Unmute fehlgeschlagen: {e}")
 
@@ -5122,7 +5119,7 @@ async def kick_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"ℹ️ Der User kann der Gruppe wieder beitreten.",
             parse_mode="HTML",
         )
-        await log_action(context, f"👢 Kick: {target_name} [{target_id}] aus {chat.title}", group_id=chat.id, group_name=chat.title, category=LOG_CAT_MOD, action="KICK", details={"user": target_name, "user_id": str(target_id), "gruppe": chat.title, "von": update.effective_user.first_name, "grund": reason})
+        await log_action(context, "", group_id=chat.id, group_name=chat.title, category=LOG_CAT_MOD, action="KICK", details={"user": target_name, "user_id": str(target_id), "gruppe": chat.title, "von": update.effective_user.full_name, "von_id": str(update.effective_user.id), "grund": reason})
     except Exception as e:
         await update.message.reply_text(f"❌ Kick fehlgeschlagen: {e}")
 
@@ -5187,7 +5184,7 @@ async def ban_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode="HTML",
             reply_markup=keyboard,
         )
-        await log_action(context, f"🚫 Ban: {target_name} [{target_id}] in {chat.title}", group_id=chat.id, group_name=chat.title, category=LOG_CAT_MOD, action="BAN", details={"user": target_name, "user_id": str(target_id), "gruppe": chat.title, "von": update.effective_user.first_name, "dauer": duration_label, "grund": reason})
+        await log_action(context, "", group_id=chat.id, group_name=chat.title, category=LOG_CAT_MOD, action="BAN", details={"user": target_name, "user_id": str(target_id), "gruppe": chat.title, "von": update.effective_user.full_name, "von_id": str(update.effective_user.id), "dauer": duration_label, "grund": reason})
     except Exception as e:
         await update.message.reply_text(f"❌ Ban fehlgeschlagen: {e}")
 
@@ -5229,7 +5226,7 @@ async def unban_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"✅ {uname}[<code>{target_id}</code>] wurde entsperrt.",
             parse_mode="HTML",
         )
-        await log_action(context, f"✅ Unban: {target_name} [{target_id}] in {chat.title}", group_id=chat.id, group_name=chat.title, category=LOG_CAT_MOD, action="UNBAN", details={"user": target_name, "user_id": str(target_id), "gruppe": chat.title, "von": update.effective_user.first_name})
+        await log_action(context, "", group_id=chat.id, group_name=chat.title, category=LOG_CAT_MOD, action="UNBAN", details={"user": target_name, "user_id": str(target_id), "gruppe": chat.title, "von": update.effective_user.full_name, "von_id": str(update.effective_user.id)})
     except Exception as e:
         await update.message.reply_text(f"❌ Unban fehlgeschlagen: {e}")
 
@@ -5325,7 +5322,7 @@ async def warn_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             warnings.pop(f"{chat.id}_{target_id}", None)
             save_data(bot_data)
             await update.message.reply_text(result_text, parse_mode="HTML")
-            await log_action(context, f"WARN AUTO-PUNISH ({punishment}): {target_name} ({target_id}) in {chat.title} — {current_count}/{max_warns}" + (f" Grund: {reason}" if reason else ""), group_id=chat.id, group_name=chat.title)
+            await log_action(context, "", group_id=chat.id, group_name=chat.title, category=LOG_CAT_MOD, action="WARN", details={"user": target_name, "user_id": str(target_id), "gruppe": chat.title, "von": update.effective_user.full_name, "von_id": str(update.effective_user.id), "details": f"{current_count}/{max_warns} → Auto-{punishment}", "grund": reason})
             return
         else:
             # No punishment configured — show choice
@@ -5347,7 +5344,7 @@ async def warn_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ]
 
     await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
-    await log_action(context, f"WARN: {target_name} ({target_id}) in {chat.title} — {current_count}/{max_warns}" + (f" Grund: {reason}" if reason else ""), group_id=chat.id, group_name=chat.title)
+    await log_action(context, "", group_id=chat.id, group_name=chat.title, category=LOG_CAT_MOD, action="WARN", details={"user": target_name, "user_id": str(target_id), "gruppe": chat.title, "von": update.effective_user.full_name, "von_id": str(update.effective_user.id), "details": f"{current_count}/{max_warns}", "grund": reason})
 
 
 async def unwarn_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -5382,7 +5379,7 @@ async def unwarn_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     wc = bot_data.get("warn_config", {"max_warns": 3})
     max_w = wc.get("max_warns", 3)
     await update.message.reply_text(f"✅ Verwarnung von {target_name} entfernt. ({new_count}/{max_w})")
-    await log_action(context, f"UNWARN: {target_name} ({target_id}) in {chat.title} — jetzt {new_count}/{max_w}")
+    await log_action(context, "", group_id=chat.id, group_name=chat.title, category=LOG_CAT_MOD, action="UNWARN", details={"user": target_name, "user_id": str(target_id), "gruppe": chat.title, "von": update.effective_user.full_name, "von_id": str(update.effective_user.id), "details": f"{new_count}/{max_w}"})
 
 
 # --- /free & /unfree ---
@@ -5421,7 +5418,7 @@ async def free_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=keyboard,
         parse_mode="HTML",
     )
-    await log_action(context, f"🔓 FREE: {target_name} [{target_id}] von {update.effective_user.first_name}")
+    await log_action(context, "", group_id=chat.id if chat else None, group_name=chat.title if chat else None, category=LOG_CAT_MOD, action="FREE", details={"user": target_name, "user_id": str(target_id), "von": update.effective_user.full_name, "von_id": str(update.effective_user.id)})
 
 
 async def unfree_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -5452,7 +5449,7 @@ async def unfree_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"{uname}[<code>{target_id}</code>] wurde die Rolle 🔒 <b>Befreiter</b> widerrufen.",
         parse_mode="HTML",
     )
-    await log_action(context, f"🔒 UNFREE: {target_name} [{target_id}] von {update.effective_user.first_name}")
+    await log_action(context, "", group_id=chat.id if chat else None, group_name=chat.title if chat else None, category=LOG_CAT_MOD, action="UNFREE", details={"user": target_name, "user_id": str(target_id), "von": update.effective_user.full_name, "von_id": str(update.effective_user.id)})
 
 
 async def multidel_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -6108,7 +6105,7 @@ async def track_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                                         ),
                                         parse_mode="HTML",
                                     )
-                                    await log_action(context, f"LINK-WARN AUTO-PUNISH ({warn_punishment}): {user_name_as} ({user_id_as}) in {chat_id_as} — {max_w}/{max_w}", group_id=chat_id_as, group_name=update.effective_chat.title)
+                                    await log_action(context, "", group_id=chat_id_as, group_name=update.effective_chat.title, category=LOG_CAT_MOD, action="LINK", details={"user": user_name_as, "user_id": str(user_id_as), "gruppe": update.effective_chat.title, "details": f"Auto-{warn_punishment} ({max_w}/{max_w})"})
                                 else:
                                     keyboard_as = InlineKeyboardMarkup([
                                         [InlineKeyboardButton("❌ Abbrechen", callback_data=f"link_warn_cancel_{chat_id_as}_{user_id_as}")]
@@ -6152,7 +6149,7 @@ async def track_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                                 )
                         except Exception as e:
                             logger.error(f"Link punishment failed: {e}")
-                        await log_action(context, f"LINK-SPAM: {user_name_as} ({user_id_as}) in {update.effective_chat.title} — Strafe: {lc_punishment}", group_id=chat_id_as, group_name=update.effective_chat.title)
+                        await log_action(context, "", group_id=chat_id_as, group_name=update.effective_chat.title, category=LOG_CAT_MOD, action="LINK", details={"user": user_name_as, "user_id": str(user_id_as), "gruppe": update.effective_chat.title, "details": f"Strafe: {lc_punishment}"})
                         return
 
     # --- Anti-Spam: Forward check ---
@@ -6182,7 +6179,7 @@ async def track_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         logger.info(f"Deleted forwarded msg from {update.message.from_user.id} in {update.effective_chat.id} (origin: {origin_type})")
                     except Exception as e:
                         logger.error(f"Forward delete failed: {e}")
-                    await log_action(context, f"FORWARD-SPAM: {update.message.from_user.full_name} ({update.message.from_user.id}) in {update.effective_chat.title} — Typ: {origin_type}")
+                    await log_action(context, "", group_id=update.effective_chat.id, group_name=update.effective_chat.title, category=LOG_CAT_MOD, action="FORWARD-SPAM", details={"user": update.message.from_user.full_name, "user_id": str(update.message.from_user.id), "gruppe": update.effective_chat.title, "details": f"Typ: {origin_type}"})
                     return
 
     # --- Forbidden words check ---
@@ -6259,7 +6256,7 @@ async def track_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                                     text=f"⚠️ {html.escape(user_name)} wurde verwarnt ({max_w}/{max_w}) — Verbotenes Wort: <code>{html.escape(matched)}</code>\n{action_label_bw}",
                                     parse_mode="HTML",
                                 )
-                                await log_action(context, f"BADWORD-WARN AUTO-PUNISH ({warn_punishment}): {user_name} ({user_id_bw}) in {chat_id} — {max_w}/{max_w}", group_id=chat_id, group_name=update.effective_chat.title)
+                                await log_action(context, "", group_id=chat_id, group_name=update.effective_chat.title, category=LOG_CAT_MOD, action="BADWORD", details={"user": user_name, "user_id": str(user_id_bw), "gruppe": update.effective_chat.title, "details": f"Wort: {matched} → Auto-{warn_punishment} ({max_w}/{max_w})"})
                             else:
                                 await context.bot.send_message(
                                     chat_id=chat_id,
@@ -6295,10 +6292,7 @@ async def track_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     except Exception as e:
                         logger.error(f"Badword punishment failed: {e}")
 
-                    await log_action(
-                        context,
-                        f"BADWORD: {user_name} ({user_id_bw}) in {update.effective_chat.title} — Wort: {matched} — Strafe: {bw_punishment} — Gelöscht: {'ja' if deleted else 'nein'}"
-                    )
+                    await log_action(context, "", group_id=chat_id, group_name=update.effective_chat.title, category=LOG_CAT_MOD, action="BADWORD", details={"user": user_name, "user_id": str(user_id_bw), "gruppe": update.effective_chat.title, "details": f"Wort: {matched} — Strafe: {bw_punishment} — Gelöscht: {'ja' if deleted else 'nein'}"})
                     return
 
 
@@ -6379,7 +6373,7 @@ async def track_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     await update.message.delete()
                 except Exception:
                     pass
-                await log_action(context, f"AUTO-REBANNED: {member.full_name} ({member.id}) in {update.effective_chat.title}")
+                await log_action(context, "", group_id=chat_id, group_name=update.effective_chat.title, category=LOG_CAT_MOD, action="AUTO-REBAN", details={"user": member.full_name, "user_id": str(member.id), "gruppe": update.effective_chat.title})
             except Exception as e:
                 logger.error(f"Auto-reban via new_chat_members failed for {member.id} in {chat_id}: {e}")
 
@@ -6395,7 +6389,7 @@ async def enforce_ban_on_chat_member(update: Update, context: ContextTypes.DEFAU
     if is_banned_in_group(update.effective_chat.id, member.id):
         try:
             await context.bot.ban_chat_member(chat_id=update.effective_chat.id, user_id=member.id, revoke_messages=True)
-            await log_action(context, f"AUTO-REBANNED: {member.full_name} ({member.id}) in {update.effective_chat.title}")
+            await log_action(context, "", group_id=update.effective_chat.id, group_name=update.effective_chat.title, category=LOG_CAT_MOD, action="AUTO-REBAN", details={"user": member.full_name, "user_id": str(member.id), "gruppe": update.effective_chat.title})
         except Exception as e:
             logger.error(f"Auto-reban via chat_member failed for {member.id} in {update.effective_chat.id}: {e}")
 
