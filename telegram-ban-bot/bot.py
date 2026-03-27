@@ -507,8 +507,8 @@ def _format_log_block(category: str, action: str, details: dict) -> str:
     else:
         action_icons = {
             "BAN": "🚫", "UNBAN": "✅", "BANALL": "🚫", "UNBANALL": "✅",
-            "MUTE": "🔇", "UNMUTE": "🔊", "KICK": "👢", "WARN": "⚠️",
-            "UNWARN": "↩️", "BADWORD": "🔤", "LINK": "🔗", "AUTO-REBAN": "🔄",
+             "MUTE": "🔇", "UNMUTE": "🔊", "KICK": "👢", "WARN": "⚠️",
+             "UNWARN": "↩️", "BADWORD": "🔤", "LINK": "🔗", "AUTO-WIEDERBANN": "🔄",
             "FREE": "🛡", "UNFREE": "🛡", "MASS UNBAN": "✅", "MASS UNMUTE": "🔊",
             "DELETE": "🗑", "FORWARD-SPAM": "🔀", "LINK-WARN CANCEL": "↩️",
             "MASS BAN": "🚫", "MASS MUTE": "🔇", "MASS KICK": "👢",
