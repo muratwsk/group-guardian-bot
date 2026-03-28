@@ -7309,6 +7309,8 @@ async def show_oc_notify_for_source(query, context, source_gid):
 
 async def handle_open_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle /open command in a group."""
+    if not is_module_enabled("menu_openclose"):
+        return
     user_id = update.effective_user.id
     if not await is_group_authorized(context, user_id, update.effective_chat):
         return
