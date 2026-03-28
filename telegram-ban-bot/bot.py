@@ -1081,23 +1081,9 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # === BACK TO MAIN MENU ===
     if data == "back_main":
-        keyboard = [
-            [InlineKeyboardButton("🚫 BannALL", callback_data="menu_banall"),
-             InlineKeyboardButton("📨 Messenger", callback_data="menu_messenger")],
-            [InlineKeyboardButton("🔁 Wiederholte", callback_data="menu_scheduled"),
-             InlineKeyboardButton("🔓 Open/Close", callback_data="menu_openclose")],
-            [InlineKeyboardButton("🏗 Befehle", callback_data="pcmd_menu"),
-             InlineKeyboardButton("⚠️ Warns", callback_data="menu_warns")],
-            [InlineKeyboardButton("🔤 Verbotene Worte", callback_data="menu_badwords"),
-             InlineKeyboardButton("🗑 Nachrichten", callback_data="menu_msgdelete")],
-            [InlineKeyboardButton("🛡 Anti-Spam", callback_data="menu_antispam"),
-             InlineKeyboardButton("👥 Mitglieder", callback_data="menu_members")],
-            [InlineKeyboardButton("🚪 Freigabemodus", callback_data="menu_freigabe"),
-             InlineKeyboardButton("📋 Protokoll", callback_data="menu_protokoll")],
-            [InlineKeyboardButton("🔒 Sperren", callback_data="menu_sperren"),
-             InlineKeyboardButton("🆘 @admin", callback_data="menu_admin_report")],
-            [InlineKeyboardButton("⚙️ Einstellungen", callback_data="menu_settings")],
-        ]
+        bot_data_menu = load_data()
+        disabled = bot_data_menu.get("disabled_modules", [])
+        keyboard = build_main_menu_keyboard(disabled)
         role = "👑 Owner" if is_owner(user_id) else "🛡️ Admin"
         # Clear any pending state
         user_data_store.pop(user_id, None)
