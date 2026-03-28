@@ -3226,7 +3226,11 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"📋 Log-Kanal: `{log_ch}`"
         )
         exempt_count = len(data.get("exempt_groups", []))
+        disabled_count = len(data.get("disabled_modules", []))
+        toggleable_count = len([m for m in ALL_MODULES if m[0] not in ALWAYS_ON_MODULES])
+        enabled_count = toggleable_count - disabled_count
         keyboard = [
+            [InlineKeyboardButton(f"🔌 Module verwalten ({enabled_count}/{toggleable_count})", callback_data="menu_modules")],
             [InlineKeyboardButton("👮 Admins verwalten", callback_data="settings_admins")],
             [InlineKeyboardButton("➕ Admin hinzufügen", callback_data="add_admin"),
              InlineKeyboardButton("➖ Admin entfernen", callback_data="remove_admin")],
