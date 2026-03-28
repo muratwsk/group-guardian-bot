@@ -5828,6 +5828,8 @@ async def unwarn_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def free_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Grant a user the 'Befreiter' role — exempt from link filter, forward filter, forbidden words."""
     await auto_delete_command(update, context)
+    if not is_module_enabled("menu_freigabe"):
+        return
     user_id = update.effective_user.id
     if not await is_group_authorized(context, user_id, update.effective_chat):
         return
