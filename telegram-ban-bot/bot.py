@@ -1117,12 +1117,18 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # === BACK TO MAIN MENU ===
     if data == "back_main":
-        bot_data_menu = load_data()
-        disabled = bot_data_menu.get("disabled_modules", [])
-        keyboard = build_main_menu_keyboard(disabled)
-        role = "👑 Owner" if is_owner(user_id) else "🛡️ Admin"
         # Clear any pending state
         user_data_store.pop(user_id, None)
+        if is_owner(user_id):
+            bot_data_menu = load_data()
+            disabled = bot_data_menu.get("disabled_modules", [])
+            keyboard = build_main_menu_keyboard(disabled)
+            role = "👑 Owner"
+        else:
+            keyboard = [
+                [InlineKeyboardButton("🚫 Bann Bot", callback_data="menu_banall")],
+            ]
+            role = "🛡️ Admin"
         await query.edit_message_text(
             f"🤖 *Bot Menü* ({role})\n_Wähle eine Einstellung:_",
             reply_markup=InlineKeyboardMarkup(keyboard),
