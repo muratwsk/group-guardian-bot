@@ -3305,6 +3305,62 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         kb.append([InlineKeyboardButton("🔙 Zurück", callback_data="menu_settings")])
         await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(kb), parse_mode="HTML")
 
+    elif data == "menu_modules":
+        if not is_owner(user_id):
+            await query.answer("⛔ Nur für Owner.", show_alert=True)
+            return
+        bot_data = load_data()
+        disabled = set(bot_data.get("disabled_modules", []))
+        toggleable = [m for m in ALL_MODULES if m[0] not in ALWAYS_ON_MODULES]
+        text = (
+            "🔌 <b>Module verwalten</b>\n\n"
+            "Aktiviere oder deaktiviere Bot-Funktionen.\n"
+            "✅ = Aktiv  |  ❌ = Deaktiviert\n\n"
+            "<i>BannALL, Messenger und Wiederholte sind immer aktiv.</i>"
+        )
+        keyboard = []
+        for mod in toggleable:
+            is_disabled = mod[0] in disabled
+            icon = "❌" if is_disabled else "✅"
+            keyboard.append([InlineKeyboardButton(f"{icon} {mod[1]} {mod[2]}", callback_data=f"toggle_module_{mod[0]}")])
+        keyboard.append([InlineKeyboardButton("🔙 Zurück", callback_data="menu_settings")])
+        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
+
+    elif data.startswith("toggle_module_"):
+        if not is_owner(user_id):
+            await query.answer("⛔ Nur für Owner.", show_alert=True)
+            return
+        module_key = data.split("toggle_module_")[1]
+        if module_key in ALWAYS_ON_MODULES:
+            await query.answer("⚠️ Dieses Modul kann nicht deaktiviert werden.", show_alert=True)
+            return
+        bot_data = load_data()
+        disabled = bot_data.setdefault("disabled_modules", [])
+        if module_key in disabled:
+            disabled.remove(module_key)
+            label = MODULE_LABELS.get(module_key, module_key)
+            await query.answer(f"✅ {label} aktiviert")
+        else:
+            disabled.append(module_key)
+            label = MODULE_LABELS.get(module_key, module_key)
+            await query.answer(f"❌ {label} deaktiviert")
+        save_data(bot_data)
+        # Re-render
+        disabled_set = set(disabled)
+        toggleable = [m for m in ALL_MODULES if m[0] not in ALWAYS_ON_MODULES]
+        text = (
+            "🔌 <b>Module verwalten</b>\n\n"
+            "Aktiviere oder deaktiviere Bot-Funktionen.\n"
+            "✅ = Aktiv  |  ❌ = Deaktiviert\n\n"
+            "<i>BannALL, Messenger und Wiederholte sind immer aktiv.</i>"
+        )
+        kb = []
+        for mod in toggleable:
+            is_disabled = mod[0] in disabled_set
+            icon = "❌" if is_disabled else "✅"
+            kb.append([InlineKeyboardButton(f"{icon} {mod[1]} {mod[2]}", callback_data=f"toggle_module_{mod[0]}")])
+        kb.append([InlineKeyboardButton("🔙 Zurück", callback_data="menu_settings")])
+        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(kb), parse_mode="HTML")
 
         if not is_owner(user_id):
             await query.answer("⛔ Nur für Owner.", show_alert=True)
