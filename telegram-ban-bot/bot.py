@@ -6307,6 +6307,8 @@ async def handle_custom_command(update: Update, context: ContextTypes.DEFAULT_TY
 async def handle_admin_report(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """/report command – members can alert staff. Ignored when used by admins."""
     await auto_delete_command(update, context)
+    if not is_module_enabled("menu_admin_report"):
+        return
     if not update.message or not update.effective_chat:
         return
     chat = update.effective_chat
