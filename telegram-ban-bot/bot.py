@@ -131,7 +131,7 @@ def normalize_data(data):
     data.setdefault("disabled_modules", [
         "menu_openclose", "pcmd_menu", "menu_warns", "menu_badwords",
         "menu_msgdelete", "menu_antispam", "menu_members", "menu_freigabe",
-        "menu_protokoll", "menu_sperren", "menu_admin_report",
+        "menu_protokoll", "menu_sperren", "menu_admin_report", "menu_send",
     ])
     return data
 
