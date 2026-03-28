@@ -701,6 +701,46 @@ async def reload_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_text("✅ Bot-Konfiguration neu geladen.")
 
+# --- Module definitions ---
+ALL_MODULES = [
+    # (callback_data, icon, label, row_partner_callback)
+    ("menu_banall", "🚫", "BannALL", None),          # always on
+    ("menu_messenger", "📨", "Messenger", None),      # always on
+    ("menu_scheduled", "🔁", "Wiederholte", None),    # always on
+    ("menu_openclose", "🔓", "Open/Close", None),
+    ("pcmd_menu", "🏗", "Befehle", None),
+    ("menu_warns", "⚠️", "Warns", None),
+    ("menu_badwords", "🔤", "Verbotene Worte", None),
+    ("menu_msgdelete", "🗑", "Nachrichten", None),
+    ("menu_antispam", "🛡", "Anti-Spam", None),
+    ("menu_members", "👥", "Mitglieder", None),
+    ("menu_freigabe", "🚪", "Freigabemodus", None),
+    ("menu_protokoll", "📋", "Protokoll", None),
+    ("menu_sperren", "🔒", "Sperren", None),
+    ("menu_admin_report", "🆘", "@admin", None),
+]
+
+# These modules cannot be disabled
+ALWAYS_ON_MODULES = {"menu_banall", "menu_messenger", "menu_scheduled", "menu_settings"}
+
+MODULE_LABELS = {m[0]: f"{m[1]} {m[2]}" for m in ALL_MODULES}
+
+def build_main_menu_keyboard(disabled_modules: list) -> list:
+    """Build main menu keyboard, only showing enabled modules."""
+    disabled = set(disabled_modules)
+    enabled = [m for m in ALL_MODULES if m[0] not in disabled or m[0] in ALWAYS_ON_MODULES]
+    keyboard = []
+    row = []
+    for mod in enabled:
+        row.append(InlineKeyboardButton(f"{mod[1]} {mod[2]}", callback_data=mod[0]))
+        if len(row) == 2:
+            keyboard.append(row)
+            row = []
+    if row:
+        keyboard.append(row)
+    keyboard.append([InlineKeyboardButton("⚙️ Einstellungen", callback_data="menu_settings")])
+    return keyboard
+
 # --- /start ---
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -708,23 +748,9 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_authorized(user_id):
         return
 
-    keyboard = [
-        [InlineKeyboardButton("🚫 BannALL", callback_data="menu_banall"),
-         InlineKeyboardButton("📨 Messenger", callback_data="menu_messenger")],
-        [InlineKeyboardButton("🔁 Wiederholte", callback_data="menu_scheduled"),
-         InlineKeyboardButton("🔓 Open/Close", callback_data="menu_openclose")],
-        [InlineKeyboardButton("🏗 Befehle", callback_data="pcmd_menu"),
-         InlineKeyboardButton("⚠️ Warns", callback_data="menu_warns")],
-        [InlineKeyboardButton("🔤 Verbotene Worte", callback_data="menu_badwords"),
-         InlineKeyboardButton("🗑 Nachrichten", callback_data="menu_msgdelete")],
-        [InlineKeyboardButton("🛡 Anti-Spam", callback_data="menu_antispam"),
-         InlineKeyboardButton("👥 Mitglieder", callback_data="menu_members")],
-        [InlineKeyboardButton("🚪 Freigabemodus", callback_data="menu_freigabe"),
-         InlineKeyboardButton("📋 Protokoll", callback_data="menu_protokoll")],
-        [InlineKeyboardButton("🔒 Sperren", callback_data="menu_sperren"),
-         InlineKeyboardButton("🆘 @admin", callback_data="menu_admin_report")],
-        [InlineKeyboardButton("⚙️ Einstellungen", callback_data="menu_settings")],
-    ]
+    bot_data = load_data()
+    disabled = bot_data.get("disabled_modules", [])
+    keyboard = build_main_menu_keyboard(disabled)
 
     role = "👑 Owner" if is_owner(user_id) else "🛡️ Admin"
     await update.message.reply_text(
