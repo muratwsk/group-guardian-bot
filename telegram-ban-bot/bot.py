@@ -127,6 +127,12 @@ def normalize_data(data):
         "group_routes": {},
     })
     ar.setdefault("group_routes", {})
+    # Module system: all toggleable modules default to disabled
+    data.setdefault("disabled_modules", [
+        "menu_openclose", "pcmd_menu", "menu_warns", "menu_badwords",
+        "menu_msgdelete", "menu_antispam", "menu_members", "menu_freigabe",
+        "menu_protokoll", "menu_sperren", "menu_admin_report",
+    ])
     return data
 
 
@@ -695,6 +701,46 @@ async def reload_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_text("✅ Bot-Konfiguration neu geladen.")
 
+# --- Module definitions ---
+ALL_MODULES = [
+    # (callback_data, icon, label, row_partner_callback)
+    ("menu_banall", "🚫", "BannALL", None),          # always on
+    ("menu_messenger", "📨", "Messenger", None),      # always on
+    ("menu_scheduled", "🔁", "Wiederholte", None),    # always on
+    ("menu_openclose", "🔓", "Open/Close", None),
+    ("pcmd_menu", "🏗", "Befehle", None),
+    ("menu_warns", "⚠️", "Warns", None),
+    ("menu_badwords", "🔤", "Verbotene Worte", None),
+    ("menu_msgdelete", "🗑", "Nachrichten", None),
+    ("menu_antispam", "🛡", "Anti-Spam", None),
+    ("menu_members", "👥", "Mitglieder", None),
+    ("menu_freigabe", "🚪", "Freigabemodus", None),
+    ("menu_protokoll", "📋", "Protokoll", None),
+    ("menu_sperren", "🔒", "Sperren", None),
+    ("menu_admin_report", "🆘", "@admin", None),
+]
+
+# These modules cannot be disabled
+ALWAYS_ON_MODULES = {"menu_banall", "menu_messenger", "menu_scheduled", "menu_settings"}
+
+MODULE_LABELS = {m[0]: f"{m[1]} {m[2]}" for m in ALL_MODULES}
+
+def build_main_menu_keyboard(disabled_modules: list) -> list:
+    """Build main menu keyboard, only showing enabled modules."""
+    disabled = set(disabled_modules)
+    enabled = [m for m in ALL_MODULES if m[0] not in disabled or m[0] in ALWAYS_ON_MODULES]
+    keyboard = []
+    row = []
+    for mod in enabled:
+        row.append(InlineKeyboardButton(f"{mod[1]} {mod[2]}", callback_data=mod[0]))
+        if len(row) == 2:
+            keyboard.append(row)
+            row = []
+    if row:
+        keyboard.append(row)
+    keyboard.append([InlineKeyboardButton("⚙️ Einstellungen", callback_data="menu_settings")])
+    return keyboard
+
 # --- /start ---
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -702,23 +748,9 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_authorized(user_id):
         return
 
-    keyboard = [
-        [InlineKeyboardButton("🚫 BannALL", callback_data="menu_banall"),
-         InlineKeyboardButton("📨 Messenger", callback_data="menu_messenger")],
-        [InlineKeyboardButton("🔁 Wiederholte", callback_data="menu_scheduled"),
-         InlineKeyboardButton("🔓 Open/Close", callback_data="menu_openclose")],
-        [InlineKeyboardButton("🏗 Befehle", callback_data="pcmd_menu"),
-         InlineKeyboardButton("⚠️ Warns", callback_data="menu_warns")],
-        [InlineKeyboardButton("🔤 Verbotene Worte", callback_data="menu_badwords"),
-         InlineKeyboardButton("🗑 Nachrichten", callback_data="menu_msgdelete")],
-        [InlineKeyboardButton("🛡 Anti-Spam", callback_data="menu_antispam"),
-         InlineKeyboardButton("👥 Mitglieder", callback_data="menu_members")],
-        [InlineKeyboardButton("🚪 Freigabemodus", callback_data="menu_freigabe"),
-         InlineKeyboardButton("📋 Protokoll", callback_data="menu_protokoll")],
-        [InlineKeyboardButton("🔒 Sperren", callback_data="menu_sperren"),
-         InlineKeyboardButton("🆘 @admin", callback_data="menu_admin_report")],
-        [InlineKeyboardButton("⚙️ Einstellungen", callback_data="menu_settings")],
-    ]
+    bot_data = load_data()
+    disabled = bot_data.get("disabled_modules", [])
+    keyboard = build_main_menu_keyboard(disabled)
 
     role = "👑 Owner" if is_owner(user_id) else "🛡️ Admin"
     await update.message.reply_text(
@@ -1049,23 +1081,9 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # === BACK TO MAIN MENU ===
     if data == "back_main":
-        keyboard = [
-            [InlineKeyboardButton("🚫 BannALL", callback_data="menu_banall"),
-             InlineKeyboardButton("📨 Messenger", callback_data="menu_messenger")],
-            [InlineKeyboardButton("🔁 Wiederholte", callback_data="menu_scheduled"),
-             InlineKeyboardButton("🔓 Open/Close", callback_data="menu_openclose")],
-            [InlineKeyboardButton("🏗 Befehle", callback_data="pcmd_menu"),
-             InlineKeyboardButton("⚠️ Warns", callback_data="menu_warns")],
-            [InlineKeyboardButton("🔤 Verbotene Worte", callback_data="menu_badwords"),
-             InlineKeyboardButton("🗑 Nachrichten", callback_data="menu_msgdelete")],
-            [InlineKeyboardButton("🛡 Anti-Spam", callback_data="menu_antispam"),
-             InlineKeyboardButton("👥 Mitglieder", callback_data="menu_members")],
-            [InlineKeyboardButton("🚪 Freigabemodus", callback_data="menu_freigabe"),
-             InlineKeyboardButton("📋 Protokoll", callback_data="menu_protokoll")],
-            [InlineKeyboardButton("🔒 Sperren", callback_data="menu_sperren"),
-             InlineKeyboardButton("🆘 @admin", callback_data="menu_admin_report")],
-            [InlineKeyboardButton("⚙️ Einstellungen", callback_data="menu_settings")],
-        ]
+        bot_data_menu = load_data()
+        disabled = bot_data_menu.get("disabled_modules", [])
+        keyboard = build_main_menu_keyboard(disabled)
         role = "👑 Owner" if is_owner(user_id) else "🛡️ Admin"
         # Clear any pending state
         user_data_store.pop(user_id, None)
@@ -3208,7 +3226,11 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"📋 Log-Kanal: `{log_ch}`"
         )
         exempt_count = len(data.get("exempt_groups", []))
+        disabled_count = len(data.get("disabled_modules", []))
+        toggleable_count = len([m for m in ALL_MODULES if m[0] not in ALWAYS_ON_MODULES])
+        enabled_count = toggleable_count - disabled_count
         keyboard = [
+            [InlineKeyboardButton(f"🔌 Module verwalten ({enabled_count}/{toggleable_count})", callback_data="menu_modules")],
             [InlineKeyboardButton("👮 Admins verwalten", callback_data="settings_admins")],
             [InlineKeyboardButton("➕ Admin hinzufügen", callback_data="add_admin"),
              InlineKeyboardButton("➖ Admin entfernen", callback_data="remove_admin")],
@@ -3283,6 +3305,62 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         kb.append([InlineKeyboardButton("🔙 Zurück", callback_data="menu_settings")])
         await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(kb), parse_mode="HTML")
 
+    elif data == "menu_modules":
+        if not is_owner(user_id):
+            await query.answer("⛔ Nur für Owner.", show_alert=True)
+            return
+        bot_data = load_data()
+        disabled = set(bot_data.get("disabled_modules", []))
+        toggleable = [m for m in ALL_MODULES if m[0] not in ALWAYS_ON_MODULES]
+        text = (
+            "🔌 <b>Module verwalten</b>\n\n"
+            "Aktiviere oder deaktiviere Bot-Funktionen.\n"
+            "✅ = Aktiv  |  ❌ = Deaktiviert\n\n"
+            "<i>BannALL, Messenger und Wiederholte sind immer aktiv.</i>"
+        )
+        keyboard = []
+        for mod in toggleable:
+            is_disabled = mod[0] in disabled
+            icon = "❌" if is_disabled else "✅"
+            keyboard.append([InlineKeyboardButton(f"{icon} {mod[1]} {mod[2]}", callback_data=f"toggle_module_{mod[0]}")])
+        keyboard.append([InlineKeyboardButton("🔙 Zurück", callback_data="menu_settings")])
+        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
+
+    elif data.startswith("toggle_module_"):
+        if not is_owner(user_id):
+            await query.answer("⛔ Nur für Owner.", show_alert=True)
+            return
+        module_key = data.split("toggle_module_")[1]
+        if module_key in ALWAYS_ON_MODULES:
+            await query.answer("⚠️ Dieses Modul kann nicht deaktiviert werden.", show_alert=True)
+            return
+        bot_data = load_data()
+        disabled = bot_data.setdefault("disabled_modules", [])
+        if module_key in disabled:
+            disabled.remove(module_key)
+            label = MODULE_LABELS.get(module_key, module_key)
+            await query.answer(f"✅ {label} aktiviert")
+        else:
+            disabled.append(module_key)
+            label = MODULE_LABELS.get(module_key, module_key)
+            await query.answer(f"❌ {label} deaktiviert")
+        save_data(bot_data)
+        # Re-render
+        disabled_set = set(disabled)
+        toggleable = [m for m in ALL_MODULES if m[0] not in ALWAYS_ON_MODULES]
+        text = (
+            "🔌 <b>Module verwalten</b>\n\n"
+            "Aktiviere oder deaktiviere Bot-Funktionen.\n"
+            "✅ = Aktiv  |  ❌ = Deaktiviert\n\n"
+            "<i>BannALL, Messenger und Wiederholte sind immer aktiv.</i>"
+        )
+        kb = []
+        for mod in toggleable:
+            is_disabled = mod[0] in disabled_set
+            icon = "❌" if is_disabled else "✅"
+            kb.append([InlineKeyboardButton(f"{icon} {mod[1]} {mod[2]}", callback_data=f"toggle_module_{mod[0]}")])
+        kb.append([InlineKeyboardButton("🔙 Zurück", callback_data="menu_settings")])
+        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(kb), parse_mode="HTML")
 
         if not is_owner(user_id):
             await query.answer("⛔ Nur für Owner.", show_alert=True)
