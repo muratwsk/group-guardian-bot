@@ -746,6 +746,7 @@ ALL_MODULES = [
     ("menu_protokoll", "📋", "Protokoll", None),
     ("menu_sperren", "🔒", "Sperren", None),
     ("menu_admin_report", "🆘", "@admin", None),
+    ("menu_send", "✉️", "Anonym /send", None),
 ]
 
 # These modules cannot be disabled
