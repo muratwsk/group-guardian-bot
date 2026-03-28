@@ -5900,6 +5900,8 @@ async def unfree_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def multidel_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Delete all messages from the replied-to message up to the /multidel command message."""
     await auto_delete_command(update, context)
+    if not is_module_enabled("menu_msgdelete"):
+        return
     user_id = update.effective_user.id
     if not await is_group_authorized(context, user_id, update.effective_chat):
         return
