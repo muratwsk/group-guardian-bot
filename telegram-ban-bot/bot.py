@@ -6490,8 +6490,9 @@ async def track_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # --- Command delete check ---
     await auto_delete_command(update, context)
 
-    # --- @admin mention check ---
-    await _check_admin_mention(update, context)
+    # --- @admin mention check (only if module enabled) ---
+    if is_module_enabled("menu_admin_report"):
+        await _check_admin_mention(update, context)
 
     # --- Check if group is exempt from all filters ---
     if update.effective_chat and update.effective_chat.id:
