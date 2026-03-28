@@ -6673,7 +6673,9 @@ async def track_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     await log_action(context, "", group_id=update.effective_chat.id, group_name=update.effective_chat.title, category=LOG_CAT_MOD, action="FORWARD-SPAM", details={"user": update.message.from_user.full_name, "user_id": str(update.message.from_user.id), "gruppe": update.effective_chat.title, "details": f"Typ: {origin_type}"})
                     return
 
-    # --- Forbidden words check ---
+    # --- Forbidden words check (only if module enabled) ---
+    if not is_module_enabled("menu_badwords"):
+        return
     msg_text = update.message.text or update.message.caption or ""
     if msg_text and update.message.from_user:
         sender = update.message.from_user
