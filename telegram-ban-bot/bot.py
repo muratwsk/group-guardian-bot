@@ -131,7 +131,7 @@ def normalize_data(data):
     data.setdefault("disabled_modules", [
         "menu_openclose", "pcmd_menu", "menu_warns", "menu_badwords",
         "menu_msgdelete", "menu_antispam", "menu_members", "menu_freigabe",
-        "menu_protokoll", "menu_sperren", "menu_admin_report",
+        "menu_protokoll", "menu_sperren", "menu_admin_report", "menu_send",
     ])
     return data
 
@@ -746,6 +746,7 @@ ALL_MODULES = [
     ("menu_protokoll", "📋", "Protokoll", None),
     ("menu_sperren", "🔒", "Sperren", None),
     ("menu_admin_report", "🆘", "@admin", None),
+    ("menu_send", "✉️", "Anonym /send", None),
 ]
 
 # These modules cannot be disabled
@@ -7499,6 +7500,8 @@ async def del_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def send_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Send an anonymous message through the bot in the current group."""
+    if not is_module_enabled("menu_send"):
+        return
     user_id = update.effective_user.id
     if not await is_group_authorized(context, user_id, update.effective_chat):
         return
