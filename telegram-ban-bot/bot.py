@@ -6502,8 +6502,10 @@ async def track_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             # This group is exempt from all filters (links, forwards, forbidden words)
             return
 
-    # --- Anti-Spam: Link check ---
-    if update.message.from_user:
+    # --- Anti-Spam: Link check (only if module enabled) ---
+    if not is_module_enabled("menu_antispam"):
+        pass  # skip link check
+    elif update.message.from_user:
         sender_as = update.message.from_user
         # Check all entities for links (filter out false positives like "." or short non-URLs)
         all_entities = list(update.message.entities or []) + list(update.message.caption_entities or [])
