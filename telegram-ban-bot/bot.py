@@ -777,11 +777,18 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_authorized(user_id):
         return
 
-    bot_data = load_data()
-    disabled = bot_data.get("disabled_modules", [])
-    keyboard = build_main_menu_keyboard(disabled)
+    if is_owner(user_id):
+        bot_data = load_data()
+        disabled = bot_data.get("disabled_modules", [])
+        keyboard = build_main_menu_keyboard(disabled)
+        role = "👑 Owner"
+    else:
+        # Admins sehen nur den Bann-Bot Button
+        keyboard = [
+            [InlineKeyboardButton("🚫 Bann Bot", callback_data="menu_banall")],
+        ]
+        role = "🛡️ Admin"
 
-    role = "👑 Owner" if is_owner(user_id) else "🛡️ Admin"
     await update.message.reply_text(
         f"🤖 *Bot Menü* ({role})\n_Wähle eine Einstellung:_",
         reply_markup=InlineKeyboardMarkup(keyboard),
