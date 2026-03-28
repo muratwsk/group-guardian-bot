@@ -6643,8 +6643,8 @@ async def track_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         await log_action(context, "", group_id=chat_id_as, group_name=update.effective_chat.title, category=LOG_CAT_MOD, action="LINK", details={"user": user_name_as, "user_id": str(user_id_as), "gruppe": update.effective_chat.title, "details": f"Strafe: {lc_punishment}"})
                         return
 
-    # --- Anti-Spam: Forward check ---
-    if update.message.forward_origin and update.message.from_user:
+    # --- Anti-Spam: Forward check (only if module enabled) ---
+    if is_module_enabled("menu_antispam") and update.message.forward_origin and update.message.from_user:
         if not is_authorized(update.message.from_user.id) and not is_freed(update.message.from_user.id):
             if not await is_chat_admin(context, update.effective_chat.id, update.message.from_user.id):
                 bot_data_fw = load_data()
