@@ -144,6 +144,34 @@ def save_data(data):
     _db_save_data(normalize_data(data))
 
 
+# --- Module enabled check ---
+# Maps slash commands to their module key
+COMMAND_MODULE_MAP = {
+    "ban": "menu_sperren",
+    "unban": "menu_sperren",
+    "kick": "menu_sperren",
+    "mute": "menu_sperren",
+    "unmute": "menu_sperren",
+    "warn": "menu_warns",
+    "unwarn": "menu_warns",
+    "personal": "pcmd_menu",
+    "unpersonal": "pcmd_menu",
+    "open": "menu_openclose",
+    "close": "menu_openclose",
+    "free": "menu_freigabe",
+    "unfree": "menu_freigabe",
+    "del": "menu_msgdelete",
+    "multidel": "menu_msgdelete",
+    "report": "menu_admin_report",
+}
+
+def is_module_enabled(module_key: str) -> bool:
+    """Check if a module is enabled (not in disabled_modules list)."""
+    data = load_data()
+    disabled = data.get("disabled_modules", [])
+    return module_key not in disabled
+
+
 def is_freed(user_id: int) -> bool:
     """Check if a user has the 'Befreiter' role (exempt from all restrictions)."""
     bot_data = load_data()
@@ -5349,6 +5377,8 @@ async def info_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def mute_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Mute a user in the group. Usage: /mute [reason] (reply to a message)."""
     await auto_delete_command(update, context)
+    if not is_module_enabled("menu_sperren"):
+        return
     user_id = update.effective_user.id
     if not await is_group_authorized(context, user_id, update.effective_chat):
         return
@@ -5425,6 +5455,8 @@ async def mute_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def unmute_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Unmute a user in the group. Usage: /unmute (reply to a message)."""
     await auto_delete_command(update, context)
+    if not is_module_enabled("menu_sperren"):
+        return
     user_id = update.effective_user.id
     if not await is_group_authorized(context, user_id, update.effective_chat):
         return
@@ -5477,6 +5509,8 @@ async def unmute_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def kick_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Kick a user from the group (they can rejoin). Usage: /kick [reason] (reply to a message)."""
     await auto_delete_command(update, context)
+    if not is_module_enabled("menu_sperren"):
+        return
     user_id = update.effective_user.id
     if not await is_group_authorized(context, user_id, update.effective_chat):
         return
@@ -5526,6 +5560,8 @@ async def kick_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def ban_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Ban a user from the current group. Usage: /ban [reason] (reply to a message)."""
     await auto_delete_command(update, context)
+    if not is_module_enabled("menu_sperren"):
+        return
     user_id = update.effective_user.id
     if not await is_group_authorized(context, user_id, update.effective_chat):
         return
@@ -5591,6 +5627,8 @@ async def ban_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def unban_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Unban a user from the current group. Usage: /unban (reply to a message or /unban @username or /unban user_id)."""
     await auto_delete_command(update, context)
+    if not is_module_enabled("menu_sperren"):
+        return
     user_id = update.effective_user.id
     if not await is_group_authorized(context, user_id, update.effective_chat):
         return
@@ -5636,6 +5674,8 @@ async def unban_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def warn_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Warn a user. Usage: /warn [reason] (reply to a message)."""
     await auto_delete_command(update, context)
+    if not is_module_enabled("menu_warns"):
+        return
     user_id = update.effective_user.id
     if not await is_group_authorized(context, user_id, update.effective_chat):
         return
@@ -5749,6 +5789,8 @@ async def warn_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def unwarn_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Remove a warn from a user. Usage: /unwarn (reply to a message)."""
     await auto_delete_command(update, context)
+    if not is_module_enabled("menu_warns"):
+        return
     user_id = update.effective_user.id
     if not await is_group_authorized(context, user_id, update.effective_chat):
         return
@@ -5786,6 +5828,8 @@ async def unwarn_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def free_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Grant a user the 'Befreiter' role — exempt from link filter, forward filter, forbidden words."""
     await auto_delete_command(update, context)
+    if not is_module_enabled("menu_freigabe"):
+        return
     user_id = update.effective_user.id
     if not await is_group_authorized(context, user_id, update.effective_chat):
         return
@@ -5823,6 +5867,8 @@ async def free_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def unfree_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Revoke the 'Befreiter' role from a user."""
     await auto_delete_command(update, context)
+    if not is_module_enabled("menu_freigabe"):
+        return
     user_id = update.effective_user.id
     if not await is_group_authorized(context, user_id, update.effective_chat):
         return
@@ -5854,6 +5900,8 @@ async def unfree_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def multidel_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Delete all messages from the replied-to message up to the /multidel command message."""
     await auto_delete_command(update, context)
+    if not is_module_enabled("menu_msgdelete"):
+        return
     user_id = update.effective_user.id
     if not await is_group_authorized(context, user_id, update.effective_chat):
         return
@@ -6063,6 +6111,8 @@ async def unbanall(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def personal_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Save a replied-to message as a personal command. Usage: /personal <name> (reply to a message)."""
     await auto_delete_command(update, context)
+    if not is_module_enabled("pcmd_menu"):
+        return
     user_id = update.effective_user.id
     if not await is_group_authorized(context, user_id, update.effective_chat):
         return
@@ -6157,6 +6207,8 @@ async def personal_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def unpersonal_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Delete a personal command. Usage: /unpersonal <name>"""
     await auto_delete_command(update, context)
+    if not is_module_enabled("pcmd_menu"):
+        return
     user_id = update.effective_user.id
     if not await is_group_authorized(context, user_id, update.effective_chat):
         return
@@ -6255,6 +6307,8 @@ async def handle_custom_command(update: Update, context: ContextTypes.DEFAULT_TY
 async def handle_admin_report(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """/report command – members can alert staff. Ignored when used by admins."""
     await auto_delete_command(update, context)
+    if not is_module_enabled("menu_admin_report"):
+        return
     if not update.message or not update.effective_chat:
         return
     chat = update.effective_chat
@@ -6436,8 +6490,9 @@ async def track_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # --- Command delete check ---
     await auto_delete_command(update, context)
 
-    # --- @admin mention check ---
-    await _check_admin_mention(update, context)
+    # --- @admin mention check (only if module enabled) ---
+    if is_module_enabled("menu_admin_report"):
+        await _check_admin_mention(update, context)
 
     # --- Check if group is exempt from all filters ---
     if update.effective_chat and update.effective_chat.id:
@@ -6447,8 +6502,10 @@ async def track_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             # This group is exempt from all filters (links, forwards, forbidden words)
             return
 
-    # --- Anti-Spam: Link check ---
-    if update.message.from_user:
+    # --- Anti-Spam: Link check (only if module enabled) ---
+    if not is_module_enabled("menu_antispam"):
+        pass  # skip link check
+    elif update.message.from_user:
         sender_as = update.message.from_user
         # Check all entities for links (filter out false positives like "." or short non-URLs)
         all_entities = list(update.message.entities or []) + list(update.message.caption_entities or [])
@@ -6586,8 +6643,8 @@ async def track_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         await log_action(context, "", group_id=chat_id_as, group_name=update.effective_chat.title, category=LOG_CAT_MOD, action="LINK", details={"user": user_name_as, "user_id": str(user_id_as), "gruppe": update.effective_chat.title, "details": f"Strafe: {lc_punishment}"})
                         return
 
-    # --- Anti-Spam: Forward check ---
-    if update.message.forward_origin and update.message.from_user:
+    # --- Anti-Spam: Forward check (only if module enabled) ---
+    if is_module_enabled("menu_antispam") and update.message.forward_origin and update.message.from_user:
         if not is_authorized(update.message.from_user.id) and not is_freed(update.message.from_user.id):
             if not await is_chat_admin(context, update.effective_chat.id, update.message.from_user.id):
                 bot_data_fw = load_data()
@@ -6616,7 +6673,9 @@ async def track_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     await log_action(context, "", group_id=update.effective_chat.id, group_name=update.effective_chat.title, category=LOG_CAT_MOD, action="FORWARD-SPAM", details={"user": update.message.from_user.full_name, "user_id": str(update.message.from_user.id), "gruppe": update.effective_chat.title, "details": f"Typ: {origin_type}"})
                     return
 
-    # --- Forbidden words check ---
+    # --- Forbidden words check (only if module enabled) ---
+    if not is_module_enabled("menu_badwords"):
+        return
     msg_text = update.message.text or update.message.caption or ""
     if msg_text and update.message.from_user:
         sender = update.message.from_user
@@ -7255,6 +7314,8 @@ async def show_oc_notify_for_source(query, context, source_gid):
 
 async def handle_open_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle /open command in a group."""
+    if not is_module_enabled("menu_openclose"):
+        return
     user_id = update.effective_user.id
     if not await is_group_authorized(context, user_id, update.effective_chat):
         return
@@ -7342,6 +7403,8 @@ async def handle_open_command(update: Update, context: ContextTypes.DEFAULT_TYPE
 
 async def handle_close_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle /close command in a group - deletes the open notifications."""
+    if not is_module_enabled("menu_openclose"):
+        return
     user_id = update.effective_user.id
     if not await is_group_authorized(context, user_id, update.effective_chat):
         return
@@ -7408,6 +7471,8 @@ async def handle_close_command(update: Update, context: ContextTypes.DEFAULT_TYP
 
 async def del_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Delete the message that was replied to."""
+    if not is_module_enabled("menu_msgdelete"):
+        return
     user_id = update.effective_user.id
     if not await is_group_authorized(context, user_id, update.effective_chat):
         return
@@ -8252,15 +8317,8 @@ async def post_init(application):
     )
 
     admin_commands = [
-        BotCommand("ban", "Benutzer bannen"),
-        BotCommand("unban", "Benutzer entbannen"),
-        BotCommand("mute", "Benutzer muten"),
-        BotCommand("warn", "Benutzer verwarnen"),
-        BotCommand("kick", "Benutzer kicken"),
-        BotCommand("del", "Nachricht löschen"),
-        BotCommand("multidel", "Mehrere Nachrichten löschen"),
-        BotCommand("send", "Anonyme Nachricht senden"),
         BotCommand("banall", "In allen Gruppen bannen"),
+        BotCommand("unbanall", "In allen Gruppen entbannen"),
     ]
 
     # 1) Clear default/global commands so normal users don't inherit any menu
