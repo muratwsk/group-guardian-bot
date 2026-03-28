@@ -144,6 +144,34 @@ def save_data(data):
     _db_save_data(normalize_data(data))
 
 
+# --- Module enabled check ---
+# Maps slash commands to their module key
+COMMAND_MODULE_MAP = {
+    "ban": "menu_sperren",
+    "unban": "menu_sperren",
+    "kick": "menu_sperren",
+    "mute": "menu_sperren",
+    "unmute": "menu_sperren",
+    "warn": "menu_warns",
+    "unwarn": "menu_warns",
+    "personal": "pcmd_menu",
+    "unpersonal": "pcmd_menu",
+    "open": "menu_openclose",
+    "close": "menu_openclose",
+    "free": "menu_freigabe",
+    "unfree": "menu_freigabe",
+    "del": "menu_msgdelete",
+    "multidel": "menu_msgdelete",
+    "report": "menu_admin_report",
+}
+
+def is_module_enabled(module_key: str) -> bool:
+    """Check if a module is enabled (not in disabled_modules list)."""
+    data = load_data()
+    disabled = data.get("disabled_modules", [])
+    return module_key not in disabled
+
+
 def is_freed(user_id: int) -> bool:
     """Check if a user has the 'Befreiter' role (exempt from all restrictions)."""
     bot_data = load_data()
