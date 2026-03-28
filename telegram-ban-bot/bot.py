@@ -5627,6 +5627,8 @@ async def ban_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def unban_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Unban a user from the current group. Usage: /unban (reply to a message or /unban @username or /unban user_id)."""
     await auto_delete_command(update, context)
+    if not is_module_enabled("menu_sperren"):
+        return
     user_id = update.effective_user.id
     if not await is_group_authorized(context, user_id, update.effective_chat):
         return
