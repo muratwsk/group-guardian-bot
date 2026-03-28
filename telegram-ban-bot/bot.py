@@ -127,6 +127,12 @@ def normalize_data(data):
         "group_routes": {},
     })
     ar.setdefault("group_routes", {})
+    # Module system: all toggleable modules default to disabled
+    data.setdefault("disabled_modules", [
+        "menu_openclose", "pcmd_menu", "menu_warns", "menu_badwords",
+        "menu_msgdelete", "menu_antispam", "menu_members", "menu_freigabe",
+        "menu_protokoll", "menu_sperren", "menu_admin_report",
+    ])
     return data
 
 
