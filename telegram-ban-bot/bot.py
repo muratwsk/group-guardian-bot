@@ -8317,15 +8317,8 @@ async def post_init(application):
     )
 
     admin_commands = [
-        BotCommand("ban", "Benutzer bannen"),
-        BotCommand("unban", "Benutzer entbannen"),
-        BotCommand("mute", "Benutzer muten"),
-        BotCommand("warn", "Benutzer verwarnen"),
-        BotCommand("kick", "Benutzer kicken"),
-        BotCommand("del", "Nachricht löschen"),
-        BotCommand("multidel", "Mehrere Nachrichten löschen"),
-        BotCommand("send", "Anonyme Nachricht senden"),
         BotCommand("banall", "In allen Gruppen bannen"),
+        BotCommand("unbanall", "In allen Gruppen entbannen"),
     ]
 
     # 1) Clear default/global commands so normal users don't inherit any menu
