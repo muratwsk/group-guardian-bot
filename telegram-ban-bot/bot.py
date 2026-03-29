@@ -8109,10 +8109,11 @@ async def show_interval_picker(query, context, user_id, back_callback="menu_sche
 
 async def execute_scheduled_message(context: ContextTypes.DEFAULT_TYPE):
     """Execute a scheduled message job."""
+    sched_id = None
     try:
         job = context.job
         sched_id = job.data
-        logger.info(f"Executing scheduled message {sched_id}")
+        logger.info(f">>> EXECUTING scheduled message {sched_id} at {now_de().strftime('%d.%m.%Y %H:%M:%S')} Berlin time")
         
         bot_data = load_data()
         sched = None
@@ -8292,14 +8293,18 @@ def schedule_job(context, sched):
         delay = max(1, interval)
         logger.info(f"No start time, next_run_at or last_sent for {sched_id}, starting after one interval")
     
+    first_delay = datetime.timedelta(seconds=max(1, delay))
+    interval_delta = datetime.timedelta(seconds=interval)
+    
     jq.run_repeating(
         execute_scheduled_message,
-        interval=interval,
-        first=max(1, int(delay)),
+        interval=interval_delta,
+        first=first_delay,
         data=sched_id,
         name=f"sched_{sched_id}",
     )
-    logger.info(f"Scheduled job {sched_id} set: interval={interval}s, first in {delay:.0f}s")
+    next_fire = now_de() + first_delay
+    logger.info(f"Scheduled job {sched_id} set: interval={interval}s, first in {delay:.0f}s, fires at {next_fire.strftime('%d.%m.%Y %H:%M:%S')} Berlin")
 
 
 def remove_scheduled_job(context, sched_id):
