@@ -17,6 +17,62 @@ BERLIN_TZ = ZoneInfo("Europe/Berlin")
 def now_de():
     """Return current datetime in German timezone."""
     return datetime.datetime.now(BERLIN_TZ)
+
+
+def fmt_dt_de(dt: datetime.datetime | None) -> str:
+    """Format datetime consistently in Europe/Berlin."""
+    if not dt:
+        return "—"
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=BERLIN_TZ)
+    else:
+        dt = dt.astimezone(BERLIN_TZ)
+    return dt.strftime("%d.%m.%Y %H:%M:%S %Z")
+
+
+def parse_dt_de(value: str | None, fmt: str = "%d.%m.%Y %H:%M") -> datetime.datetime | None:
+    """Parse stored scheduler datetimes as Europe/Berlin."""
+    if not value:
+        return None
+    try:
+        return datetime.datetime.strptime(value, fmt).replace(tzinfo=BERLIN_TZ)
+    except Exception:
+        return None
+
+
+def advance_to_future(candidate: datetime.datetime, now: datetime.datetime, interval_td: datetime.timedelta) -> tuple[datetime.datetime, int]:
+    """Move a scheduled run into the future and return skipped intervals."""
+    skipped = 0
+    while candidate <= now:
+        candidate += interval_td
+        skipped += 1
+    return candidate, skipped
+
+
+def log_schedule_snapshot(
+    event: str,
+    sched: dict,
+    *,
+    source: str | None = None,
+    computed_next_run: datetime.datetime | None = None,
+    delay_seconds: float | None = None,
+):
+    """Emit a consistent scheduler state log for debugging."""
+    logger.info(
+        "Scheduler %s | id=%s | source=%s | active=%s | time=%s | interval_min=%s | next_run_at=%s | computed_next=%s | delay_sec=%s | last_sent=%s | groups=%s | tz=Europe/Berlin",
+        event,
+        sched.get("id"),
+        source or "-",
+        sched.get("active"),
+        sched.get("time") or "—",
+        sched.get("interval_minutes", 60),
+        sched.get("next_run_at") or "—",
+        fmt_dt_de(computed_next_run),
+        f"{delay_seconds:.0f}" if delay_seconds is not None else "—",
+        sched.get("last_sent") or "—",
+        len(sched.get("groups", [])),
+    )
+
 import requests as _requests
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ChatPermissions
 from telegram.ext import (
@@ -1320,6 +1376,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         }
         bot_data.setdefault("scheduled", []).append(new_sched)
         save_data(bot_data)
+        log_schedule_snapshot("created_inactive", new_sched, source="group_selection")
         user_data_store.pop(user_id, None)
         context.user_data["state"] = None
         await show_scheduled_detail(query, context, user_id, sched_id)
@@ -1378,6 +1435,13 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         }
         bot_data.setdefault("scheduled", []).append(new_sched)
         save_data(bot_data)
+        log_schedule_snapshot(
+            "created_active",
+            new_sched,
+            source="create_flow",
+            computed_next_run=parse_dt_de(new_sched.get("next_run_at")),
+            delay_seconds=minutes * 60,
+        )
         
         schedule_job(context, new_sched)
         
@@ -1450,6 +1514,13 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 if s["active"]:
                     s["next_run_at"] = (now_de() + datetime.timedelta(minutes=s.get("interval_minutes", 60))).strftime("%d.%m.%Y %H:%M")
                 save_data(bot_data)
+                log_schedule_snapshot(
+                    "activated" if s["active"] else "deactivated",
+                    s,
+                    source="toggle_active",
+                    computed_next_run=parse_dt_de(s.get("next_run_at")),
+                    delay_seconds=s.get("interval_minutes", 60) * 60 if s["active"] else None,
+                )
                 if s["active"]:
                     schedule_job(context, s)
                 else:
@@ -1649,6 +1720,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     next_run += datetime.timedelta(days=1)
                 s["next_run_at"] = next_run.strftime("%d.%m.%Y %H:%M")
                 save_data(bot_data)
+                log_schedule_snapshot("start_time_updated", s, source="edit_start_time", computed_next_run=next_run)
                 if s.get("active"):
                     schedule_job(context, s)
                 break
@@ -1740,6 +1812,13 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 s["interval_label"] = f"Alle {get_interval_label(minutes)}"
                 s["next_run_at"] = (now_de() + datetime.timedelta(minutes=minutes)).strftime("%d.%m.%Y %H:%M")
                 save_data(bot_data)
+                log_schedule_snapshot(
+                    "interval_updated",
+                    s,
+                    source="edit_interval",
+                    computed_next_run=parse_dt_de(s.get("next_run_at")),
+                    delay_seconds=minutes * 60,
+                )
                 if s.get("active"):
                     schedule_job(context, s)
                 break
@@ -8126,9 +8205,17 @@ async def execute_scheduled_message(context: ContextTypes.DEFAULT_TYPE):
                 sched = s
                 break
         
-        if not sched or not sched.get("active"):
-            logger.info(f"Scheduled message {sched_id} not found or inactive")
+        if not sched:
+            logger.info("Scheduler execute_skip_missing | id=%s | tz=Europe/Berlin", sched_id)
             return
+
+        log_schedule_snapshot("execute_start", sched, source="job_callback", computed_next_run=parse_dt_de(sched.get("next_run_at")))
+
+        if not sched.get("active"):
+            logger.info("Scheduler execute_skip_inactive | id=%s | tz=Europe/Berlin", sched_id)
+            return
+
+        interval_minutes = sched.get("interval_minutes", 60)
         
         # Check start_date / end_date
         now = now_de()
@@ -8138,7 +8225,12 @@ async def execute_scheduled_message(context: ContextTypes.DEFAULT_TYPE):
             try:
                 sd = datetime.datetime.strptime(start_date, "%d.%m.%Y").replace(tzinfo=BERLIN_TZ)
                 if now < sd:
-                    logger.info(f"Scheduled {sched_id} not yet started (start_date={start_date})")
+                    logger.info(
+                        "Scheduler execute_skip_before_start | id=%s | now=%s | start_date=%s | tz=Europe/Berlin",
+                        sched_id,
+                        fmt_dt_de(now),
+                        start_date,
+                    )
                     return
             except Exception:
                 pass
@@ -8146,7 +8238,12 @@ async def execute_scheduled_message(context: ContextTypes.DEFAULT_TYPE):
             try:
                 ed = datetime.datetime.strptime(end_date, "%d.%m.%Y").replace(tzinfo=BERLIN_TZ).replace(hour=23, minute=59)
                 if now > ed:
-                    logger.info(f"Scheduled {sched_id} expired (end_date={end_date}), deactivating")
+                    logger.info(
+                        "Scheduler execute_expired | id=%s | now=%s | end_date=%s | tz=Europe/Berlin",
+                        sched_id,
+                        fmt_dt_de(now),
+                        end_date,
+                    )
                     sched["active"] = False
                     save_data(bot_data)
                     remove_scheduled_job(context, sched_id)
@@ -8159,21 +8256,33 @@ async def execute_scheduled_message(context: ContextTypes.DEFAULT_TYPE):
         if weekdays and len(weekdays) > 0:
             current_weekday = now.weekday()  # 0=Monday
             if current_weekday not in weekdays:
-                logger.info(f"Scheduled {sched_id} skipped: weekday {current_weekday} not in {weekdays}")
+                logger.info(
+                    "Scheduler execute_skip_weekday | id=%s | now=%s | weekday=%s | allowed=%s | tz=Europe/Berlin",
+                    sched_id,
+                    fmt_dt_de(now),
+                    current_weekday,
+                    weekdays,
+                )
                 return
         
         # Check monthday filter
         monthdays = sched.get("monthdays")
         if monthdays and len(monthdays) > 0:
             if now.day not in monthdays:
-                logger.info(f"Scheduled {sched_id} skipped: day {now.day} not in {monthdays}")
+                logger.info(
+                    "Scheduler execute_skip_monthday | id=%s | now=%s | day=%s | allowed=%s | tz=Europe/Berlin",
+                    sched_id,
+                    fmt_dt_de(now),
+                    now.day,
+                    monthdays,
+                )
                 return
         
         text_html = sched.get("text_html", sched.get("text", ""))
         media_fid = sched.get("media_file_id")
         
         if not text_html and not media_fid:
-            logger.warning(f"Scheduled message {sched_id} has no text and no media, skipping")
+            logger.warning("Scheduler execute_skip_empty | id=%s | tz=Europe/Berlin", sched_id)
             return
     
         
@@ -8216,11 +8325,20 @@ async def execute_scheduled_message(context: ContextTypes.DEFAULT_TYPE):
                 logger.error(f"Scheduled send failed in {gid}: {e}")
         
         # Update last sent info
-        sched["last_sent"] = now_de().strftime("%d.%m.%Y %H:%M")
-        sched["next_run_at"] = (now_de() + datetime.timedelta(minutes=sched.get("interval_minutes", 60))).strftime("%d.%m.%Y %H:%M")
+        finished_at = now_de()
+        next_run_dt = finished_at + datetime.timedelta(minutes=interval_minutes)
+        sched["last_sent"] = finished_at.strftime("%d.%m.%Y %H:%M")
+        sched["next_run_at"] = next_run_dt.strftime("%d.%m.%Y %H:%M")
         sched["last_sent_messages"] = sent_msgs
         save_data(bot_data)
         
+        log_schedule_snapshot(
+            "execute_done",
+            sched,
+            source="job_callback",
+            computed_next_run=next_run_dt,
+            delay_seconds=interval_minutes * 60,
+        )
         logger.info(f"Scheduled message {sched_id} sent to {len(sent_msgs)} groups")
     except Exception as e:
         logger.error(f"execute_scheduled_message error: {e}", exc_info=True)
@@ -8249,6 +8367,7 @@ def schedule_job(context, sched):
     interval_minutes = sched.get("interval_minutes", 60)
     interval = interval_minutes * 60  # convert to seconds
     interval_td = datetime.timedelta(minutes=interval_minutes)
+    log_schedule_snapshot("register_request", sched, source="schedule_job")
     
     # Remove existing job if any
     remove_scheduled_job(context, sched_id)
@@ -8259,15 +8378,18 @@ def schedule_job(context, sched):
     last_sent_str = sched.get("last_sent")
     next_run_at_str = sched.get("next_run_at")
     delay = None
+    computed_next_run = None
+    calculation_source = "-"
+    skipped_intervals = 0
 
     # Priority 1: Explicit next-run anchor (used after create/edit/activate like Group Help)
     if next_run_at_str:
         try:
             next_run = datetime.datetime.strptime(next_run_at_str, "%d.%m.%Y %H:%M").replace(tzinfo=BERLIN_TZ)
-            while next_run <= now:
-                next_run += interval_td
+            next_run, skipped_intervals = advance_to_future(next_run, now, interval_td)
             delay = (next_run - now).total_seconds()
-            logger.info(f"Scheduled {sched_id}: next_run_at={next_run_at_str}, next run in {delay:.0f}s")
+            computed_next_run = next_run
+            calculation_source = "next_run_at"
         except Exception as e:
             logger.error(f"Error parsing next_run_at for {sched_id}: {e}")
 
@@ -8276,10 +8398,10 @@ def schedule_job(context, sched):
         try:
             last_sent_dt = datetime.datetime.strptime(last_sent_str, "%d.%m.%Y %H:%M").replace(tzinfo=BERLIN_TZ)
             next_run = last_sent_dt + interval_td
-            while next_run <= now:
-                next_run += interval_td
+            next_run, skipped_intervals = advance_to_future(next_run, now, interval_td)
             delay = (next_run - now).total_seconds()
-            logger.info(f"Scheduled {sched_id}: last_sent={last_sent_str}, next run in {delay:.0f}s")
+            computed_next_run = next_run
+            calculation_source = "last_sent"
         except Exception as e:
             logger.error(f"Error parsing last_sent for {sched_id}: {e}")
 
@@ -8290,12 +8412,32 @@ def schedule_job(context, sched):
         except Exception:
             h, m = 0, 0
         first_run = now.replace(hour=h, minute=m, second=0, microsecond=0)
-        while first_run <= now:
-            first_run += interval_td
+        first_run, skipped_intervals = advance_to_future(first_run, now, interval_td)
         delay = (first_run - now).total_seconds()
+        computed_next_run = first_run
+        calculation_source = "configured_time"
     elif delay is None:
         delay = max(1, interval)
+        computed_next_run = now + datetime.timedelta(seconds=delay)
+        calculation_source = "default_interval"
         logger.info(f"No start time, next_run_at or last_sent for {sched_id}, starting after one interval")
+
+    log_schedule_snapshot(
+        "job_calculated",
+        sched,
+        source=calculation_source,
+        computed_next_run=computed_next_run,
+        delay_seconds=delay,
+    )
+    if skipped_intervals:
+        logger.info(
+            "Scheduler catch_up | id=%s | source=%s | skipped_intervals=%s | now=%s | computed_next=%s | tz=Europe/Berlin",
+            sched_id,
+            calculation_source,
+            skipped_intervals,
+            fmt_dt_de(now),
+            fmt_dt_de(computed_next_run),
+        )
     
     first_delay = datetime.timedelta(seconds=max(1, delay))
     interval_delta = datetime.timedelta(seconds=interval)
@@ -8307,7 +8449,14 @@ def schedule_job(context, sched):
         data=sched_id,
         name=f"sched_{sched_id}",
     )
-    next_fire = now_de() + first_delay
+    next_fire = computed_next_run or (now + first_delay)
+    log_schedule_snapshot(
+        "job_registered",
+        sched,
+        source=calculation_source,
+        computed_next_run=next_fire,
+        delay_seconds=delay,
+    )
     logger.info(f"Scheduled job {sched_id} set: interval={interval}s, first in {delay:.0f}s, fires at {next_fire.strftime('%d.%m.%Y %H:%M:%S')} Berlin")
 
 
@@ -8319,6 +8468,8 @@ def remove_scheduled_job(context, sched_id):
     jobs = jq.get_jobs_by_name(f"sched_{sched_id}")
     for job in jobs:
         job.schedule_removal()
+    if jobs:
+        logger.info("Scheduler remove_job | id=%s | removed_jobs=%s | tz=Europe/Berlin", sched_id, len(jobs))
 
 
 async def post_init(application):
@@ -8379,6 +8530,7 @@ async def post_init(application):
     count = 0
     for sched in bot_data.get("scheduled", []):
         if sched.get("active"):
+            log_schedule_snapshot("restore_request", sched, source="post_init", computed_next_run=parse_dt_de(sched.get("next_run_at")))
             schedule_job(application, sched)
             count += 1
     logger.info(f"Restored {count} scheduled jobs")
