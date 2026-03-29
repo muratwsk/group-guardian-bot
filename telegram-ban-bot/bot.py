@@ -8482,6 +8482,26 @@ async def post_init(application):
     except Exception as e:
         logger.error(f"Failed to cache bot username: {e}")
 
+    # Auto-resolve group names via Telegram API
+    try:
+        data = load_data()
+        updated = False
+        for g in data.get("groups", []):
+            if g.get("title", "").startswith("Gruppe -100"):
+                try:
+                    chat = await application.bot.get_chat(g["id"])
+                    old_title = g["title"]
+                    g["title"] = chat.title or f"Chat {g['id']}"
+                    updated = True
+                    logger.info(f"Resolved group name: {old_title} -> {g['title']}")
+                except Exception as e:
+                    logger.warning(f"Could not resolve group {g['id']}: {e}")
+        if updated:
+            save_data(data)
+            sync_groups_to_file()
+            logger.info("Group names updated and synced to groups.json")
+    except Exception as e:
+        logger.error(f"Failed to resolve group names: {e}")
     # Command menu: only visible for admins/private chats, hidden for normal group members
     from telegram import (
         BotCommandScopeDefault,
