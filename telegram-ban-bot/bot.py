@@ -8109,10 +8109,11 @@ async def show_interval_picker(query, context, user_id, back_callback="menu_sche
 
 async def execute_scheduled_message(context: ContextTypes.DEFAULT_TYPE):
     """Execute a scheduled message job."""
+    sched_id = None
     try:
         job = context.job
         sched_id = job.data
-        logger.info(f"Executing scheduled message {sched_id}")
+        logger.info(f">>> EXECUTING scheduled message {sched_id} at {now_de().strftime('%d.%m.%Y %H:%M:%S')} Berlin time")
         
         bot_data = load_data()
         sched = None
