@@ -8504,14 +8504,7 @@ def main():
         logger.error(
             "JobQueue unavailable. Repeating messages need python-telegram-bot[job-queue] / APScheduler installed."
         )
-    else:
-        bot_data = load_data()
-        count = 0
-        for sched in bot_data.get("scheduled", []):
-            if sched.get("active"):
-                schedule_job(app, sched)
-                count += 1
-        logger.info(f"Restored {count} scheduled jobs")
+    # NOTE: Scheduled jobs are restored in post_init() — do NOT schedule them here too!
 
     print("🤖 Bot gestartet!")
     app.run_polling(drop_pending_updates=True, allowed_updates=Update.ALL_TYPES)
