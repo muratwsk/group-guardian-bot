@@ -248,7 +248,7 @@ def sync_groups_to_file():
 
 
 def import_groups_from_file():
-    """Import groups from groups.json into SQLite on startup."""
+    """Import groups from groups.json into SQLite on startup — replaces all existing groups."""
     if not os.path.exists(GROUPS_FILE):
         return
     with open(GROUPS_FILE, "r") as f:
@@ -256,17 +256,10 @@ def import_groups_from_file():
     if not groups_map:
         return
     data = load_data()
-    existing_ids = {g["id"] for g in data.get("groups", [])}
-    added = 0
-    for name, gid in groups_map.items():
-        if gid not in existing_ids:
-            data["groups"].append({"id": gid, "title": name})
-            existing_ids.add(gid)
-            added += 1
-    if added > 0:
-        save_data(data)
-        logger.info(f"Imported {added} groups from groups.json")
-    sync_groups_to_file()
+    # Replace all groups with the ones from file
+    data["groups"] = [{"id": gid, "title": name} for name, gid in groups_map.items()]
+    save_data(data)
+    logger.info(f"Replaced groups from groups.json: {len(data['groups'])} groups loaded")
 
 
 # Auto-import on module load
