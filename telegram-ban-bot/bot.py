@@ -8300,8 +8300,13 @@ async def execute_scheduled_message(context: ContextTypes.DEFAULT_TYPE):
         media_fid = sched.get("media_file_id")
         media_type = sched.get("media_type", "photo")
         
-        for gid in sched.get("groups", []):
+        groups_to_send = sched.get("groups", [])
+        logger.info("Scheduler send_start | id=%s | groups=%s | has_media=%s | media_type=%s | text_len=%s",
+                     sched_id, groups_to_send, bool(media_fid), media_type if media_fid else "none", len(text_html) if text_html else 0)
+        
+        for gid in groups_to_send:
             try:
+                logger.info("Scheduler send_attempt | id=%s | group=%s", sched_id, gid)
                 if media_fid:
                     if media_type == "photo":
                         msg = await context.bot.send_photo(chat_id=gid, photo=media_fid, caption=text_html or None, parse_mode="HTML" if text_html else None)
@@ -8316,13 +8321,14 @@ async def execute_scheduled_message(context: ContextTypes.DEFAULT_TYPE):
                 else:
                     msg = await context.bot.send_message(chat_id=gid, text=text_html, parse_mode="HTML", disable_web_page_preview=True)
                 sent_msgs.append([gid, msg.message_id])
+                logger.info("Scheduler send_success | id=%s | group=%s | msg_id=%s", sched_id, gid, msg.message_id)
                 if sched.get("pin_message"):
                     try:
                         await context.bot.pin_chat_message(chat_id=gid, message_id=msg.message_id, disable_notification=True)
                     except Exception:
                         pass
             except Exception as e:
-                logger.error(f"Scheduled send failed in {gid}: {e}")
+                logger.error("Scheduler send_FAILED | id=%s | group=%s | error=%s", sched_id, gid, e, exc_info=True)
         
         # Update last sent info
         finished_at = now_de()
