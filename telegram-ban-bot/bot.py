@@ -248,7 +248,7 @@ def sync_groups_to_file():
 
 
 def import_groups_from_file():
-    """Import groups from groups.json into SQLite on startup."""
+    """Import groups from groups.json into SQLite on startup — replaces all existing groups."""
     if not os.path.exists(GROUPS_FILE):
         return
     with open(GROUPS_FILE, "r") as f:
@@ -256,17 +256,10 @@ def import_groups_from_file():
     if not groups_map:
         return
     data = load_data()
-    existing_ids = {g["id"] for g in data.get("groups", [])}
-    added = 0
-    for name, gid in groups_map.items():
-        if gid not in existing_ids:
-            data["groups"].append({"id": gid, "title": name})
-            existing_ids.add(gid)
-            added += 1
-    if added > 0:
-        save_data(data)
-        logger.info(f"Imported {added} groups from groups.json")
-    sync_groups_to_file()
+    # Replace all groups with the ones from file
+    data["groups"] = [{"id": gid, "title": name} for name, gid in groups_map.items()]
+    save_data(data)
+    logger.info(f"Replaced groups from groups.json: {len(data['groups'])} groups loaded")
 
 
 # Auto-import on module load
@@ -8489,6 +8482,26 @@ async def post_init(application):
     except Exception as e:
         logger.error(f"Failed to cache bot username: {e}")
 
+    # Auto-resolve group names via Telegram API
+    try:
+        data = load_data()
+        updated = False
+        for g in data.get("groups", []):
+            if g.get("title", "").startswith("Gruppe -100"):
+                try:
+                    chat = await application.bot.get_chat(g["id"])
+                    old_title = g["title"]
+                    g["title"] = chat.title or f"Chat {g['id']}"
+                    updated = True
+                    logger.info(f"Resolved group name: {old_title} -> {g['title']}")
+                except Exception as e:
+                    logger.warning(f"Could not resolve group {g['id']}: {e}")
+        if updated:
+            save_data(data)
+            sync_groups_to_file()
+            logger.info("Group names updated and synced to groups.json")
+    except Exception as e:
+        logger.error(f"Failed to resolve group names: {e}")
     # Command menu: only visible for admins/private chats, hidden for normal group members
     from telegram import (
         BotCommandScopeDefault,
