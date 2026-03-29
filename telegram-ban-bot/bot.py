@@ -8323,10 +8323,27 @@ async def execute_scheduled_message(context: ContextTypes.DEFAULT_TYPE):
             except Exception as e:
                 logger.error("Scheduler send_FAILED | id=%s | group=%s | error=%s", sched_id, gid, e, exc_info=True)
         
-        # Update last sent info
+        # Update last sent info — anchor next run to start time, not current time
         finished_at = now_de()
-        next_run_dt = finished_at + datetime.timedelta(minutes=interval_minutes)
         sched["last_sent"] = finished_at.strftime("%d.%m.%Y %H:%M")
+        
+        # Calculate next run anchored to the original start time
+        time_str = sched.get("time", "")
+        interval_td = datetime.timedelta(minutes=interval_minutes)
+        if time_str and time_str != "00:00":
+            try:
+                h, m = map(int, time_str.split(":"))
+                # Anchor = today at start time
+                anchor = finished_at.replace(hour=h, minute=m, second=0, microsecond=0)
+                # Find next future slot: anchor + N * interval > now
+                while anchor <= finished_at:
+                    anchor += interval_td
+                next_run_dt = anchor
+            except Exception:
+                next_run_dt = finished_at + interval_td
+        else:
+            next_run_dt = finished_at + interval_td
+        
         sched["next_run_at"] = next_run_dt.strftime("%d.%m.%Y %H:%M")
         sched["last_sent_messages"] = sent_msgs
         save_data(bot_data)
