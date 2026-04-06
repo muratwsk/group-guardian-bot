@@ -6585,20 +6585,21 @@ async def track_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # --- Command delete check ---
     await auto_delete_command(update, context)
 
+    # Load data ONCE for all checks below
+    bot_data_tm = load_data()
+    disabled_modules = bot_data_tm.get("disabled_modules", [])
+
     # --- @admin mention check (only if module enabled) ---
-    if is_module_enabled("menu_admin_report"):
+    if "menu_admin_report" not in disabled_modules:
         await _check_admin_mention(update, context)
 
     # --- Check if group is exempt from all filters ---
     if update.effective_chat and update.effective_chat.id:
-        _exempt_data = load_data()
-        _exempt_groups = _exempt_data.get("exempt_groups", [])
-        if update.effective_chat.id in _exempt_groups:
-            # This group is exempt from all filters (links, forwards, forbidden words)
+        if update.effective_chat.id in bot_data_tm.get("exempt_groups", []):
             return
 
     # --- Anti-Spam: Link check (only if module enabled) ---
-    if not is_module_enabled("menu_antispam"):
+    if "menu_antispam" in disabled_modules:
         pass  # skip link check
     elif update.message.from_user:
         sender_as = update.message.from_user
