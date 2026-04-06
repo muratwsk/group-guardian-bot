@@ -8641,7 +8641,17 @@ def main():
     except Exception:
         pass
 
-    app = Application.builder().token(token).concurrent_updates(False).post_init(post_init).build()
+    app = (
+        Application.builder()
+        .token(token)
+        .concurrent_updates(False)
+        .post_init(post_init)
+        .read_timeout(30)
+        .write_timeout(30)
+        .connect_timeout(15)
+        .pool_timeout(10)
+        .build()
+    )
 
     app.add_handler(CommandHandler("reload", reload_command))
     app.add_handler(CommandHandler("start", start))
@@ -8704,7 +8714,16 @@ def main():
     # NOTE: Scheduled jobs are restored in post_init() — do NOT schedule them here too!
 
     print("🤖 Bot gestartet!")
-    app.run_polling(drop_pending_updates=True, allowed_updates=Update.ALL_TYPES)
+    app.run_polling(
+        drop_pending_updates=True,
+        allowed_updates=Update.ALL_TYPES,
+        poll_interval=1.0,          # 1s Pause zwischen Polls (verhindert tight loop)
+        timeout=30,                 # Long Polling: Telegram hält Verbindung bis 30s
+        read_timeout=35,            # Muss > timeout sein
+        connect_timeout=15,
+        write_timeout=15,
+        pool_timeout=10,
+    )
 
 if __name__ == "__main__":
     main()
