@@ -153,6 +153,9 @@ def _quarantine_corrupt_db():
 _recovery_lock = threading.Lock()
 _last_backup_time = 0.0
 _backup_lock = threading.Lock()
+_last_snapshot_times = {}
+_snapshot_lock = threading.Lock()
+SNAPSHOT_INTERVAL_SEC = 30  # Only write JSON snapshots every 30s per key
 
 
 def _run_periodic_backup():
@@ -336,20 +339,12 @@ def kv_load(key: str, default=None) -> dict:
 
 def kv_save(key: str, data: dict):
     """Save a JSON value by key (atomic via SQLite transaction)."""
+    # Update cache immediately (cheap)
+    with _cache_lock:
+        _cache[key] = data
+
     conn = _get_conn()
-    json_str = json.dumps(data, ensure_ascii=False, indent=None)
-
-    # Write JSON snapshot + .bak for recovery
-    _write_snapshot_for_key(key, data)
-    bak_path = KEY_FILE_MAP.get(key)
-    if bak_path:
-        try:
-            shutil.copy2(bak_path, bak_path + ".bak")
-        except Exception:
-            pass
-
-    # Periodic full backup
-    _run_periodic_backup()
+    json_str = json.dumps(data, ensure_ascii=False, indent=None, separators=(",", ":"))
 
     try:
         conn.execute(
@@ -366,8 +361,22 @@ def kv_save(key: str, data: dict):
         )
         conn.commit()
 
-    with _cache_lock:
-        _cache[key] = data
+    # Throttled JSON snapshot + backup (every SNAPSHOT_INTERVAL_SEC per key)
+    now = time.time()
+    with _snapshot_lock:
+        last = _last_snapshot_times.get(key, 0.0)
+        if now - last < SNAPSHOT_INTERVAL_SEC:
+            return
+        _last_snapshot_times[key] = now
+
+    _write_snapshot_for_key(key, data)
+    bak_path = KEY_FILE_MAP.get(key)
+    if bak_path:
+        try:
+            shutil.copy2(bak_path, bak_path + ".bak")
+        except Exception:
+            pass
+    _run_periodic_backup()
 
 
 def invalidate_cache(key: str = None):
