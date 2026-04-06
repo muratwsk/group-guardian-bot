@@ -6625,7 +6625,7 @@ async def track_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             logger.info(f"LINK detected from {sender_as.id} in {update.effective_chat.id}")
             is_adm_as = is_authorized(sender_as.id) or await is_chat_admin(context, update.effective_chat.id, sender_as.id)
             if not is_adm_as and not is_freed(sender_as.id):
-                bot_data_as = load_data()
+                bot_data_as = bot_data_tm
                 lc = bot_data_as.get("antispam_links", {"punishment": "aus", "delete": True, "groups": []})
                 lc_groups = lc.get("groups", [])
                 # If groups are specified, only enforce in those groups
