@@ -153,6 +153,9 @@ def _quarantine_corrupt_db():
 _recovery_lock = threading.Lock()
 _last_backup_time = 0.0
 _backup_lock = threading.Lock()
+_last_snapshot_times = {}
+_snapshot_lock = threading.Lock()
+SNAPSHOT_INTERVAL_SEC = 30  # Only write JSON snapshots every 30s per key
 
 
 def _run_periodic_backup():
