@@ -75,6 +75,7 @@ def log_schedule_snapshot(
 
 import requests as _requests
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ChatPermissions
+from telegram.error import NetworkError, RetryAfter, TimedOut
 from telegram.ext import (
     Application, CommandHandler, CallbackQueryHandler,
     MessageHandler, ChatMemberHandler, ChatJoinRequestHandler, filters, ContextTypes
@@ -104,6 +105,11 @@ USER_TRACK_LAST_SAVE = {}
 USER_TRACK_SAVE_INTERVAL_SEC = 20
 ACTION_DEDUPE_TTL_SEC = 4.0
 BOT_USERNAME_CACHE = None  # Cached bot username to avoid get_me() API calls
+TELEGRAM_CONNECTION_POOL_SIZE = 64
+TELEGRAM_GET_UPDATES_POOL_SIZE = 8
+TELEGRAM_POOL_TIMEOUT_SEC = 30
+SCHEDULER_RETRY_DELAYS_SEC = (2.0, 5.0)
+SCHEDULER_INTER_SEND_DELAY_SEC = 0.2
 
 UNMUTE_PERMISSIONS = ChatPermissions.all_permissions()
 
@@ -569,7 +575,7 @@ async def is_chat_admin(context, chat_id: int, user_id: int) -> bool:
 
 
 async def _send_logs_async(context: ContextTypes.DEFAULT_TYPE, targets: set[int], text: str):
-    async def _send_log(chat_id: int):
+    for chat_id in targets:
         try:
             await asyncio.wait_for(
                 context.bot.send_message(chat_id=chat_id, text=text, parse_mode="HTML"),
@@ -577,8 +583,7 @@ async def _send_logs_async(context: ContextTypes.DEFAULT_TYPE, targets: set[int]
             )
         except Exception as e:
             logger.error(f"Log channel {chat_id} error: {e}")
-
-    await asyncio.gather(*[_send_log(chat_id) for chat_id in targets], return_exceptions=True)
+        await asyncio.sleep(0.05)
 
 
 def _format_log_block(category: str, action: str, details: dict) -> str:
@@ -8181,6 +8186,59 @@ async def show_interval_picker(query, context, user_id, back_callback="menu_sche
     )
 
 
+async def _send_scheduled_payload(context: ContextTypes.DEFAULT_TYPE, gid: int, text_html: str, media_fid: str | None, media_type: str):
+    if media_fid:
+        if media_type == "photo":
+            return await context.bot.send_photo(chat_id=gid, photo=media_fid, caption=text_html or None, parse_mode="HTML" if text_html else None)
+        if media_type == "video":
+            return await context.bot.send_video(chat_id=gid, video=media_fid, caption=text_html or None, parse_mode="HTML" if text_html else None)
+        if media_type == "animation":
+            return await context.bot.send_animation(chat_id=gid, animation=media_fid, caption=text_html or None, parse_mode="HTML" if text_html else None)
+        if media_type == "sticker":
+            return await context.bot.send_sticker(chat_id=gid, sticker=media_fid)
+        return await context.bot.send_document(chat_id=gid, document=media_fid, caption=text_html or None, parse_mode="HTML" if text_html else None)
+
+    return await context.bot.send_message(chat_id=gid, text=text_html, parse_mode="HTML", disable_web_page_preview=True)
+
+
+async def _send_scheduler_message_with_retry(
+    context: ContextTypes.DEFAULT_TYPE,
+    gid: int,
+    sched_id: str,
+    text_html: str,
+    media_fid: str | None,
+    media_type: str,
+):
+    for attempt in range(len(SCHEDULER_RETRY_DELAYS_SEC) + 1):
+        try:
+            return await _send_scheduled_payload(context, gid, text_html, media_fid, media_type)
+        except RetryAfter as e:
+            if attempt >= len(SCHEDULER_RETRY_DELAYS_SEC):
+                raise
+            delay = max(float(getattr(e, "retry_after", 0) or 0), SCHEDULER_RETRY_DELAYS_SEC[attempt])
+            logger.warning(
+                "Scheduler send_retry | id=%s | group=%s | attempt=%s | reason=RetryAfter | sleep_sec=%.1f",
+                sched_id,
+                gid,
+                attempt + 1,
+                delay,
+            )
+            await asyncio.sleep(delay)
+        except (TimedOut, NetworkError) as e:
+            if attempt >= len(SCHEDULER_RETRY_DELAYS_SEC):
+                raise
+            delay = SCHEDULER_RETRY_DELAYS_SEC[attempt]
+            logger.warning(
+                "Scheduler send_retry | id=%s | group=%s | attempt=%s | reason=%s | sleep_sec=%.1f",
+                sched_id,
+                gid,
+                attempt + 1,
+                type(e).__name__,
+                delay,
+            )
+            await asyncio.sleep(delay)
+
+
 # --- Scheduled job execution ---
 
 async def execute_scheduled_message(context: ContextTypes.DEFAULT_TYPE):
@@ -8300,19 +8358,14 @@ async def execute_scheduled_message(context: ContextTypes.DEFAULT_TYPE):
         for gid in groups_to_send:
             try:
                 logger.info("Scheduler send_attempt | id=%s | group=%s", sched_id, gid)
-                if media_fid:
-                    if media_type == "photo":
-                        msg = await context.bot.send_photo(chat_id=gid, photo=media_fid, caption=text_html or None, parse_mode="HTML" if text_html else None)
-                    elif media_type == "video":
-                        msg = await context.bot.send_video(chat_id=gid, video=media_fid, caption=text_html or None, parse_mode="HTML" if text_html else None)
-                    elif media_type == "animation":
-                        msg = await context.bot.send_animation(chat_id=gid, animation=media_fid, caption=text_html or None, parse_mode="HTML" if text_html else None)
-                    elif media_type == "sticker":
-                        msg = await context.bot.send_sticker(chat_id=gid, sticker=media_fid)
-                    else:
-                        msg = await context.bot.send_document(chat_id=gid, document=media_fid, caption=text_html or None, parse_mode="HTML" if text_html else None)
-                else:
-                    msg = await context.bot.send_message(chat_id=gid, text=text_html, parse_mode="HTML", disable_web_page_preview=True)
+                msg = await _send_scheduler_message_with_retry(
+                    context,
+                    gid,
+                    sched_id,
+                    text_html,
+                    media_fid,
+                    media_type,
+                )
                 sent_msgs.append([gid, msg.message_id])
                 logger.info("Scheduler send_success | id=%s | group=%s | msg_id=%s", sched_id, gid, msg.message_id)
                 if sched.get("pin_message"):
@@ -8320,6 +8373,7 @@ async def execute_scheduled_message(context: ContextTypes.DEFAULT_TYPE):
                         await context.bot.pin_chat_message(chat_id=gid, message_id=msg.message_id, disable_notification=True)
                     except Exception:
                         pass
+                await asyncio.sleep(SCHEDULER_INTER_SEND_DELAY_SEC)
             except Exception as e:
                 logger.error("Scheduler send_FAILED | id=%s | group=%s | error=%s", sched_id, gid, e, exc_info=True)
         
@@ -8646,10 +8700,13 @@ def main():
         .token(token)
         .concurrent_updates(False)
         .post_init(post_init)
+        .connection_pool_size(TELEGRAM_CONNECTION_POOL_SIZE)
+        .pool_timeout(TELEGRAM_POOL_TIMEOUT_SEC)
+        .get_updates_connection_pool_size(TELEGRAM_GET_UPDATES_POOL_SIZE)
+        .get_updates_pool_timeout(TELEGRAM_POOL_TIMEOUT_SEC)
         .read_timeout(30)
         .write_timeout(30)
         .connect_timeout(15)
-        .pool_timeout(10)
         .build()
     )
 
