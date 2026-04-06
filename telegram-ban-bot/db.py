@@ -307,9 +307,10 @@ _cache_lock = threading.Lock()
 
 def kv_load(key: str, default=None) -> dict:
     """Load a JSON value by key, with in-memory cache."""
-    with _cache_lock:
-        if key in _cache:
-            return _cache[key]
+    # Fast path: no lock needed for cache hit (dict reads are thread-safe in CPython)
+    cached = _cache.get(key)
+    if cached is not None:
+        return cached
 
     conn = _get_conn()
     try:

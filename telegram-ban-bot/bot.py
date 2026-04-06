@@ -6585,20 +6585,21 @@ async def track_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # --- Command delete check ---
     await auto_delete_command(update, context)
 
+    # Load data ONCE for all checks below
+    bot_data_tm = load_data()
+    disabled_modules = bot_data_tm.get("disabled_modules", [])
+
     # --- @admin mention check (only if module enabled) ---
-    if is_module_enabled("menu_admin_report"):
+    if "menu_admin_report" not in disabled_modules:
         await _check_admin_mention(update, context)
 
     # --- Check if group is exempt from all filters ---
     if update.effective_chat and update.effective_chat.id:
-        _exempt_data = load_data()
-        _exempt_groups = _exempt_data.get("exempt_groups", [])
-        if update.effective_chat.id in _exempt_groups:
-            # This group is exempt from all filters (links, forwards, forbidden words)
+        if update.effective_chat.id in bot_data_tm.get("exempt_groups", []):
             return
 
     # --- Anti-Spam: Link check (only if module enabled) ---
-    if not is_module_enabled("menu_antispam"):
+    if "menu_antispam" in disabled_modules:
         pass  # skip link check
     elif update.message.from_user:
         sender_as = update.message.from_user
@@ -6624,7 +6625,7 @@ async def track_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             logger.info(f"LINK detected from {sender_as.id} in {update.effective_chat.id}")
             is_adm_as = is_authorized(sender_as.id) or await is_chat_admin(context, update.effective_chat.id, sender_as.id)
             if not is_adm_as and not is_freed(sender_as.id):
-                bot_data_as = load_data()
+                bot_data_as = bot_data_tm
                 lc = bot_data_as.get("antispam_links", {"punishment": "aus", "delete": True, "groups": []})
                 lc_groups = lc.get("groups", [])
                 # If groups are specified, only enforce in those groups
