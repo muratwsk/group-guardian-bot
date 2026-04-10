@@ -6972,6 +6972,17 @@ async def enforce_ban_on_chat_member(update: Update, context: ContextTypes.DEFAU
     if not update.chat_member:
         return
 
+    old_status = update.chat_member.old_chat_member.status if update.chat_member.old_chat_member else None
+    new_status = update.chat_member.new_chat_member.status if update.chat_member.new_chat_member else None
+
+    # Only act when user is actually joining (transitioning TO member/restricted)
+    # Skip if status didn't change to a "joined" state
+    if new_status not in ("member", "restricted"):
+        return
+    # Skip if user was already a member (not a fresh join)
+    if old_status in ("member", "restricted", "administrator", "creator"):
+        return
+
     member = update.chat_member.new_chat_member.user
     if not member or member.is_bot:
         return
