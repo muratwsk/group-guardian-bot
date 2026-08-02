@@ -5,6 +5,7 @@ Stores config, data, users, and protokoll as JSON blobs in a key-value table.
 Auto-migrates from existing JSON files on first run.
 """
 
+import atexit
 import json
 import logging
 import os
@@ -410,11 +411,139 @@ def save_data(data: dict):
 
 
 def load_users() -> dict:
-    return kv_load("users", {})
+    """Alle getrackten User, aus dem RAM-Cache (auf Platte zeilenbasiert)."""
+    cached = _cache.get("users")
+    if cached is not None:
+        return cached
+    users = _load_users_rows()
+    with _cache_lock:
+        _cache["users"] = users
+    return users
 
 
-def save_users(users: dict):
-    kv_save("users", users)
+def save_users(users: dict, dirty_keys=None):
+    """Persistiert User; dirty_keys begrenzt den Write auf geaenderte Eintraege."""
+    _queue_users_save(users, dirty_keys)
+
+
+_users_save_condition = threading.Condition()
+_users_save_pending = None
+_users_dirty_keys = set()
+_users_dirty_all = False
+_users_save_thread = None
+USERS_SAVE_DEBOUNCE_SEC = 5
+USERS_ROW_CHUNK = 2000
+
+
+def _ensure_users_table():
+    conn = _get_conn()
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS users_rows (key TEXT PRIMARY KEY, data TEXT NOT NULL)"
+    )
+    conn.commit()
+
+
+def _load_users_rows() -> dict:
+    _ensure_users_table()
+    conn = _get_conn()
+    try:
+        rows = conn.execute("SELECT key, data FROM users_rows").fetchall()
+    except sqlite3.DatabaseError:
+        _ensure_users_table()
+        rows = _get_conn().execute("SELECT key, data FROM users_rows").fetchall()
+    if rows:
+        users = {}
+        for key, payload in rows:
+            try:
+                users[key] = json.loads(payload)
+            except (json.JSONDecodeError, TypeError):
+                continue
+        return users
+    legacy = kv_load("users", {}) or {}
+    if legacy:
+        logger.info(f"Migrating {len(legacy)} users into row storage")
+        _write_users_rows(legacy, list(legacy.keys()))
+        logger.info("User row migration complete")
+    return legacy
+
+
+def _write_users_rows(users: dict, keys):
+    if not keys:
+        return
+    _ensure_users_table()
+    conn = _get_conn()
+    total = len(keys)
+    for offset in range(0, total, USERS_ROW_CHUNK):
+        chunk = keys[offset:offset + USERS_ROW_CHUNK]
+        upserts, deletes = [], []
+        for key in chunk:
+            entry = users.get(key)
+            if entry is None:
+                deletes.append((key,))
+                continue
+            upserts.append((
+                key,
+                json.dumps(entry, ensure_ascii=False, separators=(",", ":"), default=str),
+            ))
+        if upserts:
+            conn.executemany(
+                "INSERT OR REPLACE INTO users_rows (key, data) VALUES (?, ?)", upserts
+            )
+        if deletes:
+            conn.executemany("DELETE FROM users_rows WHERE key = ?", deletes)
+        conn.commit()
+        if total > USERS_ROW_CHUNK:
+            time.sleep(0.01)
+
+
+def _users_save_worker():
+    global _users_dirty_all
+    while True:
+        with _users_save_condition:
+            while not _users_dirty_keys and not _users_dirty_all:
+                _users_save_condition.wait()
+            _users_save_condition.wait(timeout=USERS_SAVE_DEBOUNCE_SEC)
+            users = _users_save_pending or {}
+            keys = list(users.keys()) if _users_dirty_all else list(_users_dirty_keys)
+            _users_dirty_keys.clear()
+            _users_dirty_all = False
+        try:
+            _write_users_rows(users, keys)
+        except Exception as e:
+            logger.error(f"Background users save failed: {e}")
+            time.sleep(1)
+
+
+def _queue_users_save(users: dict, dirty_keys=None):
+    global _users_save_pending, _users_save_thread, _users_dirty_all
+    with _cache_lock:
+        _cache["users"] = users
+    with _users_save_condition:
+        _users_save_pending = users
+        if dirty_keys:
+            _users_dirty_keys.update(str(k) for k in dirty_keys)
+        else:
+            _users_dirty_all = True
+        if _users_save_thread is None or not _users_save_thread.is_alive():
+            _users_save_thread = threading.Thread(
+                target=_users_save_worker, name="users-db-writer", daemon=True
+            )
+            _users_save_thread.start()
+        _users_save_condition.notify()
+
+
+def _flush_users_on_exit():
+    with _users_save_condition:
+        users = _users_save_pending or {}
+        keys = list(users.keys()) if _users_dirty_all else list(_users_dirty_keys)
+    if keys:
+        try:
+            _write_users_rows(users, keys)
+        except Exception as e:
+            logger.error(f"Final users save failed: {e}")
+
+
+atexit.register(_flush_users_on_exit)
 
 
 def load_protokoll() -> dict:
