@@ -107,6 +107,8 @@ def _write_json_file_atomic(filepath: str, data):
 
 
 def _write_snapshot_for_key(key: str, data):
+    if key == 'users':
+        return  # too large (70MB) — SQLite is truth source
     filepath = KEY_FILE_MAP.get(key)
     if not filepath:
         return
@@ -155,7 +157,7 @@ _last_backup_time = 0.0
 _backup_lock = threading.Lock()
 _last_snapshot_times = {}
 _snapshot_lock = threading.Lock()
-SNAPSHOT_INTERVAL_SEC = 30  # Only write JSON snapshots every 30s per key
+SNAPSHOT_INTERVAL_SEC = 300  # Only write JSON snapshots every 30s per key
 
 
 def _run_periodic_backup():

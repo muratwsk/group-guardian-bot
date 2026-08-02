@@ -110,6 +110,18 @@ TELEGRAM_GET_UPDATES_POOL_SIZE = 8
 TELEGRAM_POOL_TIMEOUT_SEC = 30
 SCHEDULER_RETRY_DELAYS_SEC = (2.0, 5.0)
 SCHEDULER_INTER_SEND_DELAY_SEC = 0.2
+BROADCAST_AUTODELETE_FALLBACK_TASKS = {}
+AUTODELETE_DELETE_CONCURRENCY = 6
+AUTODELETE_DELETE_TIMEOUT_SEC = 12
+# Guard against the same auto-delete running twice (JobQueue + Watchdog + Fallback)
+AUTODELETE_INFLIGHT = set()
+# Watchdog sweep: guarantees deletion even if a job/task was lost
+AUTODELETE_SWEEP_INTERVAL_SEC = 5
+# Max. Wiederholversuche pro Auto-Löschung, wenn Telegram-Löschen fehlschlägt
+AUTODELETE_MAX_ATTEMPTS = 6
+AUTODELETE_DELETE_TIMEOUT_SEC = 12
+AUTODELETE_RETRY_DELAY_SEC = 30
+
 
 UNMUTE_PERMISSIONS = ChatPermissions.all_permissions()
 
@@ -198,12 +210,26 @@ def normalize_data(data):
     return data
 
 
+_DATA_CACHE = {"v": None, "ts": 0.0}
+_DATA_TTL = 2.0  # seconds
+
 def load_data():
-    return normalize_data(_db_load_data())
+    import time as _t
+    now = _t.monotonic()
+    if _DATA_CACHE["v"] is not None and (now - _DATA_CACHE["ts"]) < _DATA_TTL:
+        return _DATA_CACHE["v"]
+    d = normalize_data(_db_load_data())
+    _DATA_CACHE["v"] = d
+    _DATA_CACHE["ts"] = now
+    return d
 
 
 def save_data(data):
-    _db_save_data(normalize_data(data))
+    nd = normalize_data(data)
+    _db_save_data(nd)
+    import time as _t
+    _DATA_CACHE["v"] = nd
+    _DATA_CACHE["ts"] = _t.monotonic()
 
 
 # --- Module enabled check ---
@@ -755,17 +781,10 @@ async def render_sperr_bot_groups(query, context: ContextTypes.DEFAULT_TYPE):
 # --- Get bot's groups ---
 
 async def get_bot_groups(context: ContextTypes.DEFAULT_TYPE) -> list:
-    """Returns list of groups stored in data.json. Groups are added via /registergroup."""
+    """Returns list of groups stored in data.json. Uses cached titles (no API roundtrip)."""
     data = load_data()
     groups = data.get("groups", [])
-    result = []
-    for g in groups:
-        try:
-            chat = await context.bot.get_chat(g["id"])
-            result.append({"id": chat.id, "title": chat.title})
-        except Exception:
-            result.append({"id": g["id"], "title": g.get("title", str(g["id"]))})
-    return result
+    return [{"id": g["id"], "title": g.get("title", str(g["id"]))} for g in groups]
 
 # --- /reload ---
 
@@ -1048,8 +1067,13 @@ async def show_messenger_selection(query, context, user_id, groups):
         InlineKeyboardButton("◻️ Keine", callback_data="msg_select_none"),
     ])
     keyboard.append([InlineKeyboardButton(f"📨 Senden ({len(selected)} gewählt)", callback_data="msg_confirm_selection")])
-    # Show delete old broadcasts button if any exist
+    # Ordner / Gruppierungen
     bot_data = load_data()
+    folders = bot_data.get("broadcast_folders", [])
+    if folders:
+        keyboard.append([InlineKeyboardButton(f"📁 Ordner wählen ({len(folders)})", callback_data="msg_folders")])
+    keyboard.append([InlineKeyboardButton("⚙️ Ordner verwalten", callback_data="msg_folder_manage")])
+    # Show delete old broadcasts button if any exist
     if bot_data.get("broadcasts"):
         keyboard.append([InlineKeyboardButton("🗑 Gesendete Nachrichten löschen", callback_data="show_broadcasts")])
     keyboard.append([InlineKeyboardButton("🔙 Zurück", callback_data="back_main")])
@@ -1058,6 +1082,144 @@ async def show_messenger_selection(query, context, user_id, groups):
         reply_markup=InlineKeyboardMarkup(keyboard),
         parse_mode="Markdown",
     )
+
+
+
+def _autodelete_due_ts(info: dict):
+    """Resolve the due timestamp of a stored auto-delete entry."""
+    ts = info.get("delete_at_ts")
+    if ts:
+        try:
+            return float(ts)
+        except Exception:
+            pass
+    parsed = parse_dt_de(info.get("delete_at"), "%d.%m.%Y %H:%M:%S")
+    return parsed.timestamp() if parsed else None
+
+
+async def autodelete_watchdog(context):
+    """Safety net: delete every overdue auto-delete entry, even if its job was lost.
+
+    Runs every AUTODELETE_SWEEP_INTERVAL_SEC seconds, so the worst-case delay is
+    that interval instead of 'never'.
+    """
+    try:
+        bot_data = load_data()
+        now_ts = now_de().timestamp()
+        changed = False
+
+        for broadcast_id, info in list((bot_data.get("broadcast_autodeletes") or {}).items()):
+            due = _autodelete_due_ts(info or {})
+            if due is None:
+                (bot_data.get("broadcast_autodeletes") or {}).pop(broadcast_id, None)
+                changed = True
+                continue
+            if due > now_ts:
+                continue
+            guard_key = f"bc_{broadcast_id}"
+            if guard_key in AUTODELETE_INFLIGHT:
+                continue
+            AUTODELETE_INFLIGHT.add(guard_key)
+            try:
+                logger.info(f"Watchdog: auto-deleting overdue broadcast {broadcast_id}")
+                await _run_broadcast_autodelete(context, str(broadcast_id), (info or {}).get("messages") or [])
+            except Exception as e:
+                logger.error(f"Watchdog broadcast {broadcast_id} failed: {e}", exc_info=True)
+            finally:
+                AUTODELETE_INFLIGHT.discard(guard_key)
+
+        for run_id, info in list((bot_data.get("scheduled_autodeletes") or {}).items()):
+            due = _autodelete_due_ts(info or {})
+            if due is None:
+                (bot_data.get("scheduled_autodeletes") or {}).pop(run_id, None)
+                changed = True
+                continue
+            if due > now_ts:
+                continue
+            guard_key = f"sc_{run_id}"
+            if guard_key in AUTODELETE_INFLIGHT:
+                continue
+            AUTODELETE_INFLIGHT.add(guard_key)
+            try:
+                logger.info(f"Watchdog: auto-deleting overdue scheduled run {run_id}")
+                await _run_scheduled_autodelete(context, str(run_id), (info or {}).get("messages") or [])
+            except Exception as e:
+                logger.error(f"Watchdog scheduled {run_id} failed: {e}", exc_info=True)
+            finally:
+                AUTODELETE_INFLIGHT.discard(guard_key)
+
+        if changed:
+            save_data(bot_data)
+    except Exception as e:
+        logger.error(f"Auto-delete watchdog failed: {e}", exc_info=True)
+
+
+async def _autodelete_sweeper_loop(bot):
+    """Independent sweeper: deletes overdue auto-deletes, with heartbeat logging."""
+    class _Context:
+        pass
+
+    ctx = _Context()
+    ctx.bot = bot
+    ticks = 0
+    while True:
+        try:
+            await asyncio.sleep(AUTODELETE_SWEEP_INTERVAL_SEC)
+            await autodelete_watchdog(ctx)
+            ticks += 1
+            if ticks % 12 == 0:
+                data = load_data()
+                pend_bc = len(data.get("broadcast_autodeletes") or {})
+                pend_sc = len(data.get("scheduled_autodeletes") or {})
+                logger.info(f"Auto-delete sweeper alive | pending broadcasts={pend_bc} scheduled={pend_sc}")
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:
+            logger.error(f"Auto-delete sweeper error: {e}", exc_info=True)
+            await asyncio.sleep(1)
+
+
+AUTODELETE_WATCHDOG_TASK = None
+
+
+def _ensure_autodelete_watchdog(context_or_app):
+    """(Re)start the sweeper if it is not running — self-healing safety net."""
+    global AUTODELETE_WATCHDOG_TASK
+    bot = getattr(context_or_app, "bot", None)
+    if bot is None:
+        return
+    task = AUTODELETE_WATCHDOG_TASK
+    if task is not None and not task.done():
+        return
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        return
+    AUTODELETE_WATCHDOG_TASK = loop.create_task(_autodelete_sweeper_loop(bot))
+    logger.warning(f"Auto-delete sweeper (re)started (every {AUTODELETE_SWEEP_INTERVAL_SEC}s)")
+
+
+async def autodel_status_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Owner-Debug: zeigt ausstehende Auto-Löschungen + Sweeper-Status."""
+    user_id = update.effective_user.id if update.effective_user else 0
+    if not is_authorized(user_id):
+        return
+    _ensure_autodelete_watchdog(context)
+    task = AUTODELETE_WATCHDOG_TASK
+    alive = task is not None and not task.done()
+    data = load_data()
+    now_ts = now_de().timestamp()
+    lines = [f"🛠 Sweeper: {'✅ läuft' if alive else '❌ gestoppt'} (alle {AUTODELETE_SWEEP_INTERVAL_SEC}s)"]
+    for label, key in (("Messenger", "broadcast_autodeletes"), ("Scheduler", "scheduled_autodeletes")):
+        entries = (data.get(key) or {})
+        lines.append(f"\n<b>{label}:</b> {len(entries)} offen")
+        for eid, info in list(entries.items())[:10]:
+            due = _autodelete_due_ts(info or {})
+            when = datetime.datetime.fromtimestamp(due, BERLIN_TZ).strftime("%d.%m %H:%M:%S") if due else "—"
+            rest = int(due - now_ts) if due else 0
+            lines.append(f"• <code>{eid}</code> → {when} ({rest}s) | {len((info or {}).get('messages') or [])} Nachrichten")
+    await update.message.reply_text("\n".join(lines), parse_mode="HTML")
+
 
 async def _render_admin_report_menu(query):
     """Render the @admin settings menu."""
@@ -1134,6 +1296,7 @@ async def _render_admin_report_menu(query):
 
 
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    _ensure_autodelete_watchdog(context)
     query = update.callback_query
     await query.answer()
     user_id = query.from_user.id
@@ -1241,10 +1404,143 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not selected:
             await query.answer("⚠️ Wähle mindestens eine Gruppe!", show_alert=True)
             return
-        user_data_store[user_id] = {"action": "messenger", "groups": list(selected)}
+        user_data_store[user_id] = {"action": "messenger_pin_choice", "groups": list(selected), "pin": False, "pin_silent": False, "auto_del": 0}
+        await _render_pin_choice(query, user_id)
+
+    # === FOLDER: pick to add groups to current selection ===
+    elif data == "msg_folders":
+        bot_data = load_data()
+        folders = bot_data.get("broadcast_folders", [])
+        kb = []
+        for f in folders:
+            kb.append([InlineKeyboardButton(f"📁 {f['name']} ({len(f.get('group_ids', []))})",
+                                            callback_data=f"msg_pick_folder_{f['id']}")])
+        kb.append([InlineKeyboardButton("🔙 Zurück", callback_data="menu_messenger")])
+        await query.edit_message_text("📁 *Ordner wählen* – Gruppen werden zur Auswahl hinzugefügt:",
+                                      reply_markup=InlineKeyboardMarkup(kb), parse_mode="Markdown")
+
+    elif data.startswith("msg_pick_folder_"):
+        fid = int(data.replace("msg_pick_folder_", ""))
+        bot_data = load_data()
+        folder = next((f for f in bot_data.get("broadcast_folders", []) if f["id"] == fid), None)
+        if not folder:
+            await query.answer("Ordner weg.", show_alert=True); return
+        pending = user_data_store.get(user_id, {"action": "msg_select", "selected": set()})
+        sel = set(pending.get("selected", set()))
+        sel.update(folder.get("group_ids", []))
+        pending["selected"] = sel
+        pending["action"] = "msg_select"
+        user_data_store[user_id] = pending
+        await query.answer(f"+{len(folder.get('group_ids', []))} aus '{folder['name']}'")
+        groups = await get_bot_groups(context)
+        await show_messenger_selection(query, context, user_id, groups)
+
+    # === FOLDER MANAGEMENT ===
+    elif data == "msg_folder_manage":
+        await _render_folder_manage(query)
+
+    elif data == "msg_folder_new":
+        user_data_store[user_id] = {"action": "folder_new"}
+        context.user_data["state"] = "WAITING_FOLDER_NAME"
+        await query.edit_message_text("📁 Sende mir den Namen für den neuen Ordner.")
+
+    elif data.startswith("msg_folder_edit_"):
+        fid = int(data.replace("msg_folder_edit_", ""))
+        await _render_folder_edit(query, context, fid)
+
+    elif data.startswith("msg_folder_toggle_"):
+        _, _, _, fid_s, gid_s = data.split("_", 4)
+        fid, gid = int(fid_s), int(gid_s)
+        bot_data = load_data()
+        folder = next((f for f in bot_data.get("broadcast_folders", []) if f["id"] == fid), None)
+        if folder:
+            gids = list(folder.get("group_ids", []))
+            if gid in gids: gids.remove(gid)
+            else: gids.append(gid)
+            folder["group_ids"] = gids
+            save_data(bot_data)
+        await _render_folder_edit(query, context, fid)
+
+    elif data.startswith("msg_folder_rename_"):
+        fid = int(data.replace("msg_folder_rename_", ""))
+        user_data_store[user_id] = {"action": "folder_rename", "fid": fid}
+        context.user_data["state"] = "WAITING_FOLDER_NAME"
+        await query.edit_message_text("✏️ Sende mir den neuen Namen.")
+
+    elif data.startswith("msg_folder_delconfirm_"):
+        fid = int(data.replace("msg_folder_delconfirm_", ""))
+        kb = [[InlineKeyboardButton("✅ Ja, löschen", callback_data=f"msg_folder_delyes_{fid}"),
+               InlineKeyboardButton("❌ Abbrechen", callback_data="msg_folder_manage")]]
+        await query.edit_message_text("🗑 Ordner wirklich löschen?", reply_markup=InlineKeyboardMarkup(kb))
+
+    elif data.startswith("msg_folder_delyes_"):
+        fid = int(data.replace("msg_folder_delyes_", ""))
+        bot_data = load_data()
+        bot_data["broadcast_folders"] = [f for f in bot_data.get("broadcast_folders", []) if f["id"] != fid]
+        save_data(bot_data)
+        await query.answer("Gelöscht.")
+        await _render_folder_manage(query)
+
+    # === PIN CHOICE ===
+    elif data == "msg_pin_toggle":
+        p = user_data_store.get(user_id, {})
+        p["pin"] = not p.get("pin", False)
+        if not p["pin"]: p["pin_silent"] = False
+        user_data_store[user_id] = p
+        await _render_pin_choice(query, user_id)
+
+    elif data == "msg_pin_silent_toggle":
+        p = user_data_store.get(user_id, {})
+        if p.get("pin"):
+            p["pin_silent"] = not p.get("pin_silent", False)
+            user_data_store[user_id] = p
+        await _render_pin_choice(query, user_id)
+
+    elif data == "msg_autodel_cycle":
+        p = user_data_store.get(user_id, {})
+        opts = [0, 300, 1800, 3600, 21600, 43200, 86400]
+        cur = p.get("auto_del", 0)
+        try: idx = opts.index(cur)
+        except ValueError: idx = 0
+        p["auto_del"] = opts[(idx + 1) % len(opts)]
+        p["auto_del_at"] = 0
+        user_data_store[user_id] = p
+        await _render_pin_choice(query, user_id)
+
+    elif data == "msg_autodel_custom":
+        context.user_data["state"] = "WAITING_AUTODEL_CUSTOM"
+        await query.edit_message_text(
+            "⏱ <b>Eigene Auto-Löschzeit</b>\n\n"
+            "Sende die Dauer als Text, z.B.:\n"
+            "• <code>30s</code> = 30 Sekunden\n"
+            "• <code>5m</code> = 5 Minuten\n"
+            "• <code>3h</code> = 3 Stunden\n"
+            "• <code>2d</code> = 2 Tage\n\n"
+            "Maximum: 7 Tage. Sende <code>0</code> oder <code>aus</code> zum Deaktivieren.",
+            parse_mode="HTML"
+        )
+        return
+    elif data == "msg_autodel_clock":
+        context.user_data["state"] = "WAITING_AUTODEL_CLOCK"
+        await query.edit_message_text(
+            "🕒 <b>Genaue Uhrzeit (Europe/Berlin)</b>\n\n"
+            "Sende die Uhrzeit, z.B.:\n"
+            "• <code>22:30</code> — heute um 22:30 (oder morgen, falls schon vorbei)\n"
+            "• <code>30.06 09:15</code> — Datum + Uhrzeit\n"
+            "• <code>30.06.2026 09:15</code> — mit Jahr\n\n"
+            "Maximum: 7 Tage in der Zukunft. Sende <code>aus</code> zum Deaktivieren.",
+            parse_mode="HTML"
+        )
+        return
+    elif data == "msg_pin_continue":
+        p = user_data_store.get(user_id, {})
+        user_data_store[user_id] = {"action": "messenger", "groups": p.get("groups", []),
+                                    "pin": p.get("pin", False), "pin_silent": p.get("pin_silent", False),
+                                    "auto_del": p.get("auto_del", 0),
+                                    "auto_del_at": p.get("auto_del_at", 0)}
         await query.edit_message_text(
             "📨 Sende mir jetzt die Nachricht.\n\n"
-            "Tipp: Markiere deinen Text und nutze die Telegram-Formatierung (Fett, Kursiv, Link, Zitat usw.) – wird 1:1 übernommen.",
+            "Tipp: Telegram-Formatierung (Fett, Kursiv, Link, Zitat) wird 1:1 übernommen.",
         )
         context.user_data["state"] = WAITING_MESSENGER_INPUT
 
@@ -1256,6 +1552,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await query.edit_message_text("Keine gesendeten Nachrichten vorhanden.")
             return
         keyboard = []
+        keyboard.append([InlineKeyboardButton("🗑 Alle löschen", callback_data="del_all_broadcasts")])
         for bid, info in list(broadcasts.items()):
             label = f"🗑 {info.get('date', '?')} – {info.get('count', '?')} Gruppen"
             keyboard.append([InlineKeyboardButton(label, callback_data=f"del_broadcast_{bid}")])
@@ -1265,6 +1562,27 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=InlineKeyboardMarkup(keyboard),
             parse_mode="Markdown",
         )
+
+    # === DELETE ALL BROADCASTS ===
+    elif data == "del_all_broadcasts":
+        bot_data = load_data()
+        broadcasts = bot_data.get("broadcasts", {})
+        if not broadcasts:
+            await query.edit_message_text("Keine gesendeten Nachrichten vorhanden.")
+            return
+        all_msgs = []
+        for info in broadcasts.values():
+            all_msgs.extend(info.get("messages", []))
+        bot_data["broadcasts"] = {}
+        save_data(bot_data)
+        deleted = 0
+        for entry in all_msgs:
+            try:
+                await context.bot.delete_message(chat_id=entry[0], message_id=entry[1])
+                deleted += 1
+            except Exception as e:
+                logger.error(f"Delete broadcast msg failed in {entry[0]}: {e}")
+        await query.edit_message_text(f"🗑 Alle gesendeten Nachrichten gelöscht ({deleted}).")
 
     # === DELETE BROADCAST ===
     elif data.startswith("del_broadcast_"):
@@ -4650,13 +4968,102 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data["state"] = WAITING_GROUP_ADD_ID
 
 # --- Message handler for text input ---
-
 async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    _ensure_autodelete_watchdog(context)
     user_id = update.effective_user.id
     if not is_authorized(user_id):
         return
 
     state = context.user_data.get("state")
+    if state == "WAITING_FOLDER_NAME":
+        await handle_folder_name_input(update, context, update.effective_user.id, update.message.text or "")
+        return
+    if state == "WAITING_AUTODEL_CUSTOM":
+        raw = (update.message.text or "").strip().lower()
+        context.user_data.pop("state", None)
+        if raw in ("0", "aus", "off", "none", "-"):
+            secs = 0
+        else:
+            m = re.match(r"^(\d+)\s*([smhd]?)$", raw)
+            if not m:
+                await update.message.reply_text("❌ Ungültig. Beispiele: 30s, 5m, 3h, 2d, oder 0 zum Deaktivieren.")
+                return
+            n = int(m.group(1)); unit = m.group(2) or "m"
+            mult = {"s":1,"m":60,"h":3600,"d":86400}[unit]
+            secs = n * mult
+            if secs > 7*86400:
+                await update.message.reply_text("❌ Maximum: 7 Tage.")
+                return
+        uid = update.effective_user.id
+        ps = user_data_store.get(uid, {})
+        user_data_store[uid] = {"action": "messenger", "groups": ps.get("groups", []),
+                                "pin": ps.get("pin", False), "pin_silent": ps.get("pin_silent", False),
+                                "auto_del": secs, "auto_del_at": 0}
+        context.user_data["state"] = WAITING_MESSENGER_INPUT
+        def _fmt(x):
+            if not x: return "Aus"
+            if x % 86400 == 0: return f"{x//86400} Tage"
+            if x % 3600 == 0: return f"{x//3600} h"
+            if x % 60 == 0: return f"{x//60} min"
+            return f"{x}s"
+        await update.message.reply_text(f"✅ Auto-Löschung: <b>{_fmt(secs)}</b>\n\n📨 Sende mir jetzt die Nachricht.", parse_mode="HTML")
+        return
+    if state == "WAITING_AUTODEL_CLOCK":
+        from zoneinfo import ZoneInfo
+        from datetime import datetime, timedelta
+        import time as _time
+        raw = (update.message.text or "").strip().lower()
+        context.user_data.pop("state", None)
+        tz = ZoneInfo("Europe/Berlin")
+        if raw in ("0", "aus", "off", "none", "-"):
+            uid = update.effective_user.id
+            ps = user_data_store.get(uid, {})
+            ps["auto_del"] = 0; ps["auto_del_at"] = 0
+            user_data_store[uid] = ps
+            await update.message.reply_text("✅ Auto-Löschung deaktiviert.")
+            return
+        now_local = datetime.now(tz)
+        target = None
+        for fmt in ("%d.%m.%Y %H:%M", "%d.%m %H:%M", "%H:%M"):
+            try:
+                dt = datetime.strptime(raw, fmt)
+                if fmt == "%H:%M":
+                    target = now_local.replace(hour=dt.hour, minute=dt.minute, second=0, microsecond=0)
+                    if target <= now_local:
+                        target += timedelta(days=1)
+                elif fmt == "%d.%m %H:%M":
+                    target = datetime(now_local.year, dt.month, dt.day, dt.hour, dt.minute, tzinfo=tz)
+                    if target <= now_local:
+                        target = target.replace(year=now_local.year + 1)
+                else:
+                    target = dt.replace(tzinfo=tz)
+                break
+            except ValueError:
+                continue
+        if not target:
+            await update.message.reply_text("❌ Ungültig. Formate: <code>22:30</code>, <code>30.06 09:15</code>, <code>30.06.2026 09:15</code>", parse_mode="HTML")
+            return
+        delta = (target - now_local).total_seconds()
+        if delta <= 0:
+            await update.message.reply_text("❌ Zeitpunkt liegt in der Vergangenheit.")
+            return
+        if delta > 7*86400:
+            await update.message.reply_text("❌ Maximum: 7 Tage in der Zukunft.")
+            return
+        uid = update.effective_user.id
+        ps = user_data_store.get(uid, {})
+        ps["auto_del_at"] = int(target.timestamp())
+        ps["auto_del"] = 0
+        # direkt in Messenger-Input wechseln (kein Menü-Neustart nötig)
+        user_data_store[uid] = {"action": "messenger", "groups": ps.get("groups", []),
+                                "pin": ps.get("pin", False), "pin_silent": ps.get("pin_silent", False),
+                                "auto_del": 0, "auto_del_at": int(target.timestamp())}
+        context.user_data["state"] = WAITING_MESSENGER_INPUT
+        await update.message.reply_text(
+            f"✅ Wird gelöscht am <b>{target.strftime('%d.%m.%Y %H:%M')}</b> (Europe/Berlin)\n\n"
+            "📨 Sende mir jetzt die Nachricht.",
+            parse_mode="HTML")
+        return
     text = update.message.text.strip()
 
     if state in (WAITING_BAN_INPUT, WAITING_UNBAN_INPUT):
@@ -4882,11 +5289,19 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         sent_msgs = []
         msg = update.message
 
+        do_pin = pending.get("pin", False)
+        pin_silent = pending.get("pin_silent", False)
         for gid in groups:
             try:
                 sent = await msg.copy(chat_id=gid)
                 sent_msgs.append((gid, sent.message_id))
                 success += 1
+                if do_pin:
+                    try:
+                        await context.bot.pin_chat_message(chat_id=gid, message_id=sent.message_id,
+                                                           disable_notification=pin_silent)
+                    except Exception as pe:
+                        logger.error(f"Pin failed in {gid}: {pe}")
             except Exception as e:
                 fail += 1
                 logger.error(f"Messenger send failed in {gid}: {e}")
@@ -4901,6 +5316,7 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "preview": preview_text[:50] if preview_text else "...",
         }
         save_data(bot_data)
+        await _schedule_broadcast_autodelete(context, broadcast_id, sent_msgs, pending.get("auto_del", 0), pending.get("auto_del_at", 0))
 
         keyboard = [[InlineKeyboardButton("🗑 Nachricht in allen Gruppen löschen", callback_data=f"del_broadcast_{broadcast_id}")]]
         await update.message.reply_text(
@@ -5239,7 +5655,6 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
 # --- /registergroup - run in a group to add it ---
-
 async def register_group(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_owner(update.effective_user.id):
         await update.message.reply_text("⛔ Nur Owner können Gruppen registrieren.")
@@ -5455,10 +5870,76 @@ async def info_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"━━━━━━━━━━━━━━━━━━"
         )
 
+        # Per-Gruppe Breakdown — nur im privaten Bot-Chat
+        if not scope_chat_id and update.effective_chat and update.effective_chat.type == "private":
+            name_by_id = {}
+            for g in groups:
+                try:
+                    name_by_id[str(g["id"])] = g.get("name") or g.get("title") or str(g["id"])
+                except Exception:
+                    pass
+            # Fallback aus data["groups"] (alle je gesehenen Gruppen)
+            try:
+                _all_groups = load_data().get("groups", {}) or {}
+                for _gid, _gmeta in _all_groups.items():
+                    if str(_gid) in name_by_id:
+                        continue
+                    if isinstance(_gmeta, dict):
+                        _nm = _gmeta.get("title") or _gmeta.get("name")
+                        if _nm:
+                            name_by_id[str(_gid)] = _nm
+                    elif isinstance(_gmeta, str):
+                        name_by_id[str(_gid)] = _gmeta
+            except Exception:
+                pass
+            # Persistenter Cache für Live-Lookups
+            _gn_cache = context.bot_data.setdefault("_group_title_cache", {})
+            user_groups = (tracked_data or {}).get("group_stats", {}) or {}
+            # Unbekannte Titel live abfragen (mit Cache)
+            for _gid_str in list(user_groups.keys()):
+                if _gid_str in name_by_id:
+                    continue
+                if _gid_str in _gn_cache:
+                    name_by_id[_gid_str] = _gn_cache[_gid_str]
+                    continue
+                try:
+                    _ch = await context.bot.get_chat(int(_gid_str))
+                    _title = _ch.title or _ch.full_name or str(_gid_str)
+                    name_by_id[_gid_str] = _title
+                    _gn_cache[_gid_str] = _title
+                except Exception:
+                    pass
+            if user_groups:
+                items = sorted(
+                    user_groups.items(),
+                    key=lambda kv: (kv[1] or {}).get("msg_count", 0),
+                    reverse=True,
+                )
+                lines = ["", "📊 <b>Pro Gruppe:</b>"]
+                for gid_str, gs in items:
+                    gs = gs or {}
+                    gname = name_by_id.get(str(gid_str), f"Gruppe {gid_str}")
+                    try:
+                        gid_int = int(gid_str)
+                        banned = is_banned_in_group(gid_int, target_id)
+                    except Exception:
+                        banned = False
+                    mark = "🚫" if banned else "✅"
+                    lines.append(
+                        f"• {mark} <b>{html.escape(str(gname))}</b> — 💬 {gs.get('msg_count', 0)} · seit {gs.get('first_seen', '—')}"
+                    )
+                extra = "\n" + "\n".join(lines)
+                if len(info_text) + len(extra) < 3900:
+                    info_text += extra
+                else:
+                    # Bei sehr vielen Gruppen kürzen
+                    info_text += "\n\n📊 <b>Pro Gruppe:</b> (zu viele — gekürzt)\n" + "\n".join(lines[2:30])
+
         await update.message.reply_text(
             info_text,
             reply_markup=build_info_keyboard(scope_chat_id, target_id, is_muted, is_banned_local, is_banned_all),
             parse_mode="HTML",
+            disable_web_page_preview=True,
         )
     except Exception as e:
         logger.error(f"info_command error for user {update.effective_user.id}: {e}", exc_info=True)
@@ -6575,6 +7056,14 @@ async def delete_service_message(update: Update, context: ContextTypes.DEFAULT_T
 # --- User tracker + auto re-ban ---
 
 async def track_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # HOTFIX: CPU protection
+    if update.message is None:
+        return
+    if update.effective_user and update.effective_user.is_bot:
+        return
+    if update.effective_chat and update.effective_chat.type not in ["group", "supergroup"]:
+        return
+
     """Track group activity, remove ban-related service messages, and immediately re-ban if needed."""
     if not update.message:
         return
@@ -7053,6 +7542,9 @@ async def media_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle media uploads for scheduled messages, sticker setting, or JSON file imports."""
     user_id = update.effective_user.id
     state = context.user_data.get("state")
+    if state == "WAITING_FOLDER_NAME":
+        await handle_folder_name_input(update, context, update.effective_user.id, update.message.text or "")
+        return
     
     # If waiting for open/close sticker
     if state in (WAITING_OPEN_STICKER, WAITING_CLOSE_STICKER):
@@ -7216,6 +7708,12 @@ async def media_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
                 sent_msgs.append((gid, sent.message_id))
                 success += 1
+                if pending.get("pin", False):
+                    try:
+                        await context.bot.pin_chat_message(chat_id=gid, message_id=sent.message_id,
+                                                           disable_notification=pending.get("pin_silent", False))
+                    except Exception as pe:
+                        logger.error(f"Pin failed in {gid}: {pe}")
             except Exception as e:
                 fail += 1
                 logger.error(f"Messenger media fallback failed in {gid}: {e}")
@@ -7228,6 +7726,7 @@ async def media_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "preview": ((msg.caption or "")[:50] if msg.caption else f"[{media_type}]"),
         }
         save_data(bot_data)
+        await _schedule_broadcast_autodelete(context, broadcast_id, sent_msgs, pending.get("auto_del", 0), pending.get("auto_del_at", 0))
 
         keyboard = [[InlineKeyboardButton("🗑 Nachricht in allen Gruppen löschen", callback_data=f"del_broadcast_{broadcast_id}")]]
         await msg.reply_text(
@@ -8674,6 +9173,121 @@ async def teamgruppe_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
             pass
 
 
+
+
+async def _schedule_broadcast_autodelete(context, broadcast_id, sent_msgs, delay, auto_del_at=0):
+    import asyncio, time as _time
+    if auto_del_at:
+        delay = max(1, int(auto_del_at - _time.time()))
+    if not delay or not sent_msgs:
+        return
+    logger.info(f"Auto-delete scheduled in {delay}s for broadcast {broadcast_id} ({len(sent_msgs)} msgs)")
+    async def _run():
+        try:
+            await asyncio.sleep(delay)
+            for gid, mid in sent_msgs:
+                try:
+                    await context.bot.delete_message(chat_id=gid, message_id=mid)
+                except Exception as e:
+                    logger.error(f"Auto-delete failed in {gid}: {e}")
+            try:
+                bd = load_data()
+                if broadcast_id in bd.get("broadcasts", {}):
+                    bd["broadcasts"].pop(broadcast_id, None)
+                    save_data(bd)
+            except Exception as e:
+                logger.error(f"Auto-delete cleanup failed: {e}")
+        except Exception as e:
+            logger.error(f"Auto-delete task crashed: {e}")
+    asyncio.create_task(_run())
+
+async def _render_pin_choice(query, user_id):
+    p = user_data_store.get(user_id, {})
+    pin = p.get("pin", False); silent = p.get("pin_silent", False)
+    pin_lbl = "📌 Anpinnen: ✅" if pin else "📌 Anpinnen: ❌"
+    sil_lbl = ("🔕 Still: ✅" if silent else "🔕 Still: ❌") if pin else "🔕 Still (deaktiviert)"
+    ad = p.get("auto_del", 0)
+    ad_at = p.get("auto_del_at", 0)
+    ad_map = {0:"Aus", 300:"5 Min", 1800:"30 Min", 3600:"1 Std", 21600:"6 Std", 43200:"12 Std", 86400:"24 Std"}
+    if ad_at:
+        try:
+            from zoneinfo import ZoneInfo
+            from datetime import datetime
+            ad_lbl = "⏱ Auto-Löschung: " + datetime.fromtimestamp(ad_at, ZoneInfo("Europe/Berlin")).strftime("%d.%m %H:%M")
+        except Exception:
+            ad_lbl = f"⏱ Auto-Löschung: @{ad_at}"
+    else:
+        ad_lbl = f"⏱ Auto-Löschung: {ad_map.get(ad, str(ad)+'s')}"
+    kb = [
+        [InlineKeyboardButton(pin_lbl, callback_data="msg_pin_toggle")],
+        [InlineKeyboardButton(sil_lbl, callback_data="msg_pin_silent_toggle")],
+        [InlineKeyboardButton(ad_lbl, callback_data="msg_autodel_cycle")],
+        [InlineKeyboardButton("🕒 Uhrzeit wählen", callback_data="msg_autodel_clock")],
+        [InlineKeyboardButton("➡️ Weiter zur Nachricht", callback_data="msg_pin_continue")],
+        [InlineKeyboardButton("🔙 Zurück", callback_data="menu_messenger")],
+    ]
+    await query.edit_message_text(
+        f"📨 *Vor dem Senden*\n{len(p.get('groups', []))} Gruppen ausgewählt.\n\nSoll die Nachricht angepinnt werden?",
+        reply_markup=InlineKeyboardMarkup(kb), parse_mode="Markdown",
+    )
+
+async def _render_folder_manage(query):
+    bot_data = load_data()
+    folders = bot_data.get("broadcast_folders", [])
+    kb = []
+    for f in folders:
+        kb.append([InlineKeyboardButton(f"📁 {f['name']} ({len(f.get('group_ids', []))})",
+                                        callback_data=f"msg_folder_edit_{f['id']}")])
+    kb.append([InlineKeyboardButton("➕ Neuer Ordner", callback_data="msg_folder_new")])
+    kb.append([InlineKeyboardButton("🔙 Zurück", callback_data="menu_messenger")])
+    await query.edit_message_text("⚙️ *Ordner verwalten*", reply_markup=InlineKeyboardMarkup(kb), parse_mode="Markdown")
+
+async def _render_folder_edit(query, context, fid):
+    import html as _html
+    bot_data = load_data()
+    folder = next((f for f in bot_data.get("broadcast_folders", []) if f["id"] == fid), None)
+    if not folder:
+        await _render_folder_manage(query); return
+    groups = await get_bot_groups(context)
+    fgids = set(folder.get("group_ids", []))
+    kb, row = [], []
+    for g in groups:
+        chk = "✅" if g["id"] in fgids else "⬜"
+        row.append(InlineKeyboardButton(f"{chk} {g['title']}", callback_data=f"msg_folder_toggle_{fid}_{g['id']}"))
+        if len(row) == 2: kb.append(row); row = []
+    if row: kb.append(row)
+    kb.append([InlineKeyboardButton("✏️ Umbenennen", callback_data=f"msg_folder_rename_{fid}"),
+               InlineKeyboardButton("🗑 Löschen", callback_data=f"msg_folder_delconfirm_{fid}")])
+    kb.append([InlineKeyboardButton("🔙 Zurück", callback_data="msg_folder_manage")])
+    await query.edit_message_text(f"📁 <b>{_html.escape(folder['name'])}</b>\nGruppen togglen:",
+                                  reply_markup=InlineKeyboardMarkup(kb), parse_mode="HTML")
+
+async def handle_folder_name_input(update, context, user_id, text):
+    """Aufrufen aus message handler wenn state == 'WAITING_FOLDER_NAME'."""
+    import time as _t
+    pending = user_data_store.get(user_id, {})
+    bot_data = load_data()
+    bot_data.setdefault("broadcast_folders", [])
+    name = text.strip()[:50]
+    if not name:
+        await update.message.reply_text("⚠️ Leerer Name."); return
+    if pending.get("action") == "folder_new":
+        bot_data["broadcast_folders"].append({"id": int(_t.time()*1000), "name": name, "group_ids": []})
+        save_data(bot_data)
+        await update.message.reply_text(f"✅ Ordner '{name}' erstellt.")
+    elif pending.get("action") == "folder_rename":
+        fid = pending.get("fid")
+        for f in bot_data["broadcast_folders"]:
+            if f["id"] == fid:
+                f["name"] = name; break
+        save_data(bot_data)
+        await update.message.reply_text(f"✅ Umbenannt: {name}")
+    context.user_data["state"] = None
+    user_data_store.pop(user_id, None)
+
+
+
+
 def main():
     cfg = load_config()
     token = cfg.get("bot_token", "")
@@ -8710,7 +9324,7 @@ def main():
     app = (
         Application.builder()
         .token(token)
-        .concurrent_updates(False)
+        .concurrent_updates(True)
         .post_init(post_init)
         .connection_pool_size(TELEGRAM_CONNECTION_POOL_SIZE)
         .pool_timeout(TELEGRAM_POOL_TIMEOUT_SEC)
@@ -8746,6 +9360,7 @@ def main():
     app.add_handler(CommandHandler("del", del_command))
     app.add_handler(CommandHandler("send", send_command))
     app.add_handler(CommandHandler("report", handle_admin_report))
+    app.add_handler(CommandHandler("autodel", autodel_status_command))
     app.add_handler(CommandHandler("teamgruppe", teamgruppe_command))
     app.add_handler(CallbackQueryHandler(button_handler))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & filters.ChatType.PRIVATE, text_handler))
