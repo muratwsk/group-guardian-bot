@@ -108,37 +108,6 @@ BOT_USERNAME_CACHE = None  # Cached bot username to avoid get_me() API calls
 TELEGRAM_CONNECTION_POOL_SIZE = 64
 TELEGRAM_GET_UPDATES_POOL_SIZE = 8
 TELEGRAM_POOL_TIMEOUT_SEC = 30
-
-# --- PERF PROBE (temporaer) ---
-import time as _perf_time
-from telegram.ext import Application as _PerfApplication
-_perf_orig_process_update = _PerfApplication.process_update
-
-async def _perf_process_update(self, update):
-    _t0 = _perf_time.perf_counter()
-    try:
-        return await _perf_orig_process_update(self, update)
-    finally:
-        _dt = _perf_time.perf_counter() - _t0
-        if _dt > 1.0:
-            try:
-                if getattr(update, "callback_query", None) is not None:
-                    _kind = "callback:" + str(update.callback_query.data)
-                elif getattr(update, "message", None) is not None:
-                    _m = update.message
-                    _kind = "message:" + str((_m.text or "")[:40]) + "|chat=" + str(_m.chat.id)
-                elif getattr(update, "chat_member", None) is not None:
-                    _kind = "chat_member"
-                elif getattr(update, "chat_join_request", None) is not None:
-                    _kind = "join_request"
-                else:
-                    _kind = "other"
-            except Exception:
-                _kind = "unknown"
-            print(f"PERFPROBE {_dt:.2f}s {_kind}", flush=True)
-_PerfApplication.process_update = _perf_process_update
-# --- END PERF PROBE ---
-
 SCHEDULER_RETRY_DELAYS_SEC = (2.0, 5.0)
 SCHEDULER_INTER_SEND_DELAY_SEC = 0.2
 BROADCAST_AUTODELETE_FALLBACK_TASKS = {}
@@ -526,7 +495,6 @@ async def auto_delete_command(update: Update, context):
 
 
 def track_user(user, group_id=None):
-    dirty_keys = set()
     """Track a user's username → ID mapping, per-group message count, and first seen date."""
     if not user or user.is_bot:
         return
@@ -567,7 +535,6 @@ def track_user(user, group_id=None):
             should_persist = True
 
         users[key] = entry
-        dirty_keys.add(key)
 
     if user.username:
         _update_entry(user.username.lower())
@@ -580,7 +547,7 @@ def track_user(user, group_id=None):
     now_ts = datetime.datetime.now().timestamp()
     last_save = USER_TRACK_LAST_SAVE.get(group_save_key, 0)
     if should_persist or (now_ts - last_save) >= USER_TRACK_SAVE_INTERVAL_SEC:
-        save_users(users, dirty_keys)
+        save_users(users)
         USER_TRACK_LAST_SAVE[group_save_key] = now_ts
 
 
@@ -9208,7 +9175,7 @@ async def teamgruppe_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
 
 
-async def _schedule_broadcast_autodelete(context, broadcast_id, sent_msgs, delay, auto_del_at=0):
+async def _orig_schedule_broadcast_autodelete(context, broadcast_id, sent_msgs, delay, auto_del_at=0):
     import asyncio, time as _time
     if auto_del_at:
         delay = max(1, int(auto_del_at - _time.time()))
@@ -9441,6 +9408,41 @@ def main():
         write_timeout=15,
         pool_timeout=10,
     )
+
+BCDEL_PERSIST_WRAPPER = True
+
+
+async def _schedule_broadcast_autodelete(context, broadcast_id, sent_msgs, delay, auto_del_at=0):
+    import time as _time
+    if auto_del_at:
+        ts = float(auto_del_at)
+    else:
+        ts = _time.time() + float(delay or 0)
+    if (not delay and not auto_del_at) or not sent_msgs:
+        return
+    try:
+        delete_at = datetime.datetime.fromtimestamp(ts, BERLIN_TZ)
+        bd = load_data()
+        bd.setdefault("broadcast_autodeletes", {})[str(broadcast_id)] = {
+            "broadcast_id": str(broadcast_id),
+            "messages": [list(m) for m in sent_msgs],
+            "delete_at": delete_at.strftime("%d.%m.%Y %H:%M:%S"),
+            "delete_at_ts": ts,
+        }
+        save_data(bd)
+        try:
+            _ensure_autodelete_watchdog(context)
+        except Exception:
+            pass
+        logger.info(
+            "Broadcast %s auto-delete gespeichert | ziel=%s | msgs=%s",
+            broadcast_id, delete_at.strftime("%d.%m.%Y %H:%M:%S"), len(sent_msgs),
+        )
+    except Exception as e:
+        logger.error(f"Auto-delete persist failed ({broadcast_id}): {e}", exc_info=True)
+    return await _orig_schedule_broadcast_autodelete(
+        context, broadcast_id, sent_msgs, delay, auto_del_at)
+
 
 if __name__ == "__main__":
     main()
