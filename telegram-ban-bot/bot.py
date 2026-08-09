@@ -1097,6 +1097,34 @@ def _autodelete_due_ts(info: dict):
     return parsed.timestamp() if parsed else None
 
 
+RUN_BCDEL_FALLBACK = True
+
+
+async def _run_broadcast_autodelete(context, broadcast_id, job_messages=None):
+    """Löscht alle Nachrichten eines Broadcasts und entfernt den Eintrag dauerhaft."""
+    broadcast_id = str(broadcast_id)
+    bot_data = load_data()
+    info = (bot_data.get("broadcasts", {}) or {}).get(broadcast_id, {}) or {}
+    adinfo = (bot_data.get("broadcast_autodeletes", {}) or {}).get(broadcast_id, {}) or {}
+    messages = job_messages or info.get("messages") or adinfo.get("messages") or []
+    ok = 0
+    for entry in list(messages):
+        try:
+            gid, mid = int(entry[0]), int(entry[1])
+        except Exception:
+            continue
+        try:
+            await context.bot.delete_message(chat_id=gid, message_id=mid)
+            ok += 1
+        except Exception as e:
+            logger.warning(f"Auto-delete {broadcast_id}: {gid}/{mid} fehlgeschlagen: {e}")
+    bot_data = load_data()
+    (bot_data.get("broadcasts") or {}).pop(broadcast_id, None)
+    (bot_data.setdefault("broadcast_autodeletes", {})).pop(broadcast_id, None)
+    save_data(bot_data)
+    logger.info(f"Auto-deleted broadcast {broadcast_id}: {ok}/{len(messages)} Nachrichten")
+
+
 async def autodelete_watchdog(context):
     """Safety net: delete every overdue auto-delete entry, even if its job was lost.
 
