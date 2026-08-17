@@ -22,3 +22,14 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+telegram-ban-bot/bot.db
+telegram-ban-bot/bot.db-wal
+telegram-ban-bot/bot.db-shm
+telegram-ban-bot/bot.lock
+telegram-ban-bot/config.json
+telegram-ban-bot/groups.json
+telegram-ban-bot/backups/
+telegram-ban-bot/venv/
+__pycache__/
+*.bak
+*.bak.*
