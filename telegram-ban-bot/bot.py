@@ -1139,11 +1139,50 @@ async def _run_broadcast_autodelete(context, broadcast_id, job_messages=None):
             gid, mid = int(entry[0]), int(entry[1])
         except Exception:
             continue
-        try:
-            await context.bot.delete_message(chat_id=gid, message_id=mid)
-            ok += 1
-        except Exception as e:
-            logger.warning(f"Auto-delete {broadcast_id}: {gid}/{mid} fehlgeschlagen: {e}")
+        for attempt in range(3):
+            try:
+                await context.bot.delete_message(chat_id=gid, message_id=mid)
+                ok += 1
+                break
+            except Exception as e:
+                msg = str(e).lower()
+                already_gone = (
+                    "message to delete not found" in msg
+                    or "message not found" in msg
+                    or "message identifier is not specified" in msg
+                )
+                timed_out = (
+                    e.__class__.__name__ == "TimedOut"
+                    or "timed out" in msg
+                    or "timeout" in msg
+                )
+
+                if already_gone:
+                    # Der erste Versuch hat die Nachricht bereits gelöscht,
+                    # aber die Telegram-Antwort kam wegen eines Timeouts nicht an.
+                    ok += 1
+                    break
+
+                if timed_out and attempt < 2:
+                    logger.warning(
+                        f"Auto-delete {broadcast_id}: Timeout bei {gid}/{mid}, "
+                        f"Versuch {attempt + 2}/3"
+                    )
+                    await asyncio.sleep(1.5)
+                    continue
+
+                if timed_out:
+                    # Telegram kann die Löschung trotz fehlender Antwort ausgeführt haben.
+                    ok += 1
+                    logger.warning(
+                        f"Auto-delete {broadcast_id}: {gid}/{mid} nach Timeout "
+                        "als ausgeführt gewertet"
+                    )
+                else:
+                    logger.warning(
+                        f"Auto-delete {broadcast_id}: {gid}/{mid} fehlgeschlagen: {e}"
+                    )
+                break
     bot_data = load_data()
     (bot_data.get("broadcasts") or {}).pop(broadcast_id, None)
     (bot_data.setdefault("broadcast_autodeletes", {})).pop(broadcast_id, None)
