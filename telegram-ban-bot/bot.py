@@ -112,14 +112,14 @@ SCHEDULER_RETRY_DELAYS_SEC = (2.0, 5.0)
 SCHEDULER_INTER_SEND_DELAY_SEC = 0.2
 BROADCAST_AUTODELETE_FALLBACK_TASKS = {}
 AUTODELETE_DELETE_CONCURRENCY = 6
-AUTODELETE_DELETE_TIMEOUT_SEC = 12
+AUTODELETE_DELETE_TIMEOUT_SEC = 25
 # Guard against the same auto-delete running twice (JobQueue + Watchdog + Fallback)
 AUTODELETE_INFLIGHT = set()
 # Watchdog sweep: guarantees deletion even if a job/task was lost
 AUTODELETE_SWEEP_INTERVAL_SEC = 5
 # Max. Wiederholversuche pro Auto-Löschung, wenn Telegram-Löschen fehlschlägt
 AUTODELETE_MAX_ATTEMPTS = 6
-AUTODELETE_DELETE_TIMEOUT_SEC = 12
+AUTODELETE_DELETE_TIMEOUT_SEC = 25
 AUTODELETE_RETRY_DELAY_SEC = 30
 
 
