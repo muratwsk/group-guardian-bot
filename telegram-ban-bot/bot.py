@@ -1100,6 +1100,32 @@ def _autodelete_due_ts(info: dict):
 RUN_BCDEL_FALLBACK = True
 
 
+
+async def _send_autodelete_confirmation_fixed(context, chat_id, title, deleted, total, extra=""):
+    """Sendet dem Ersteller nach der tatsächlichen Timer-Löschung eine Bestätigung."""
+    if not chat_id:
+        logger.warning("Auto-delete-Bestätigung nicht gesendet: Empfänger-ID fehlt")
+        return
+
+    try:
+        text = (
+            "✅ <b>Timer abgelaufen</b>\n\n"
+            f"{title}\n"
+            f"🗑 Gelöscht: <b>{deleted}/{total}</b>"
+        )
+        if extra:
+            text += f"\n{extra}"
+
+        await context.bot.send_message(
+            chat_id=int(chat_id),
+            text=text,
+            parse_mode="HTML",
+        )
+        logger.info("Auto-delete-Bestätigung an %s gesendet", chat_id)
+    except Exception:
+        logger.exception("Auto-delete-Bestätigung an %s fehlgeschlagen", chat_id)
+
+
 async def _run_broadcast_autodelete(context, broadcast_id, job_messages=None):
     """Löscht alle Nachrichten eines Broadcasts und entfernt den Eintrag dauerhaft."""
     broadcast_id = str(broadcast_id)
@@ -1123,6 +1149,12 @@ async def _run_broadcast_autodelete(context, broadcast_id, job_messages=None):
     (bot_data.setdefault("broadcast_autodeletes", {})).pop(broadcast_id, None)
     save_data(bot_data)
     logger.info(f"Auto-deleted broadcast {broadcast_id}: {ok}/{len(messages)} Nachrichten")
+    _notify = (info or {}).get("created_by") or (adinfo or {}).get("notify_chat")
+    _prev = str((info or {}).get("preview") or "")
+    await _send_autodelete_confirmation_fixed(context, _notify,
+        "📨 Messenger-Nachricht (Timer)" + (f": <i>{html.escape(_prev)}</i>" if _prev else ""),
+        ok, len(messages),
+        extra=("⚠️ Einige Nachrichten konnten nicht gelöscht werden." if ok < len(messages) else ""))
 
 
 async def autodelete_watchdog(context):
@@ -5342,6 +5374,8 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "date": now_de().strftime("%d.%m %H:%M"),
             "count": success,
             "preview": preview_text[:50] if preview_text else "...",
+            "created_by": user_id,
+            "created_by": user_id,
         }
         save_data(bot_data)
         await _schedule_broadcast_autodelete(context, broadcast_id, sent_msgs, pending.get("auto_del", 0), pending.get("auto_del_at", 0))
@@ -7752,6 +7786,8 @@ async def media_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "date": now_de().strftime("%d.%m %H:%M"),
             "count": success,
             "preview": ((msg.caption or "")[:50] if msg.caption else f"[{media_type}]"),
+            "created_by": user_id,
+            "created_by": user_id,
         }
         save_data(bot_data)
         await _schedule_broadcast_autodelete(context, broadcast_id, sent_msgs, pending.get("auto_del", 0), pending.get("auto_del_at", 0))
@@ -9474,3 +9510,20 @@ async def _schedule_broadcast_autodelete(context, broadcast_id, sent_msgs, delay
 
 if __name__ == "__main__":
     main()
+
+
+async def _send_autodelete_confirmation(context, chat_id, title, deleted, total, extra=""):
+    if not chat_id:
+        return
+    try:
+        text = (
+            "✅ <b>Timer abgelaufen – Nachricht gelöscht</b>\n"
+            f"{title}\n"
+            f"🗑 Gelöscht: <b>{deleted}/{total}</b> Nachrichten\n"
+            f"🕒 {now_de().strftime('%d.%m.%Y %H:%M:%S')} (Berlin)"
+        )
+        if extra:
+            text += "\n" + extra
+        await context.bot.send_message(chat_id=int(chat_id), text=text, parse_mode="HTML")
+    except Exception as e:
+        logger.warning(f"Auto-delete Bestaetigung an {chat_id} fehlgeschlagen: {e}")
