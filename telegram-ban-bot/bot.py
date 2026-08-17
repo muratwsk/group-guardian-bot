@@ -1188,7 +1188,23 @@ async def _run_broadcast_autodelete(context, broadcast_id, job_messages=None):
     (bot_data.setdefault("broadcast_autodeletes", {})).pop(broadcast_id, None)
     save_data(bot_data)
     logger.info(f"Auto-deleted broadcast {broadcast_id}: {ok}/{len(messages)} Nachrichten")
-    _notify = (info or {}).get("created_by") or (adinfo or {}).get("notify_chat")
+    _notify = (
+        (info or {}).get("created_by")
+        or (adinfo or {}).get("notify_chat")
+        or (adinfo or {}).get("created_by")
+        or (adinfo or {}).get("user_id")
+    )
+    if not _notify:
+        try:
+            _owners = list(load_config().get("owner_ids") or [])
+            _notify = _owners[0] if _owners else None
+            if _notify:
+                logger.info("Auto-delete-Bestätigung: Fallback auf Owner %s", _notify)
+        except Exception:
+            logger.exception("Auto-delete-Bestätigung: Owner-Fallback fehlgeschlagen")
+    if not _notify:
+        logger.warning("Auto-delete-Bestaetigung: info-keys=%s adinfo-keys=%s",
+                       list((info or {}).keys()), list((adinfo or {}).keys()))
     _prev = str((info or {}).get("preview") or "")
     await _send_autodelete_confirmation_fixed(context, _notify,
         "📨 Messenger-Nachricht (Timer)" + (f": <i>{html.escape(_prev)}</i>" if _prev else ""),
